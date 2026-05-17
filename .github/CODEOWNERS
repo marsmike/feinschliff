@@ -1,0 +1,20 @@
+# Code owners for marsmike/feinschliff.
+# Listed owners are auto-requested for review on every PR touching matched paths.
+# Docs: https://docs.github.com/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default owner for everything in the repo.
+*                               @marsmike
+
+# Marketplace + repo-level metadata.
+/.claude-plugin/                @marsmike
+/.github/                       @marsmike
+/CHANGELOG.md                   @marsmike
+/CONTRIBUTING.md                @marsmike
+/README.md                      @marsmike
+/LICENSE                        @marsmike
+/NOTICE.md                      @marsmike
+/SECURITY.md                    @marsmike
+/CODE_OF_CONDUCT.md             @marsmike
+
+# Plugins (one section per plugin as they're added).
+/feinschliff/                   @marsmike
