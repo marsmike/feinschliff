@@ -3,8 +3,15 @@
 > Brand-pluggable design system for Claude Code — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. The marketplace I run my own work on.
 
 [![CI](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml)
+[![Pages](https://github.com/marsmike/feinschliff/actions/workflows/pages.yml/badge.svg)](https://marsmike.github.io/feinschliff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub stars](https://img.shields.io/github/stars/marsmike/feinschliff?style=social)](https://github.com/marsmike/feinschliff/stargazers)
+[![Last commit](https://img.shields.io/github/last-commit/marsmike/feinschliff)](https://github.com/marsmike/feinschliff/commits/main)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin%20marketplace-orange)](https://docs.claude.com/claude-code)
+
+🎨 **[Browse the brand gallery →](https://marsmike.github.io/feinschliff/brands/)** — every brand pack rendered against every layout. Click any thumbnail for a carousel view.
+
+![Feinschliff showcase grid — six slides rendered from the eponymous brand pack](feinschliff/docs/images/hero-grid.png)
 
 ## Install
 
@@ -13,7 +20,7 @@
 /plugin marketplace add marsmike/feinschliff
 ```
 
-![Feinschliff showcase grid — six slides rendered from the eponymous brand pack](feinschliff/docs/images/hero-grid.png)
+Then `/deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"` to build your first deck on the default `feinschliff` brand.
 
 ## Plugins
 
@@ -21,11 +28,11 @@
 |---|---|
 | [`feinschliff`](feinschliff) | Brand-pluggable design system — turn Claude Design HTML into brand-perfect PowerPoint decks. |
 
-More plugins released step-by-step.
+More plugins released step-by-step. Watch the repo for the next launch.
 
 ## Contributing
 
-PRs welcome. New plugins follow the [contributing guide](CONTRIBUTING.md). All commits require a [DCO](https://developercertificate.org/) sign-off.
+PRs welcome. See the [contributing guide](CONTRIBUTING.md). All commits require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`).
 
 ## Author
 
@@ -33,4 +40,8 @@ PRs welcome. New plugins follow the [contributing guide](CONTRIBUTING.md). All c
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party attribution: [NOTICE.md](NOTICE.md).
+MIT — see [LICENSE](LICENSE). Third-party attribution: [NOTICE.md](NOTICE.md). Security policy: [SECURITY.md](SECURITY.md).
+
+## Star history
+
+⭐ [Track over time on star-history.com](https://www.star-history.com/#marsmike/feinschliff&Date)
