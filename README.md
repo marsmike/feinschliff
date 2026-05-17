@@ -1,6 +1,13 @@
-# feinschliff
+<p align="center">
+  <img src="feinschliff/brands/feinschliff/assets/gem.svg" alt="Feinschliff gem mark" width="120">
+</p>
 
-> Brand-pluggable design system for Claude Code — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. The marketplace I run my own work on.
+<h1 align="center">feinschliff</h1>
+
+<p align="center">
+  <strong>Brand-pluggable design system for Claude Code</strong><br>
+  Turn DESIGN.md or HTML into brand-perfect PowerPoint decks. The marketplace I run my own work on.
+</p>
 
 [![CI](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml)
 [![Pages](https://github.com/marsmike/feinschliff/actions/workflows/pages.yml/badge.svg)](https://marsmike.github.io/feinschliff/)
