@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+import time
 from html import escape
 from pathlib import Path
 from textwrap import dedent
@@ -29,6 +30,11 @@ PREVIEWS = REPO.parent / "docs" / "brand-previews"
 R2_ASSET_BASE = "https://assets.marsmike.com/feinschliff/brand-previews"
 LOCAL_ASSET_BASE = "../brand-previews"
 ASSET_BASE = R2_ASSET_BASE  # overridden in main() when --local is passed
+# Per-build cachebust appended to every image URL. The CDN at
+# `assets.marsmike.com` caches aggressively and we cannot purge from
+# this token; appending `?v=<build-stamp>` makes every Pages deploy mint
+# fresh cache keys so updated renders surface immediately.
+CACHE_BUST = str(int(time.time()))
 
 DARK_FIRST = {
     "binance", "ferrari", "spotify",
@@ -164,7 +170,7 @@ def _layout_card_html(brand_id: str, i: int, layout: dict) -> str:
     lid = escape(layout["id"])
     role = escape(layout["role"])
     name = escape(layout["name"])
-    url = f"{ASSET_BASE}/{brand_id}/{i:02d}-{lid}.png"
+    url = f"{ASSET_BASE}/{brand_id}/{i:02d}-{lid}.png?v={CACHE_BUST}"
     ph4 = '<span class="badge badge-ph4">ph4</span>' if layout["is_phase4"] else ""
     return (
         f'<a class="layout-card" href="{url}" rel="noopener">\n'
@@ -206,7 +212,7 @@ def render_brand_section(brand: dict) -> str:
     )
     atlas_html = ""
     if brand["has_atlas"]:
-        atlas_url = f'{ASSET_BASE}/{brand["id"]}/_atlas.png'
+        atlas_url = f'{ASSET_BASE}/{brand["id"]}/_atlas.png?v={CACHE_BUST}'
         atlas_html = dedent(f'''\
             <a class="atlas-overview" href="{atlas_url}" target="_blank" rel="noopener"
                aria-label="Open {escape(brand["name"])} atlas overview in a new tab">
