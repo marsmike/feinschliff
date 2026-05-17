@@ -73,3 +73,9 @@ docs/brands/
 
 # Wrangler local-emulator cache (sometimes created in unexpected dirs).
 .wrangler/
+
+# Rendered example binaries — hosted on R2 at assets.marsmike.com,
+# linked from the example READMEs. Keeping them out of git lets the
+# plugin install stay light (renderer ships, not pre-rendered artifacts).
+feinschliff/examples/**/*.pdf
+feinschliff/examples/**/*.pptx

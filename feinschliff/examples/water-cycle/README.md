@@ -31,7 +31,11 @@ Feinschliff's full surface mix in a single narrative deck:
 | Act 4 — Response | 27–29 | Three Pyramid-Principle moves; three takeaways; four futures |
 | Close | 30 | "Same water." |
 
-Open [`deck.pdf`](deck.pdf) for the full deck, or [`deck.pptx`](deck.pptx) to edit in PowerPoint / Keynote.
+Open the full deck (hosted on R2 to keep the repo lightweight — the
+plugin install includes the renderer, not the deck binaries):
+
+- **[`deck.pdf`](https://assets.marsmike.com/feinschliff/examples/water-cycle/deck.pdf)** — rendered PDF for review
+- **[`deck.pptx`](https://assets.marsmike.com/feinschliff/examples/water-cycle/deck.pptx)** — editable PowerPoint / Keynote source
 
 ## Slide-by-slide
 
@@ -104,5 +108,5 @@ Inputs (gitignored under `feinschliff/.debug/water-cycle/`):
 - Not a research paper — citations live in speaker notes; on-slide numbers are rounded and qualified.
 - Not a polemic — register is *explainer*, not advocacy. No "we must…" claims.
 - Not the only canonical example — the per-layout taxonomy template at
-  [`examples/feinschliff/Feinschliff-Template.pdf`](../feinschliff/Feinschliff-Template.pdf)
+  [`Feinschliff-Template.pdf`](https://assets.marsmike.com/feinschliff/examples/feinschliff/Feinschliff-Template.pdf)
   ships one slide per layout as a layout-completeness proof.
