@@ -80,8 +80,8 @@ The pipeline also expands `excalidraw {…}` and `svg {…}` diagram blocks embe
 ## Quick start
 
 ```bash
-# Install via the marsmike/agentic-toolkit marketplace
-/plugin marketplace add marsmike/agentic-toolkit
+# Install via the marsmike/feinschliff marketplace
+/plugin marketplace add marsmike/feinschliff
 
 # Use the default feinschliff brand
 /deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"
@@ -250,7 +250,7 @@ Yes — that's the point. Author a `DESIGN.md` (Google's open spec) under `feins
 See the comparison below — feinschliff's wedge is `.pptx` output, brand-pluggable token systems, and a 14-class verify pass that catches both visual and rhetorical defects.
 
 **How do I report a bug?**
-[Open an issue](https://github.com/marsmike/agentic-toolkit/issues/new/choose) — the bug-report template walks you through the required info.
+[Open an issue](https://github.com/marsmike/feinschliff/issues/new/choose) — the bug-report template walks you through the required info.
 
 ## Compared to alternatives
 

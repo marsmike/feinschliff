@@ -143,7 +143,7 @@ Validate the result against the schema:
 
 ```python
 import sys
-sys.path.insert(0, "/<path>/agentic-toolkit/feinschliff/skills/deck/lib")
+sys.path.insert(0, "/<path>/feinschliff/feinschliff/skills/deck/lib")
 from design_brief import save_brief
 
 save_brief(brief, Path("design_brief.json"))  # raises ValueError on invalid

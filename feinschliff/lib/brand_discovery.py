@@ -62,8 +62,8 @@ def _env_brands_roots() -> list[Path]:
 def _cwd_dev_brands_roots() -> list[Path]:
     """Walk up from $CWD; if an in-place git checkout of feinschliff exists,
     surface its brands/. Supports the dev workflow where a brand author edits
-    `~/work/agentic-toolkit-public/feinschliff/brands/<brand>/` and runs
-    scripts that don't sit inside the package.
+    `~/work/feinschliff/feinschliff/brands/<brand>/` and runs scripts that
+    don't sit inside the package.
 
     The walk stops at the first git boundary so we don't accidentally scan
     the whole home directory.

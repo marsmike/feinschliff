@@ -1,4 +1,4 @@
-# NOTICE — agentic-toolkit
+# NOTICE — feinschliff
 
 This repository is licensed MIT (see [LICENSE](LICENSE)).
 
