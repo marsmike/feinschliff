@@ -63,7 +63,7 @@ shape 172,612  16x16 kind:diamond fill:accent
 rect 179,448   2x172 fill:fog
 # Text above (date + label + description), bottom-aligned conceptually
 # so the description sits closest to the axis.
-text 50,448    style:h-idx  color:accent maxwidth:280 maxheight:20 align:center "{{ events[0].date }}"
+text 50,423    style:h-idx  color:accent maxwidth:280 maxheight:20 align:center "{{ events[0].date }}"
 text 50,474    style:h-hd                 maxwidth:280 maxheight:48 align:center "{{ events[0].label }}"
 text 50,528    style:detail maxwidth:280 maxheight:72 align:center "{{ events[0].description }}"
 
@@ -77,7 +77,7 @@ text 425,874   style:detail maxwidth:260 maxheight:40 align:center "{{ events[1]
 # --- Event 2 (above, x=930) ---
 shape 922,612  16x16 kind:diamond fill:accent
 rect 929,448   2x172 fill:fog
-text 800,448   style:h-idx  color:accent maxwidth:260 maxheight:20 align:center "{{ events[2].date }}"
+text 800,423   style:h-idx  color:accent maxwidth:260 maxheight:20 align:center "{{ events[2].date }}"
 text 800,474   style:h-hd                 maxwidth:260 maxheight:48 align:center "{{ events[2].label }}"
 text 800,528   style:detail maxwidth:260 maxheight:72 align:center "{{ events[2].description }}"
 
@@ -91,7 +91,7 @@ text 1175,874  style:detail maxwidth:260 maxheight:40 align:center "{{ events[3]
 # --- Event 4 (above, x=1680) ---
 shape 1672,612 16x16 kind:diamond fill:accent
 rect 1679,448  2x172 fill:fog
-text 1550,448  style:h-idx  color:accent maxwidth:260 maxheight:20 align:center "{{ events[4].date }}"
+text 1550,423  style:h-idx  color:accent maxwidth:260 maxheight:20 align:center "{{ events[4].date }}"
 text 1550,474  style:h-hd                 maxwidth:260 maxheight:48 align:center "{{ events[4].label }}"
 text 1550,528  style:detail maxwidth:260 maxheight:72 align:center "{{ events[4].description }}"
 

@@ -30,31 +30,31 @@ text 100,360 style:body maxwidth:1720 maxheight:60 "{{ summary }}"
 # Two columns with kicker + hairline + 4 items each.
 text 100,500  style:h-idx color:accent maxwidth:800 maxheight:24 "INSIGHTS"
 rect 100,530  840x1 fill:fog
-shape 100,548 12x12 kind:rect fill:accent
+shape 100,558 12x12 kind:rect fill:accent
 text 124,544  style:h-hd  maxwidth:800 maxheight:40                "{{ insights[0].heading }}"
 text 124,584  style:body  maxwidth:800 maxheight:30                "{{ insights[0].body }}"
-shape 100,624 12x12 kind:rect fill:accent
+shape 100,634 12x12 kind:rect fill:accent
 text 124,620  style:h-hd  maxwidth:800 maxheight:40                "{{ insights[1].heading }}"
 text 124,660  style:body  maxwidth:800 maxheight:30                "{{ insights[1].body }}"
-shape 100,700 12x12 kind:rect fill:accent
+shape 100,710 12x12 kind:rect fill:accent
 text 124,696  style:h-hd  maxwidth:800 maxheight:40                "{{ insights[2].heading }}"
 text 124,736  style:body  maxwidth:800 maxheight:30                "{{ insights[2].body }}"
-shape 100,776 12x12 kind:rect fill:accent
+shape 100,786 12x12 kind:rect fill:accent
 text 124,772  style:h-hd  maxwidth:800 maxheight:40                "{{ insights[3].heading }}"
 text 124,812  style:body  maxwidth:800 maxheight:30                "{{ insights[3].body }}"
 
 text 1000,500 style:h-idx color:accent maxwidth:800 maxheight:24 "NEXT STEPS"
 rect 1000,530 820x1 fill:fog
-shape 1000,548 12x12 kind:rect fill:accent
+shape 1000,558 12x12 kind:rect fill:accent
 text 1024,544 style:h-hd  maxwidth:780 maxheight:40                "{{ next_steps[0].heading }}"
 text 1024,584 style:body  maxwidth:780 maxheight:30                "{{ next_steps[0].body }}"
-shape 1000,624 12x12 kind:rect fill:accent
+shape 1000,634 12x12 kind:rect fill:accent
 text 1024,620 style:h-hd  maxwidth:780 maxheight:40                "{{ next_steps[1].heading }}"
 text 1024,660 style:body  maxwidth:780 maxheight:30                "{{ next_steps[1].body }}"
-shape 1000,700 12x12 kind:rect fill:accent
+shape 1000,710 12x12 kind:rect fill:accent
 text 1024,696 style:h-hd  maxwidth:780 maxheight:40                "{{ next_steps[2].heading }}"
 text 1024,736 style:body  maxwidth:780 maxheight:30                "{{ next_steps[2].body }}"
-shape 1000,776 12x12 kind:rect fill:accent
+shape 1000,786 12x12 kind:rect fill:accent
 text 1024,772 style:h-hd  maxwidth:780 maxheight:40                "{{ next_steps[3].heading }}"
 text 1024,812 style:body  maxwidth:780 maxheight:30                "{{ next_steps[3].body }}"
 

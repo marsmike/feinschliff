@@ -24,7 +24,7 @@
 #       marker center y = 1010 - impact * 100
 #       marker top-left x = probability * 100 + 20
 #       marker top-left y = 980 - impact * 100
-#       text top y (centered in 60×60 oval) = 998 - impact * 100
+#       text top y (centered in 60×60 oval) = 1008 - impact * 100
 #   Severity zones are flat low-opacity backgrounds, then grid hairlines,
 #   then markers, then a right-side legend listing each risk.
 
@@ -95,43 +95,43 @@ text 100,440 style:tracker color:graphite maxwidth:500 maxheight:18 "IMPACT (Y) 
 
 # --- Risk 0 (required) ---
 shape {{ risks[0].probability*100+20 }},{{ 980-risks[0].impact*100 }} 60x60 kind:oval fill:"{{ risks[0].severity_color }}" stroke:paper stroke-width:3            if:"{{ risks[0].name }}"
-text  {{ risks[0].probability*100+20 }},{{ 998-risks[0].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[0].name }}" "{{ risks[0].id }}"
+text  {{ risks[0].probability*100+20 }},{{ 1008-risks[0].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[0].name }}" "{{ risks[0].id }}"
 
 # --- Risk 1 (required) ---
 shape {{ risks[1].probability*100+20 }},{{ 980-risks[1].impact*100 }} 60x60 kind:oval fill:"{{ risks[1].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[1].name }}"
-text  {{ risks[1].probability*100+20 }},{{ 998-risks[1].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[1].name }}" "{{ risks[1].id }}"
+text  {{ risks[1].probability*100+20 }},{{ 1008-risks[1].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[1].name }}" "{{ risks[1].id }}"
 
 # --- Risk 2 (required) ---
 shape {{ risks[2].probability*100+20 }},{{ 980-risks[2].impact*100 }} 60x60 kind:oval fill:"{{ risks[2].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[2].name }}"
-text  {{ risks[2].probability*100+20 }},{{ 998-risks[2].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[2].name }}" "{{ risks[2].id }}"
+text  {{ risks[2].probability*100+20 }},{{ 1008-risks[2].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[2].name }}" "{{ risks[2].id }}"
 
 # --- Risk 3 (required) ---
 shape {{ risks[3].probability*100+20 }},{{ 980-risks[3].impact*100 }} 60x60 kind:oval fill:"{{ risks[3].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[3].name }}"
-text  {{ risks[3].probability*100+20 }},{{ 998-risks[3].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[3].name }}" "{{ risks[3].id }}"
+text  {{ risks[3].probability*100+20 }},{{ 1008-risks[3].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[3].name }}" "{{ risks[3].id }}"
 
 # --- Risk 4 (optional) ---
 shape {{ risks[4].probability*100+20 }},{{ 980-risks[4].impact*100 }} 60x60 kind:oval fill:"{{ risks[4].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[4].name }}"
-text  {{ risks[4].probability*100+20 }},{{ 998-risks[4].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[4].name }}" "{{ risks[4].id }}"
+text  {{ risks[4].probability*100+20 }},{{ 1008-risks[4].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[4].name }}" "{{ risks[4].id }}"
 
 # --- Risk 5 (optional) ---
 shape {{ risks[5].probability*100+20 }},{{ 980-risks[5].impact*100 }} 60x60 kind:oval fill:"{{ risks[5].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[5].name }}"
-text  {{ risks[5].probability*100+20 }},{{ 998-risks[5].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[5].name }}" "{{ risks[5].id }}"
+text  {{ risks[5].probability*100+20 }},{{ 1008-risks[5].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[5].name }}" "{{ risks[5].id }}"
 
 # --- Risk 6 (optional) ---
 shape {{ risks[6].probability*100+20 }},{{ 980-risks[6].impact*100 }} 60x60 kind:oval fill:"{{ risks[6].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[6].name }}"
-text  {{ risks[6].probability*100+20 }},{{ 998-risks[6].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[6].name }}" "{{ risks[6].id }}"
+text  {{ risks[6].probability*100+20 }},{{ 1008-risks[6].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[6].name }}" "{{ risks[6].id }}"
 
 # --- Risk 7 (optional) ---
 shape {{ risks[7].probability*100+20 }},{{ 980-risks[7].impact*100 }} 60x60 kind:oval fill:"{{ risks[7].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[7].name }}"
-text  {{ risks[7].probability*100+20 }},{{ 998-risks[7].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[7].name }}" "{{ risks[7].id }}"
+text  {{ risks[7].probability*100+20 }},{{ 1008-risks[7].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[7].name }}" "{{ risks[7].id }}"
 
 # --- Risk 8 (optional) ---
 shape {{ risks[8].probability*100+20 }},{{ 980-risks[8].impact*100 }} 60x60 kind:oval fill:"{{ risks[8].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[8].name }}"
-text  {{ risks[8].probability*100+20 }},{{ 998-risks[8].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[8].name }}" "{{ risks[8].id }}"
+text  {{ risks[8].probability*100+20 }},{{ 1008-risks[8].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[8].name }}" "{{ risks[8].id }}"
 
 # --- Risk 9 (optional) ---
 shape {{ risks[9].probability*100+20 }},{{ 980-risks[9].impact*100 }} 60x60 kind:oval fill:"{{ risks[9].severity_color }}" stroke:paper stroke-width:3                                       if:"{{ risks[9].name }}"
-text  {{ risks[9].probability*100+20 }},{{ 998-risks[9].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                                if:"{{ risks[9].name }}" "{{ risks[9].id }}"
+text  {{ risks[9].probability*100+20 }},{{ 1008-risks[9].impact*100 }} style:h-hd color:paper maxwidth:60 maxheight:24 align:center                               if:"{{ risks[9].name }}" "{{ risks[9].id }}"
 
 # --- Legend on the right (x=700..1820), one row per risk, 50px pitch ---
 text 700,460 style:tracker maxwidth:1120 maxheight:20 "RISKS"
@@ -140,52 +140,52 @@ rect 700,490 1120x2 fill:ink
 # Row 0 — required (but if-guarded so the smoke-test fallback ctx
 # without any `risks` key doesn't leak empty ovals).
 shape 700,510  32x32 kind:oval fill:"{{ risks[0].severity_color }}"          if:"{{ risks[0].name }}"
-text  700,514  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[0].name }}" "{{ risks[0].id }}"
+text  700,518  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[0].name }}" "{{ risks[0].id }}"
 text  750,518  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[0].name }}" "{{ risks[0].name }}"
 
 # Row 1.
 shape 700,560  32x32 kind:oval fill:"{{ risks[1].severity_color }}"          if:"{{ risks[1].name }}"
-text  700,564  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[1].name }}" "{{ risks[1].id }}"
+text  700,568  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[1].name }}" "{{ risks[1].id }}"
 text  750,568  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[1].name }}" "{{ risks[1].name }}"
 
 # Row 2.
 shape 700,610  32x32 kind:oval fill:"{{ risks[2].severity_color }}"          if:"{{ risks[2].name }}"
-text  700,614  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[2].name }}" "{{ risks[2].id }}"
+text  700,618  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[2].name }}" "{{ risks[2].id }}"
 text  750,618  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[2].name }}" "{{ risks[2].name }}"
 
 # Row 3.
 shape 700,660  32x32 kind:oval fill:"{{ risks[3].severity_color }}"          if:"{{ risks[3].name }}"
-text  700,664  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[3].name }}" "{{ risks[3].id }}"
+text  700,668  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[3].name }}" "{{ risks[3].id }}"
 text  750,668  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[3].name }}" "{{ risks[3].name }}"
 
 # Row 4 (optional).
 shape 700,710  32x32 kind:oval fill:"{{ risks[4].severity_color }}"          if:"{{ risks[4].name }}"
-text  700,714  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[4].name }}" "{{ risks[4].id }}"
+text  700,718  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[4].name }}" "{{ risks[4].id }}"
 text  750,718  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[4].name }}" "{{ risks[4].name }}"
 
 # Row 5 (optional).
 shape 700,760  32x32 kind:oval fill:"{{ risks[5].severity_color }}"          if:"{{ risks[5].name }}"
-text  700,764  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[5].name }}" "{{ risks[5].id }}"
+text  700,768  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[5].name }}" "{{ risks[5].id }}"
 text  750,768  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[5].name }}" "{{ risks[5].name }}"
 
 # Row 6 (optional).
 shape 700,810  32x32 kind:oval fill:"{{ risks[6].severity_color }}"          if:"{{ risks[6].name }}"
-text  700,814  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[6].name }}" "{{ risks[6].id }}"
+text  700,818  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[6].name }}" "{{ risks[6].id }}"
 text  750,818  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[6].name }}" "{{ risks[6].name }}"
 
 # Row 7 (optional).
 shape 700,860  32x32 kind:oval fill:"{{ risks[7].severity_color }}"          if:"{{ risks[7].name }}"
-text  700,864  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[7].name }}" "{{ risks[7].id }}"
+text  700,868  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[7].name }}" "{{ risks[7].id }}"
 text  750,868  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[7].name }}" "{{ risks[7].name }}"
 
 # Row 8 (optional).
 shape 700,910  32x32 kind:oval fill:"{{ risks[8].severity_color }}"          if:"{{ risks[8].name }}"
-text  700,914  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[8].name }}" "{{ risks[8].id }}"
+text  700,918  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[8].name }}" "{{ risks[8].id }}"
 text  750,918  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[8].name }}" "{{ risks[8].name }}"
 
 # Row 9 (optional).
 shape 700,960  32x32 kind:oval fill:"{{ risks[9].severity_color }}"          if:"{{ risks[9].name }}"
-text  700,964  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[9].name }}" "{{ risks[9].id }}"
+text  700,968  style:h-idx color:paper maxwidth:32 maxheight:24 align:center  if:"{{ risks[9].name }}" "{{ risks[9].id }}"
 text  750,968  style:body maxwidth:1070 maxheight:30                          if:"{{ risks[9].name }}" "{{ risks[9].name }}"
 
 footer left:"{{ footer_left }}" right:"{{ footer_right }}"

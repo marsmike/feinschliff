@@ -89,17 +89,17 @@ text 1260,860 style:detail align:center maxwidth:200 "{{ periods[4] }}"
 # Legend block on right.
 text 1540,330 style:h-idx maxwidth:280 maxheight:24 "SEGMENT"
 rect 1540,360 16x16 fill:ink
-text 1564,356 style:body  maxwidth:240 maxheight:24 "{{ series[0].name }}"
+text 1564,360 style:body  maxwidth:240 maxheight:24 "{{ series[0].name }}"
 text 1564,380 style:detail color:steel maxwidth:240 maxheight:18 "{{ series[0].delta }}"
-rect 1540,420 16x16 fill:navy-700
-text 1564,416 style:body  maxwidth:240 maxheight:24 "{{ series[1].name }}"
-text 1564,440 style:detail color:steel maxwidth:240 "{{ series[1].delta }}"
-rect 1540,480 16x16 fill:navy-500
-text 1564,476 style:body  maxwidth:240 maxheight:24 "{{ series[2].name }}"
-text 1564,500 style:detail color:steel maxwidth:240 "{{ series[2].delta }}"
-rect 1540,540 16x16 fill:accent
-text 1564,536 style:body  maxwidth:240 maxheight:24 "{{ series[3].name }}"
-text 1564,560 style:detail color:steel maxwidth:240 "{{ series[3].delta }}"
+rect 1540,430 16x16 fill:navy-700
+text 1564,430 style:body  maxwidth:240 maxheight:24 "{{ series[1].name }}"
+text 1564,450 style:detail color:steel maxwidth:240 "{{ series[1].delta }}"
+rect 1540,500 16x16 fill:navy-500
+text 1564,500 style:body  maxwidth:240 maxheight:24 "{{ series[2].name }}"
+text 1564,520 style:detail color:steel maxwidth:240 "{{ series[2].delta }}"
+rect 1540,570 16x16 fill:accent
+text 1564,570 style:body  maxwidth:240 maxheight:24 "{{ series[3].name }}"
+text 1564,590 style:detail color:steel maxwidth:240 "{{ series[3].delta }}"
 
 text 100,910 style:detail color:graphite maxwidth:1720 maxheight:30 if:"{{ so_what }}" "So what: {{ so_what }}"
 

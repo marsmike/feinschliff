@@ -59,7 +59,7 @@ text 180,520   style:body maxwidth:540 maxheight:30                "{{ risks[0].
 text 740,520   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[0].probability }}"
 text 820,520   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[0].impact }}"
 rect 900,510   140x40 fill:"{{ risks[0].severity_color }}"
-text 920,516   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[0].severity }}"
+text 920,514   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[0].severity }}"
 text 1080,520  style:body maxwidth:600 maxheight:30                "{{ risks[0].mitigation }}"
 text 1700,520  style:detail maxwidth:120 maxheight:30 align:right  "{{ risks[0].owner }}"
 
@@ -70,7 +70,7 @@ text 180,590   style:body maxwidth:540 maxheight:30                "{{ risks[1].
 text 740,590   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[1].probability }}"
 text 820,590   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[1].impact }}"
 rect 900,580   140x40 fill:"{{ risks[1].severity_color }}"
-text 920,586   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[1].severity }}"
+text 920,584   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[1].severity }}"
 text 1080,590  style:body maxwidth:600 maxheight:30                "{{ risks[1].mitigation }}"
 text 1700,590  style:detail maxwidth:120 maxheight:30 align:right  "{{ risks[1].owner }}"
 
@@ -81,7 +81,7 @@ text 180,660   style:body maxwidth:540 maxheight:30                "{{ risks[2].
 text 740,660   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[2].probability }}"
 text 820,660   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[2].impact }}"
 rect 900,650   140x40 fill:"{{ risks[2].severity_color }}"
-text 920,656   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[2].severity }}"
+text 920,654   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[2].severity }}"
 text 1080,660  style:body maxwidth:600 maxheight:30                "{{ risks[2].mitigation }}"
 text 1700,660  style:detail maxwidth:120 maxheight:30 align:right  "{{ risks[2].owner }}"
 
@@ -92,7 +92,7 @@ text 180,730   style:body maxwidth:540 maxheight:30                "{{ risks[3].
 text 740,730   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[3].probability }}"
 text 820,730   style:body maxwidth:60  maxheight:30 align:center   "{{ risks[3].impact }}"
 rect 900,720   140x40 fill:"{{ risks[3].severity_color }}"
-text 920,726   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[3].severity }}"
+text 920,724   style:body color:paper maxwidth:120 maxheight:32    "{{ risks[3].severity }}"
 text 1080,730  style:body maxwidth:600 maxheight:30                "{{ risks[3].mitigation }}"
 text 1700,730  style:detail maxwidth:120 maxheight:30 align:right  "{{ risks[3].owner }}"
 
@@ -103,7 +103,7 @@ text 180,800   style:body maxwidth:540 maxheight:30                             
 text 740,800   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[4].name }}" "{{ risks[4].probability }}"
 text 820,800   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[4].name }}" "{{ risks[4].impact }}"
 rect 900,790   140x40 fill:"{{ risks[4].severity_color }}"                       if:"{{ risks[4].name }}"
-text 920,796   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[4].name }}" "{{ risks[4].severity }}"
+text 920,794   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[4].name }}" "{{ risks[4].severity }}"
 text 1080,800  style:body maxwidth:600 maxheight:30                              if:"{{ risks[4].name }}" "{{ risks[4].mitigation }}"
 text 1700,800  style:detail maxwidth:120 maxheight:30 align:right                if:"{{ risks[4].name }}" "{{ risks[4].owner }}"
 
@@ -114,7 +114,7 @@ text 180,870   style:body maxwidth:540 maxheight:30                             
 text 740,870   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[5].name }}" "{{ risks[5].probability }}"
 text 820,870   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[5].name }}" "{{ risks[5].impact }}"
 rect 900,860   140x40 fill:"{{ risks[5].severity_color }}"                       if:"{{ risks[5].name }}"
-text 920,866   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[5].name }}" "{{ risks[5].severity }}"
+text 920,864   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[5].name }}" "{{ risks[5].severity }}"
 text 1080,870  style:body maxwidth:600 maxheight:30                              if:"{{ risks[5].name }}" "{{ risks[5].mitigation }}"
 text 1700,870  style:detail maxwidth:120 maxheight:30 align:right                if:"{{ risks[5].name }}" "{{ risks[5].owner }}"
 
@@ -125,7 +125,7 @@ text 180,940   style:body maxwidth:540 maxheight:30                             
 text 740,940   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[6].name }}" "{{ risks[6].probability }}"
 text 820,940   style:body maxwidth:60  maxheight:30 align:center                 if:"{{ risks[6].name }}" "{{ risks[6].impact }}"
 rect 900,930   140x40 fill:"{{ risks[6].severity_color }}"                       if:"{{ risks[6].name }}"
-text 920,936   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[6].name }}" "{{ risks[6].severity }}"
+text 920,934   style:body color:paper maxwidth:120 maxheight:32                  if:"{{ risks[6].name }}" "{{ risks[6].severity }}"
 text 1080,940  style:body maxwidth:600 maxheight:30                              if:"{{ risks[6].name }}" "{{ risks[6].mitigation }}"
 text 1700,940  style:detail maxwidth:120 maxheight:30 align:right                if:"{{ risks[6].name }}" "{{ risks[6].owner }}"
 
