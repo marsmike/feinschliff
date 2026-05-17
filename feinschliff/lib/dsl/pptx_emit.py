@@ -135,6 +135,49 @@ def _hex_to_rgb(hex_color: str) -> RGBColor:
     return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
 
 
+def _hex_to_rgb_tuple(hex_color: str) -> tuple[int, int, int]:
+    """Same as `_hex_to_rgb` but returns a plain `(r, g, b)` tuple for use
+    with PIL APIs that don't accept python-pptx's `RGBColor` subclass.
+    """
+    h = hex_color.lstrip("#")
+    return (int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+
+def _luminance(rgb: tuple[int, int, int]) -> float:
+    """Rec. 601 luma (perceptual brightness 0..255)."""
+    r, g, b = rgb
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _duotone_endpoints_for_brand(tokens) -> tuple[tuple[int, int, int], tuple[int, int, int]] | None:
+    """Pick `(dark, light)` RGB endpoints for the plugin-fallback duotone
+    treatment from a brand's tokens. Strategy:
+
+    - Try ink + paper, picking the darker as shadow and lighter as highlight
+      (auto-swap so dark-canvas brands still get a readable mapping).
+    - If their luminance gap is too narrow to read (`< 80` on 0..255),
+      substitute the lighter endpoint with the brand's accent color so the
+      duotone keeps tonal range and brand identity.
+
+    Returns None if ink/paper tokens are missing — caller falls back to the
+    image's untreated form.
+    """
+    try:
+        a = _hex_to_rgb_tuple(tokens.color("ink"))
+        b = _hex_to_rgb_tuple(tokens.color("paper"))
+    except (KeyError, ValueError):
+        return None
+    dark, light = (a, b) if _luminance(a) <= _luminance(b) else (b, a)
+    if _luminance(light) - _luminance(dark) < 80.0:
+        try:
+            accent = _hex_to_rgb_tuple(tokens.color("accent"))
+            if _luminance(accent) > _luminance(dark):
+                light = accent
+        except (KeyError, ValueError):
+            pass
+    return dark, light
+
+
 def _align_pp(name: str) -> PP_ALIGN:
     return {
         "left":   PP_ALIGN.LEFT,
@@ -465,12 +508,21 @@ def _emit_polyline(slide, node: DSLNode, ctx: EmitContext) -> None:
     _strip_theme_style(poly)
 
 
-def _apply_picture_treatment(pil_image: Image.Image, treatment: str) -> Image.Image:
+def _apply_picture_treatment(
+    pil_image: Image.Image,
+    treatment: str,
+    *,
+    duotone_dark: tuple[int, int, int] | None = None,
+    duotone_light: tuple[int, int, int] | None = None,
+) -> Image.Image:
     """Apply tokens.picture_treatment to a PIL image. Pure function — returns
     a new image. Supported treatments:
       - "none"          — no change
       - "desat(<frac>)" — blend toward grayscale by `frac` (0..1)
-      - "duotone"       — reserved for future implementation; raises
+      - "duotone"       — convert to grayscale, then map luminance to a
+        gradient from `duotone_dark` (shadow) to `duotone_light` (highlight).
+        Caller must supply both RGB tuples; without them the image returns
+        unchanged.
     """
     if not treatment or treatment == "none":
         return pil_image
@@ -489,10 +541,19 @@ def _apply_picture_treatment(pil_image: Image.Image, treatment: str) -> Image.Im
             return Image.merge("RGBA", (r, g, b, alpha))
         return blended
     if treatment == "duotone":
-        raise NotImplementedError(
-            "duotone treatment is reserved for future implementation; "
-            "use desat(...) or pre-process the asset"
-        )
+        if duotone_dark is None or duotone_light is None:
+            return pil_image
+        gray = pil_image.convert("L")
+        # Build a 256-entry RGB lookup from dark (luminance 0) to light (255).
+        dr, dg, db = duotone_dark
+        lr, lg, lb = duotone_light
+        r_lut = bytes(round(dr + (lr - dr) * i / 255) for i in range(256))
+        g_lut = bytes(round(dg + (lg - dg) * i / 255) for i in range(256))
+        b_lut = bytes(round(db + (lb - db) * i / 255) for i in range(256))
+        r = gray.point(r_lut)
+        g = gray.point(g_lut)
+        b = gray.point(b_lut)
+        return Image.merge("RGB", (r, g, b))
     return pil_image
 
 
@@ -548,13 +609,18 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         ), ctx)
         return
     p = Path(path)
+    from_fallback = False
     if not p.is_absolute() and ctx.asset_root:
         primary = ctx.asset_root / p
         if primary.is_file():
             p = primary
         elif ctx.asset_root_fallback:
             fallback = ctx.asset_root_fallback / p
-            p = fallback if fallback.is_file() else primary
+            if fallback.is_file():
+                p = fallback
+                from_fallback = True
+            else:
+                p = primary
         else:
             p = primary
     if not p.is_file():
@@ -574,9 +640,21 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
 
     cover = node.kw_args.get("cover", "false").lower() == "true"
     treatment = ctx.tokens.picture_treatment
+    duotone_dark = duotone_light = None
+    # Plugin-fallback images (generic placeholders shared across brands) get
+    # duotoned to the brand palette so they read as native to each brand
+    # pack instead of always showing the same warm-tone source photo. Brand-
+    # specific overrides bypass this — brands choose their own treatment.
+    if from_fallback:
+        endpoints = _duotone_endpoints_for_brand(ctx.tokens)
+        if endpoints is not None:
+            treatment = "duotone"
+            duotone_dark, duotone_light = endpoints
     if cover or treatment != "none":
         bytes_io = _prepare_picture_bytes(p, target_aspect=(w / h) if cover else None,
-                                          treatment=treatment)
+                                          treatment=treatment,
+                                          duotone_dark=duotone_dark,
+                                          duotone_light=duotone_light)
         slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
     else:
         # Fast path: no crop, no treatment — let python-pptx read the file.
@@ -585,6 +663,8 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
 
 def _prepare_picture_bytes(
     image_path: Path, *, target_aspect: float | None, treatment: str,
+    duotone_dark: tuple[int, int, int] | None = None,
+    duotone_light: tuple[int, int, int] | None = None,
 ) -> io.BytesIO:
     """Load → optional center-crop → optional treatment → JPEG/PNG bytes."""
     with Image.open(image_path) as im:
@@ -602,7 +682,10 @@ def _prepare_picture_bytes(
                     offset = (sh - new_h) // 2
                     im = im.crop((0, offset, sw, offset + new_h))
         if treatment and treatment != "none":
-            im = _apply_picture_treatment(im, treatment)
+            im = _apply_picture_treatment(
+                im, treatment,
+                duotone_dark=duotone_dark, duotone_light=duotone_light,
+            )
         out = io.BytesIO()
         fmt = (im.format or "PNG").upper()
         if fmt in ("JPG", "JPEG") and im.mode not in ("RGB", "L"):
