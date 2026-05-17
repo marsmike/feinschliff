@@ -117,6 +117,12 @@ class EmitContext:
     canvas_w: float = 1920.0
     canvas_h: float = 1080.0
     asset_root: Path | None = None        # for resolving picture paths
+    # Plugin-level fallback root walked when the per-brand `asset_root` does
+    # not contain the requested relative path. Lets shared assets (universal
+    # placeholder illustrations, common icons) live once at the plugin root
+    # while brands keep the freedom to override per-asset by putting a file
+    # at the same relative path under their own `assets/` dir.
+    asset_root_fallback: Path | None = None
     # Required-asset accumulator (Review #7). _emit_picture appends an entry
     # for every picture node whose `path` is unset or points at a missing
     # file AND that does not carry `optional:true`. Callers consult this
@@ -543,7 +549,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         return
     p = Path(path)
     if not p.is_absolute() and ctx.asset_root:
-        p = ctx.asset_root / p
+        primary = ctx.asset_root / p
+        if primary.is_file():
+            p = primary
+        elif ctx.asset_root_fallback:
+            fallback = ctx.asset_root_fallback / p
+            p = fallback if fallback.is_file() else primary
+        else:
+            p = primary
     if not p.is_file():
         if not optional:
             ctx.missing_assets.append({
@@ -809,6 +822,7 @@ def _slide_canvas(nodes: list[DSLNode]) -> tuple[float, float]:
 
 def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                   asset_root: Path | None,
+                  asset_root_fallback: Path | None = None,
                   missing_assets: list[dict] | None = None) -> None:
     """Append one slide built from `nodes` to `prs`, using the tokens for fills."""
     cw, ch = _slide_canvas(nodes)
@@ -820,7 +834,8 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
     except KeyError:
         pass
 
-    ctx = EmitContext(tokens=tokens, canvas_w=cw, canvas_h=ch, asset_root=asset_root)
+    ctx = EmitContext(tokens=tokens, canvas_w=cw, canvas_h=ch,
+                      asset_root=asset_root, asset_root_fallback=asset_root_fallback)
     for n in nodes:
         cond = n.kw_args.get("if")
         if cond is not None:
@@ -841,19 +856,26 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
 
 
 def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
-                       asset_root: Path | None = None) -> Presentation:
+                       asset_root: Path | None = None,
+                       asset_root_fallback: Path | None = None) -> Presentation:
     """Walk primitive nodes, build a Presentation with one filled slide.
 
     The returned Presentation carries `missing_assets: list[dict]` as an
     attribute — empty when every required picture resolved, populated
     otherwise. Callers can branch on `prs.missing_assets` to abort.
+
+    `asset_root_fallback` is the plugin-level shared assets dir; it is
+    walked when the per-brand `asset_root` does not contain the requested
+    relative path. Brand-specific files always win over plugin defaults.
     """
     cw, ch = _slide_canvas(nodes)
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
     missing: list[dict] = []
-    _append_slide(prs, nodes, tokens, asset_root=asset_root, missing_assets=missing)
+    _append_slide(prs, nodes, tokens, asset_root=asset_root,
+                  asset_root_fallback=asset_root_fallback,
+                  missing_assets=missing)
     for slide in prs.slides:
         sanitize_chrome(slide._element)
     prs.missing_assets = missing
@@ -862,10 +884,15 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
 
 def build_multi_slide(
     slides: list[tuple[list[DSLNode], Tokens, Path | None]],
+    *,
+    asset_root_fallback: Path | None = None,
 ) -> Presentation:
     """Build a Presentation with N slides. Each slide entry is
     `(nodes, tokens, asset_root)`. The slide deck's canvas comes from
     the first slide's `canvas` directive; remaining slides reuse it.
+
+    `asset_root_fallback` applies to every slide; see
+    :func:`build_presentation` for semantics.
     """
     if not slides:
         raise ValueError("build_multi_slide: no slides provided")
@@ -878,6 +905,7 @@ def build_multi_slide(
     for slide_idx, (nodes, tokens, asset_root) in enumerate(slides, start=1):
         per_slide: list[dict] = []
         _append_slide(prs, nodes, tokens, asset_root=asset_root,
+                      asset_root_fallback=asset_root_fallback,
                       missing_assets=per_slide)
         for entry in per_slide:
             entry.setdefault("slide_index", slide_idx)

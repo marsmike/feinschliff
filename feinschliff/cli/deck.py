@@ -459,7 +459,7 @@ def cmd_build(args) -> int:
             )
             return 1
 
-        prs = build_multi_slide(slides_payload)
+        prs = build_multi_slide(slides_payload, asset_root_fallback=REPO_ROOT / "assets")
         missing = getattr(prs, "missing_assets", []) or []
         if missing and not getattr(args, "allow_missing_assets", False):
             for entry in missing:
@@ -927,7 +927,7 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
 
             slides_payload.append((primitives, tokens, brand_dir / "assets"))
 
-        prs = build_multi_slide(slides_payload)
+        prs = build_multi_slide(slides_payload, asset_root_fallback=REPO_ROOT / "assets")
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
 

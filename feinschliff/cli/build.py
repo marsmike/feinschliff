@@ -132,7 +132,12 @@ def cmd_build(args) -> int:
     tokens = result.tokens
 
     asset_root = brand_dir / "assets"
-    prs = build_presentation(primitives, tokens, asset_root=asset_root)
+    asset_root_fallback = REPO_ROOT / "assets"
+    prs = build_presentation(
+        primitives, tokens,
+        asset_root=asset_root,
+        asset_root_fallback=asset_root_fallback,
+    )
     missing = getattr(prs, "missing_assets", []) or []
     if missing and not getattr(args, "allow_missing_assets", False):
         for entry in missing:
