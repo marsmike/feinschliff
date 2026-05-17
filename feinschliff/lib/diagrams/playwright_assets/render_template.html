@@ -1,58 +1,69 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-  <meta charset="utf-8" />
+  <meta charset="utf-8">
+  <title>excalidraw → svg renderer</title>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { background: #ffffff; overflow: hidden; }
-    #root { display: inline-block; }
-    #root svg { display: block; }
+    html, body { margin: 0; padding: 0; background: #ffffff; }
+    body { overflow: visible; }
+    main#stage { display: inline-block; }
+    main#stage > svg { display: block; }
   </style>
 </head>
-<body>
-  <div id="root"></div>
+<body data-state="loading">
+  <main id="stage"></main>
 
   <script type="module">
-    import { exportToSvg } from "https://esm.sh/@excalidraw/excalidraw@0.18.0?bundle";
+    import * as excalidraw from "https://esm.sh/@excalidraw/excalidraw@0.18.0?bundle";
 
-    window.renderDiagram = async function(jsonData) {
+    const stage = document.getElementById("stage");
+    const setState = (next) => { document.body.dataset.state = next; };
+
+    /**
+     * Render an Excalidraw scene payload to an inline <svg> attached to
+     * #stage. The Playwright side polls document.body.dataset.state for
+     * the "ready" / "rendered" / "error" transitions and screenshots
+     * #stage > svg once the rendered state is reached.
+     */
+    window.renderToSvg = async (payload) => {
       try {
-        const data = typeof jsonData === "string" ? JSON.parse(jsonData) : jsonData;
-        const elements = data.elements || [];
-        const appState = data.appState || {};
-        const files = data.files || {};
+        const scene = typeof payload === "string" ? JSON.parse(payload) : payload;
+        const elements = scene.elements ?? [];
+        const filesMap = scene.files ?? {};
+        const incomingAppState = scene.appState ?? {};
 
-        if (!appState.viewBackgroundColor) {
-          appState.viewBackgroundColor = "#ffffff";
-        }
-        appState.exportWithDarkMode = false;
+        // Always export with a white background and never in dark mode —
+        // the deck pipeline post-processes the PNG and assumes opaque
+        // white where the diagram itself doesn't paint.
+        const appState = {
+          ...incomingAppState,
+          viewBackgroundColor: incomingAppState.viewBackgroundColor ?? "#ffffff",
+          exportBackground: true,
+          exportWithDarkMode: false,
+        };
 
-        const svg = await exportToSvg({
-          elements: elements,
-          appState: {
-            ...appState,
-            exportBackground: true,
-          },
-          files: files,
+        const svgNode = await excalidraw.exportToSvg({
+          elements,
+          appState,
+          files: filesMap,
         });
 
-        // Clear any previous render
-        const root = document.getElementById("root");
-        root.innerHTML = "";
-        root.appendChild(svg);
-
-        window.__renderComplete = true;
-        window.__renderError = null;
-        return { success: true, width: svg.getAttribute("width"), height: svg.getAttribute("height") };
+        stage.replaceChildren(svgNode);
+        setState("rendered");
+        return {
+          ok: true,
+          width: svgNode.getAttribute("width"),
+          height: svgNode.getAttribute("height"),
+        };
       } catch (err) {
-        window.__renderComplete = true;
-        window.__renderError = err.message;
-        return { success: false, error: err.message };
+        const message = String(err?.message ?? err);
+        document.body.dataset.error = message;
+        setState("error");
+        return { ok: false, error: message };
       }
     };
 
-    // Signal that the module is loaded and ready
-    window.__moduleReady = true;
+    setState("ready");
   </script>
 </body>
 </html>
