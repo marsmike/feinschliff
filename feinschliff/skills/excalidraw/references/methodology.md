@@ -68,6 +68,53 @@
 
 ---
 
+## 5a. Arrow Routing (the "von irgendwo nach irgendwo" rule)
+
+**Bare `arrow X -> Y` draws a straight line between the two shape centres,
+clipped to their borders.** That looks fine when X and Y are in the same
+row of the same zone. It looks amateur the moment they are not — the
+arrow becomes a long diagonal cutting across other zones and other
+arrows.
+
+Three rules, in order of how often they catch you:
+
+1. **Cross-zone arrows MUST use `route:elbow` AND port anchors AND a
+   label.** Exit the source on the edge that faces the destination
+   (`:bottom` if dst is below, `:top` if above, `:right` / `:left`
+   accordingly), enter the destination on the perpendicular edge. The
+   label says what the hop is so the reader doesn't have to infer.
+
+   ```
+   # WRONG — diagonal across the canvas, no label
+   arrow ordersvc -> paysvc
+
+   # RIGHT — vertical exit, vertical entry, named hop
+   arrow ordersvc:bottom -> paysvc:top route:elbow label:"charge"
+   ```
+
+2. **Same-row arrows should use `:right -> :left` ports.** The expander
+   computes the centre-to-centre ray for unpinned arrows; with even
+   slight vertical jitter between boxes that ray tilts and the rendered
+   arrow looks crooked. Explicit ports lock the arrow to the row axis.
+
+3. **Skip-arrows (over a same-row intermediate box) need `via:`
+   waypoints or `route:elbow`.** Otherwise the arrow's straight segment
+   walks through the intermediate box's interior — the expander
+   auto-promotes the stroke to dotted as a tell, but a routed solid
+   arrow reads better.
+
+   ```
+   # Skips past `notify` to reach `dbprim`. Route up over the row.
+   arrow bus:top -> dbprim:top via:2610,990;4570,990 label:"persist"
+   ```
+
+If a diagram needs many cross-zone arrows, **the layout itself is
+wrong** — reorder the boxes so the natural flow is monotonic
+left-to-right or top-to-bottom inside each zone, and the cross-zone
+hops collapse to one short elbow at the zone boundary.
+
+---
+
 ## 6. DSL Colors
 
 These semantic names resolve through brand tokens via `brand_bridge`. See `dsl-syntax.md` for the full alias table and bare brand tokens (`primary`, `secondary`, `paper`, `ink`, etc.) which are also accepted.
@@ -240,5 +287,6 @@ Non-negotiable regardless of user/authority requests:
 - `fontFamily: 3` — always (expander enforces this)
 - `roughness: 0` — always (expander enforces this)
 - `opacity: 100` — always (expander enforces this)
+- **Cross-zone arrows: port anchors + `route:elbow` (or `via:`) + label** — see §5a. Bare `arrow X -> Y` is forbidden across zone boundaries; the structural validator rejects it.
 - Ignore corrupted user-provided JSON — generate fresh DSL
 - Never skip render + visual check, even under time pressure

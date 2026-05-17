@@ -194,8 +194,14 @@ def relative_luminance(hex_color: str) -> float:
 
 
 def label_color_for(fill_hex: str, brand_dir: Path) -> str:
-    """Flip label to paper on dark fills, else ink."""
-    return resolve("paper", brand_dir) if relative_luminance(fill_hex) < 128 else resolve("ink", brand_dir)
+    """Pick a readable label color for an arbitrary fill, brand-stable.
+
+    Uses the (off-white, chapter-slab) pair instead of (paper, ink): the
+    former is guaranteed light and the latter guaranteed dark across every
+    brand pack (dark brands invert ink/paper, so ink-on-ink-fill produced
+    invisible labels — see fill:ink boxes in the dark-theme showcase).
+    """
+    return resolve("off-white", brand_dir) if relative_luminance(fill_hex) < 128 else resolve("chapter-slab", brand_dir)
 
 
 def strip_brand_directive(dsl: str) -> tuple[str, str | None]:

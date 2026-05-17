@@ -8,8 +8,8 @@ before anything tries to render. (Folded in from the former
 `lib/diagrams/mechanical_checks.py`.)
 
 **B. Structural rules on Excalidraw documents** — `validate_excalidraw_structure`.
-Runs after expansion, on the in-memory JSON. Catches the four failure
-modes that consistently break a diagram's legibility:
+Runs after expansion, on the in-memory JSON. Catches the failure modes
+that consistently break a diagram's legibility:
 
   - **diagram-overflow** — text bound to a container exceeds the inner box
     (Excalidraw renders text-clipping silently; this surfaces it).
@@ -18,6 +18,11 @@ modes that consistently break a diagram's legibility:
     rect" bug.
   - **diagram-text-collision** — two free-floating text elements whose
     bboxes overlap. The "annotations stacked on each other" bug.
+  - **diagram-arrow-cross-zone-unrouted** — a two-point arrow whose
+    endpoints fall inside two different zones AND whose direction is
+    diagonal (both dx and dy non-zero). The "von irgendwo nach irgendwo"
+    look. FATAL — author must add port anchors + route:elbow (or via:).
+    See methodology §5a.
   - **diagram-arrow-crossing** — an arrow's line segment crosses a
     non-endpoint shape. Advisory (WARN) — the heuristic can false-positive
     on arrows that intentionally route around a shape.
@@ -207,6 +212,87 @@ def _check_free_text_collision(doc: dict) -> list[Defect]:
     return out
 
 
+def _check_arrow_cross_zone_unrouted(doc: dict) -> list[Defect]:
+    """A two-point arrow whose endpoints lie inside two different zones
+    AND whose direction is diagonal (both dx and dy non-zero) is the
+    "von irgendwo nach irgendwo" defect: the centre-to-centre ray cuts
+    across other zones and other arrows, the author skipped both ports
+    and `route:elbow` / `via:`.
+
+    The escape hatches that bypass this check are exactly the routing
+    primitives we want authors to reach for: any of
+      - port anchor on src or dst (forces a perpendicular exit/entry,
+        often makes the segment axis-aligned),
+      - `route:elbow` (emits a polyline with >2 points),
+      - `via:x,y;...` waypoints (emits a polyline with >2 points)
+    will produce either an axis-aligned 2-point line or a >2-point
+    polyline, both of which exit this check.
+
+    A pure horizontal or vertical 2-point arrow is allowed even across
+    zones — same-row left-to-right arrows that traverse a zone boundary
+    look fine.
+    """
+    elements = doc.get("elements", [])
+    zones = [
+        el for el in elements
+        if el.get("type") == "rectangle"
+        and (el.get("customData") or {}).get("dsl_kind") == "zone"
+    ]
+    if not zones:
+        return []
+
+    def _zone_at(px: float, py: float) -> str | None:
+        for z in zones:
+            zb = _box(z)
+            if zb.x <= px <= zb.right and zb.y <= py <= zb.bottom:
+                return (z.get("customData") or {}).get("dsl_id") or z.get("id")
+        return None
+
+    out: list[Defect] = []
+    for el in elements:
+        if el.get("type") != "arrow":
+            continue
+        pts = el.get("points") or []
+        # Polyline with >2 points = author used elbow / via. Trust it.
+        if len(pts) != 2:
+            continue
+        x0 = el.get("x", 0)
+        y0 = el.get("y", 0)
+        sx, sy = x0 + pts[0][0], y0 + pts[0][1]
+        ex, ey = x0 + pts[1][0], y0 + pts[1][1]
+        dx, dy = ex - sx, ey - sy
+        # Axis-aligned 2-point arrow — even across zones it reads as a
+        # clean L→R or top→bottom hop. Not the diagonal we're flagging.
+        if abs(dx) < 1.0 or abs(dy) < 1.0:
+            continue
+        src_zone = _zone_at(sx, sy)
+        dst_zone = _zone_at(ex, ey)
+        # Free-space endpoints (no zone) or same-zone diagonals are
+        # other problems (covered by _check_arrow_through_shape and by
+        # the methodology doc's "use ports on same-row arrows" rule)
+        # but not this defect.
+        if src_zone is None or dst_zone is None or src_zone == dst_zone:
+            continue
+        out.append(Defect(
+            slide_index=0,
+            kind=DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED,
+            severity=Severity.FATAL,
+            message=(
+                f"arrow {el.get('id')!r} is a diagonal across zones "
+                f"{src_zone!r}→{dst_zone!r}. Use a port anchor "
+                f"(:top/:bottom/:left/:right) on both endpoints plus "
+                f"`route:elbow` (or `via:x,y;...`) and add a label. "
+                f"See skills/excalidraw/references/methodology.md §5a."
+            ),
+            meta={
+                "arrow_id": el.get("id"),
+                "src_zone": src_zone,
+                "dst_zone": dst_zone,
+            },
+        ))
+    return out
+
+
 def _check_arrow_through_shape(doc: dict) -> list[Defect]:
     """Arrows whose line segment crosses a non-endpoint rect are likely
     visually unreadable. Heuristic — advisory only (severity=WARN)."""
@@ -261,6 +347,7 @@ def validate_excalidraw_structure(doc: dict) -> list[Defect]:
     out += _check_bound_text_overflow(doc)
     out += _check_free_text_collision(doc)
     out += _check_shape_overlap(doc)
+    out += _check_arrow_cross_zone_unrouted(doc)
     out += _check_arrow_through_shape(doc)
     return out
 

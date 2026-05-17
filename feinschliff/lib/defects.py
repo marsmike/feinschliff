@@ -32,6 +32,7 @@ class DefectKind(str, Enum):
     DIAGRAM_SHAPE_OVERLAP = "diagram-shape-overlap"
     DIAGRAM_TEXT_COLLISION = "diagram-text-collision"
     DIAGRAM_ARROW_CROSSING = "diagram-arrow-crossing"
+    DIAGRAM_ARROW_CROSS_ZONE_UNROUTED = "diagram-arrow-cross-zone-unrouted"
     DIAGRAM_INVALID_FILE = "diagram-invalid-file"
     # Chrome (verify/chrome.py)
     DROP_SHADOW = "drop-shadow"
@@ -63,6 +64,12 @@ _FATAL: frozenset[str] = frozenset({
     DefectKind.DIAGRAM_SHAPE_OVERLAP.value,
     DefectKind.DIAGRAM_TEXT_COLLISION.value,
     DefectKind.DIAGRAM_INVALID_FILE.value,
+    # DIAGRAM_ARROW_CROSS_ZONE_UNROUTED is fatal — there's no false-positive
+    # case worth tolerating: a diagonal 2-point arrow whose endpoints fall
+    # inside two different zones looks like "von irgendwo nach irgendwo"
+    # by inspection. Author must add port anchors + route:elbow (or via:),
+    # which produces a polyline with >2 points and exits the check.
+    DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED.value,
     # DIAGRAM_ARROW_CROSSING intentionally NOT fatal — the heuristic can
     # false-positive on arrows that route around a non-endpoint shape on
     # purpose. Surfaced as WARN; opt in to fatal via callsite if desired.

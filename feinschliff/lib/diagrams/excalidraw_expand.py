@@ -223,10 +223,13 @@ def _emit_box(line: str, kind: str, brand_dir: Path, theme: str = "light", *, sc
     }
     text = None
     if label and label.strip():
-        if theme == "dark":
-            label_color = resolve("off-white", brand_dir)
-        else:
-            label_color = _label_color_for(fill_hex, brand_dir)
+        # Always use the per-fill contrast check. Special-casing dark
+        # theme to off-white assumed every fill in dark theme would be
+        # dark, but `fill:ink` resolves to a light token in dark brands
+        # (ink inverts) — so the rule produced white-on-white labels on
+        # those boxes. _label_color_for picks off-white / chapter-slab
+        # based on the actual fill luminance and works in every theme.
+        label_color = _label_color_for(fill_hex, brand_dir)
         text_id = _new_id()
         font_size = int(round(16 * scale))
         text = {

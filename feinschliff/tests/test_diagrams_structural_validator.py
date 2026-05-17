@@ -134,6 +134,83 @@ def test_free_text_collision_flagged():
     assert cols
 
 
+def test_arrow_cross_zone_diagonal_is_fatal():
+    """A two-point diagonal arrow whose endpoints fall in two different
+    zones is rejected — author must port + elbow it (see methodology §5a).
+    """
+    doc = _doc(
+        # Two zones, side-by-side.
+        {"id": "z_left", "type": "rectangle", "x": 0, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_left", "dsl_kind": "zone"}},
+        {"id": "z_right", "type": "rectangle", "x": 600, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_right", "dsl_kind": "zone"}},
+        # A diagonal arrow from inside z_left to inside z_right.
+        {"id": "arr", "type": "arrow", "x": 100, "y": 50,
+         "points": [[0, 0], [800, 300]],
+         "startBinding": {"elementId": "src"},
+         "endBinding": {"elementId": "dst"}},
+    )
+    defects = validate_excalidraw_structure(doc)
+    flagged = [d for d in defects
+               if d.kind == DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED]
+    assert flagged
+    assert all(d.severity == Severity.FATAL for d in flagged)
+
+
+def test_arrow_cross_zone_axis_aligned_allowed():
+    """A horizontal arrow that crosses a zone boundary is fine — same-row
+    L→R hops don't read as 'von irgendwo nach irgendwo'."""
+    doc = _doc(
+        {"id": "z_left", "type": "rectangle", "x": 0, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_left", "dsl_kind": "zone"}},
+        {"id": "z_right", "type": "rectangle", "x": 600, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_right", "dsl_kind": "zone"}},
+        # Horizontal — dy ≈ 0.
+        {"id": "arr", "type": "arrow", "x": 100, "y": 200,
+         "points": [[0, 0], [800, 0]]},
+    )
+    defects = validate_excalidraw_structure(doc)
+    assert not [d for d in defects
+                if d.kind == DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED]
+
+
+def test_arrow_cross_zone_polyline_allowed():
+    """An elbow-routed (>2 points) arrow across zones is fine — author
+    used the routing primitives, so the visual result is clean."""
+    doc = _doc(
+        {"id": "z_left", "type": "rectangle", "x": 0, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_left", "dsl_kind": "zone"}},
+        {"id": "z_right", "type": "rectangle", "x": 600, "y": 0,
+         "width": 500, "height": 400,
+         "customData": {"dsl_id": "z_right", "dsl_kind": "zone"}},
+        # 3-point polyline — elbow / via.
+        {"id": "arr", "type": "arrow", "x": 100, "y": 50,
+         "points": [[0, 0], [0, -40], [800, -40]]},
+    )
+    defects = validate_excalidraw_structure(doc)
+    assert not [d for d in defects
+                if d.kind == DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED]
+
+
+def test_arrow_within_single_zone_diagonal_allowed():
+    """Diagonal arrows inside one zone are not this defect."""
+    doc = _doc(
+        {"id": "z", "type": "rectangle", "x": 0, "y": 0,
+         "width": 1000, "height": 800,
+         "customData": {"dsl_id": "z", "dsl_kind": "zone"}},
+        {"id": "arr", "type": "arrow", "x": 100, "y": 100,
+         "points": [[0, 0], [400, 300]]},
+    )
+    defects = validate_excalidraw_structure(doc)
+    assert not [d for d in defects
+                if d.kind == DefectKind.DIAGRAM_ARROW_CROSS_ZONE_UNROUTED]
+
+
 def test_arrow_through_non_endpoint_warns():
     """An arrow crossing a non-endpoint rect produces a WARN (not FATAL)."""
     doc = _doc(
