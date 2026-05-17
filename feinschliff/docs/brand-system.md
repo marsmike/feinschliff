@@ -284,9 +284,7 @@ script that produced `catalog.json`, `templates/pptx/*.pptx`, and
 `claude-design/<brand>-2026.html` per brand) is **not part of the v2
 build**. If it still sits in the tree, treat it as legacy — v2 brands
 hand-author both `tokens.json` and `DESIGN.md` and let toolkit-shared
-layouts do the rest. See
-[`migration-dsl-architecture.md`](migration-dsl-architecture.md) for
-the full v1 → v2 rationale.
+layouts do the rest.
 
 ## References
 

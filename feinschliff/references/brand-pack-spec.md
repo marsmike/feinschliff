@@ -92,8 +92,7 @@ layouts touch (or inherit them — see "Inheritance" below).
 ```
 
 `static` means catalog-bundled assets only. `search` declares a CDN
-the resolver can query (Unsplash, Iconify, Wikimedia, etc.). See
-[`asset-sources-spec.md`](asset-sources-spec.md) for the full schema.
+the resolver can query (Unsplash, Iconify, Wikimedia, etc.).
 
 ## Inheritance via DESIGN.md frontmatter
 
@@ -161,7 +160,6 @@ $ feinschliff brand inspect <brand>
 
 ## Sibling references
 
-- [`asset-sources-spec.md`](asset-sources-spec.md) — search-source CDN extension
 - [`compounds.md`](compounds.md) — toolkit-standard compound catalog
 - [`../docs/dsl-grammar.md`](../docs/dsl-grammar.md) — `.slide.dsl` reference
 - [`../docs/port-your-brand.md`](../docs/port-your-brand.md) — end-to-end tutorial

@@ -7,11 +7,13 @@ rect — the showcase build bypassed the `MISSING_ASSET` rule via
 `--allow-missing-assets` (a blanket flag the showcase script uses
 because some layouts legitimately have empty optional pictures).
 
-The fix wires the fixture's `image:` slot to a brand illustration
-that exists on disk (currently `illustrations/feinschliff-craft.jpg`,
-originally `illustrations/folie20-people.png`). This test ensures the
-fixture keeps pointing at an image that actually exists on disk
-regardless of which specific asset is chosen.
+The fix wires the fixture's `image:` slot to an illustration that
+exists on disk — currently the shared `illustrations/placeholder.jpg`
+at the plugin-level assets root, resolved via the asset fallback chain
+(brand-specific override wins; plugin default kicks in otherwise).
+This test ensures the fixture keeps pointing at an image that actually
+exists on disk in either location regardless of which specific asset
+is chosen.
 
 Diagnosis note: `MISSING_ASSET` is in `_FATAL` per `lib/defects.py`,
 but `render_brand_preview.py` (the showcase builder) passes
@@ -29,7 +31,11 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 FIXTURE = REPO / "tests" / "fixtures" / "layouts" / "text-picture.yaml"
+# Asset resolution walks brand-specific assets first, then falls back to
+# the plugin-level shared assets dir (see cli/build.py + lib/dsl/pptx_emit
+# `asset_root_fallback`). The fixture's `image:` may resolve at either.
 BRAND_ASSETS = REPO / "brands" / "feinschliff" / "assets"
+PLUGIN_ASSETS = REPO / "assets"
 
 
 def test_text_picture_fixture_references_an_image():
@@ -42,12 +48,16 @@ def test_text_picture_fixture_references_an_image():
 
 
 def test_text_picture_referenced_image_exists_on_disk():
-    """The referenced path is relative to `brands/<brand>/assets`."""
+    """The referenced path resolves under the brand assets dir OR the
+    plugin-level fallback assets dir (see `EmitContext.asset_root_fallback`).
+    """
     data = yaml.safe_load(FIXTURE.read_text())
     image = data.get("image", "")
     if not image:
         return  # other test covers this
-    asset_path = BRAND_ASSETS / image
-    assert asset_path.is_file(), (
-        f"text-picture image `{image}` not found at {asset_path}"
+    brand_path = BRAND_ASSETS / image
+    plugin_path = PLUGIN_ASSETS / image
+    assert brand_path.is_file() or plugin_path.is_file(), (
+        f"text-picture image `{image}` not found at {brand_path} "
+        f"nor at {plugin_path}"
     )

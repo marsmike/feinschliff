@@ -56,8 +56,9 @@
 - **One-off scripts removed.** `scripts/extract_sewp_slides.py` (one-time SEWP
   PDF extraction) and `scripts/render_goldens.py` (v1 template golden regen —
   golden refs now flow through `scripts/render_v2_goldens.py` / `dsl_golden_compare.py`).
-- README + `docs/migration-dsl-architecture.md` + `skills/deck/references/pipeline.md`
-  updated to drop atlas/v1 references.
+- README + `skills/deck/references/pipeline.md` updated to drop
+  atlas/v1 references. (The standalone `docs/migration-dsl-architecture.md`
+  rationale doc was dropped in a later pass.)
 
 ### Changed — Excalidraw renderer: rough primary, Playwright fallback
 - `lib/diagrams/render.py:_render_excalidraw` no longer routes through the partial flat translator. Primary path is **`render_rough`** — pure-Python `rough` (Python port of rough.js) at `roughness=0 + disableMultiStroke=True`, rendered via cairosvg, ~150 ms per diagram, no browser. **Fallback** is **`render_playwright`** — real Excalidraw web app in headless Chromium (~1.5 s + 200 MB), kicks in when rough/cairosvg are unavailable or the document contains elements rough doesn't model (freedraw / image / frame).
@@ -252,5 +253,7 @@ On macOS, set `DYLD_FALLBACK_LIBRARY_PATH=$(brew --prefix cairo)/lib` once per s
 
 ## Pre-v0.3 history
 
-For v1 (catalog-based) releases and the v1 → v2 migration plan, see
-[`docs/migration-dsl-architecture.md`](docs/migration-dsl-architecture.md).
+Earlier v1 (catalog-based) releases and the v1 → v2 migration plan
+were tracked in a `docs/migration-dsl-architecture.md` rationale doc
+that was retired together with the v1 code. The pre-v0.3 entries above
+remain as a short audit trail.

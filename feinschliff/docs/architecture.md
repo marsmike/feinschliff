@@ -7,9 +7,9 @@ DSL (`feinschliff/lib/dsl/`), 43 toolkit layouts at `feinschliff/layouts/`
 that every brand inherits, and a CLI (`feinschliff …`) that drives
 the pipeline end-to-end.
 
-For the v1 → v2 history (placeholder-fill engine, `catalog.json`,
-frozen-template corpus), see
-[`migration-dsl-architecture.md`](migration-dsl-architecture.md).
+The v1 placeholder-fill engine + `catalog.json` + frozen-template
+corpus were removed during the v2 rewrite — `.slide.dsl` is the single
+source of truth now.
 
 ## Pipeline
 
