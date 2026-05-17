@@ -75,7 +75,7 @@ The verify pass runs **14 LLM defect classes** in parallel — five visual (over
 
 The pipeline also expands `excalidraw {…}` and `svg {…}` diagram blocks embedded in any layout, resolving diagram colors against the active brand's token set, between the slot-interpolation and compound-expansion phases.
 
-📖 **Full walkthrough with all diagrams:** [`docs/architecture.md`](docs/architecture.md) — every phase, the 14 verify classes explained, the iteration budget mechanic, and how `/compile`, `/excalidraw`, and `/svg` fit in.
+📖 **Deep dives:** [`docs/architecture.md`](docs/architecture.md) — every phase, the 14 verify classes, the iteration budget mechanic, and how `/compile`, `/excalidraw`, and `/svg` fit in. [`docs/diagrams.md`](docs/diagrams.md) — Excalidraw + SVG DSLs, brand-token integration, render backends.
 
 ## Quick start
 

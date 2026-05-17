@@ -72,19 +72,6 @@ plugin install includes the renderer, not the deck binaries):
 | 29 | `photo-strip-four` | Four water futures |
 | 30 | `end-image` | Same water. |
 
-## Thumbnails
-
-Per-slide PNGs live under [`thumbnails/`](thumbnails/). Sample slides:
-
-| | | |
-|---|---|---|
-| ![Slide 1](thumbnails/slide-01.png) | ![Slide 5](thumbnails/slide-05.png) | ![Slide 7](thumbnails/slide-07.png) |
-| Cover | Drawn to scale | Six-stage cycle |
-| ![Slide 12](thumbnails/slide-12.png) | ![Slide 15](thumbnails/slide-15.png) | ![Slide 26](thumbnails/slide-26.png) |
-| Floods, concentrated | Risk matrix | Six exemplars |
-| ![Slide 27](thumbnails/slide-27.png) | ![Slide 29](thumbnails/slide-29.png) | ![Slide 30](thumbnails/slide-30.png) |
-| Three levers | Four futures | Close |
-
 ## How it was built
 
 ```bash
@@ -93,10 +80,11 @@ uv run feinschliff deck build .debug/water-cycle/content_plan.yaml \
 uv run feinschliff verify examples/water-cycle/deck.pptx --json
 ```
 
-Build outputs:
+Build outputs (PDF + PPTX hosted on R2, see links above; per-slide
+thumbnails are local-only and gitignored — render with `feinschliff
+deck render-thumbnails` if you need them for review):
 - `deck.pptx` — editable PowerPoint source
 - `deck.pdf` — rendered PDF for review
-- `thumbnails/slide-{01..30}.png` — per-slide PNGs
 
 Inputs (gitignored under `feinschliff/.debug/water-cycle/`):
 - `content_plan.yaml` — 30-slide composer input + speaker notes

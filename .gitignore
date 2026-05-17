@@ -85,3 +85,13 @@ feinschliff/examples/**/*.pptx
 # so they're regenerated on demand via `scripts/render_v2_goldens.py`
 # and never committed (they drifted ~3 MB into the repo per refresh).
 feinschliff/tests/golden/
+
+# Per-slide thumbnails — locally useful for review, too heavy for the
+# repo (was ~10 MB across 30 PNGs for the water-cycle deck alone). The
+# deck PDF/PPTX on R2 already shows every slide.
+feinschliff/examples/**/thumbnails/
+
+# One-off launch / social material — staged externally (vault, social
+# tool) rather than the repo. Keep launch GIFs / promo PNGs out.
+feinschliff/docs/images/launch-*
+feinschliff/docs/images/teaser-*
