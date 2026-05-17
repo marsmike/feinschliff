@@ -186,5 +186,5 @@ The rendered PNG is produced by `lib/diagrams/render.py` which prefers
 the **pure-Python rough + cairosvg** backend (clean / `roughness=0`,
 ~150ms for narrow / ~600ms for virtual canvases). Playwright + real
 Excalidraw web app is the fallback for documents containing elements
-rough doesn't model. See `feinschliff/CLAUDE.md` → "Diagram pipeline
+rough doesn't model. See the repo-root `CLAUDE.md` → "Diagram pipeline
 notes" for the full backend policy.

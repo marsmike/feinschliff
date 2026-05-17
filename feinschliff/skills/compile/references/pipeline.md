@@ -116,7 +116,7 @@ expectations and that no skeletons remain unfilled.
 - `feinschliff brand inspect <brand>` shows the new layouts.
 - Diagnostic renders, source extracts, and visual diffs sit under
   `brands/<brand>/.source/` and `<repo>/.debug/` — both gitignored per
-  the [`feinschliff/CLAUDE.md`](../../../CLAUDE.md) discipline.
+  the repo-root [`CLAUDE.md`](../../../../CLAUDE.md) discipline.
 
 ## Failure modes
 

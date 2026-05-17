@@ -37,6 +37,18 @@ Then `/deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"` to build your firs
 
 More plugins released step-by-step. Watch the repo for the next launch.
 
+## Composition
+
+The repo stays light by design: rendered artifacts (per-brand PNGs, PPTX/PDF showcases, gallery HTML) live in R2 and on the Pages build, never in git. What you clone is source + docs.
+
+| Type | Files | Size | |
+|---|---:|---:|---|
+| Python | 172 | 1.0 MiB | ████████████▎ |
+| Text & markup | 258 | 2.4 MiB | ██████████████████████████████ |
+| Images | 26 | 698 KiB | ████████▊ |
+| Other | 1 | 30 KiB | ▎ |
+| **Total** | **457** | **4.0 MiB** | |
+
 ## Contributing
 
 PRs welcome. See the [contributing guide](CONTRIBUTING.md). All commits require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`).
