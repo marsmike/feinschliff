@@ -1413,12 +1413,22 @@ def _slide_canvas(nodes: list[DSLNode]) -> tuple[float, float]:
     return 1920.0, 1080.0
 
 
+def _write_speaker_notes(slide, notes: str) -> None:
+    """Write `notes` into the slide's PPTX notes pane. python-pptx lazily
+    creates the notes slide on first access. Empty/whitespace input is a no-op
+    so we never materialise an empty notes slide just to hold blanks."""
+    if not notes or not notes.strip():
+        return
+    slide.notes_slide.notes_text_frame.text = notes
+
+
 def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                   asset_root: Path | None,
                   asset_root_fallback: Path | None = None,
                   missing_assets: list[dict] | None = None,
                   image_provider: "ImageProvider | None" = None,
-                  deck_dir: Path | None = None) -> None:
+                  deck_dir: Path | None = None,
+                  notes: str | None = None) -> None:
     """Append one slide built from `nodes` to `prs`, using the tokens for fills."""
     cw, ch = _slide_canvas(nodes)
     slide = prs.slides.add_slide(prs.slide_layouts[6])    # blank
@@ -1447,6 +1457,8 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                   f"(line {n.line_no}) — skipping", file=sys.stderr)
             continue
         emit(slide, n, ctx)
+    if notes is not None:
+        _write_speaker_notes(slide, notes)
     if missing_assets is not None and ctx.missing_assets:
         missing_assets.extend(ctx.missing_assets)
 
@@ -1455,7 +1467,8 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
                        asset_root: Path | None = None,
                        asset_root_fallback: Path | None = None,
                        image_provider: "ImageProvider | None" = None,
-                       deck_dir: Path | None = None) -> Presentation:
+                       deck_dir: Path | None = None,
+                       notes: str | None = None) -> Presentation:
     """Walk primitive nodes, build a Presentation with one filled slide.
 
     The returned Presentation carries `missing_assets: list[dict]` as an
@@ -1469,6 +1482,9 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
     `image_provider` and `deck_dir` are the optional pair for the picture
     ``query:`` branch (Task 7). Both default to ``None``; when unset, any
     ``query:`` keyword on a picture node raises :class:`DSLError`.
+
+    `notes` populates the slide's PPTX speaker-notes pane. None / empty
+    leaves the slide without a notes slide.
     """
     cw, ch = _slide_canvas(nodes)
     prs = Presentation()
@@ -1479,48 +1495,73 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
                   asset_root_fallback=asset_root_fallback,
                   missing_assets=missing,
                   image_provider=image_provider,
-                  deck_dir=deck_dir)
+                  deck_dir=deck_dir,
+                  notes=notes)
     for slide in prs.slides:
         sanitize_chrome(slide._element)
     prs.missing_assets = missing
     return prs
 
 
+# A slide payload is either a 3-tuple `(nodes, tokens, asset_root)` or a
+# 4-tuple `(nodes, tokens, asset_root, notes)`. 3-tuples remain valid so
+# existing callers don't need to know about speaker notes.
+def _unpack_slide_payload(
+    entry: tuple,
+) -> tuple[list[DSLNode], Tokens, Path | None, str | None]:
+    if len(entry) == 4:
+        nodes, tokens, asset_root, notes = entry
+        return nodes, tokens, asset_root, notes
+    if len(entry) == 3:
+        nodes, tokens, asset_root = entry
+        return nodes, tokens, asset_root, None
+    raise ValueError(
+        f"build_multi_slide: slide payload must be a 3- or 4-tuple "
+        f"(nodes, tokens, asset_root[, notes]); got len={len(entry)}"
+    )
+
+
 def build_multi_slide(
-    slides: list[tuple[list[DSLNode], Tokens, Path | None]],
+    slides: list[tuple],
     *,
     asset_root_fallback: Path | None = None,
     image_provider: "ImageProvider | None" = None,
     deck_dir: Path | None = None,
 ) -> Presentation:
     """Build a Presentation with N slides. Each slide entry is
-    `(nodes, tokens, asset_root)`. The slide deck's canvas comes from
-    the first slide's `canvas` directive; remaining slides reuse it.
+    `(nodes, tokens, asset_root)` or `(nodes, tokens, asset_root, notes)`.
+    The slide deck's canvas comes from the first slide's `canvas` directive;
+    remaining slides reuse it.
 
     `asset_root_fallback` applies to every slide; see
     :func:`build_presentation` for semantics.
 
     `image_provider` and `deck_dir` are the optional pair for the picture
     ``query:`` branch (Task 7).
+
+    The optional 4th element of each slide tuple is speaker-notes text
+    written into the PPTX notes pane for that slide.
     """
     if not slides:
         raise ValueError("build_multi_slide: no slides provided")
-    first_nodes, first_tokens, first_asset_root = slides[0]
+    first_nodes, _, _, _ = _unpack_slide_payload(slides[0])
     cw, ch = _slide_canvas(first_nodes)
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
     missing: list[dict] = []
-    for slide_idx, (nodes, tokens, asset_root) in enumerate(slides, start=1):
+    for slide_idx, entry in enumerate(slides, start=1):
+        nodes, tokens, asset_root, notes = _unpack_slide_payload(entry)
         per_slide: list[dict] = []
         _append_slide(prs, nodes, tokens, asset_root=asset_root,
                       asset_root_fallback=asset_root_fallback,
                       missing_assets=per_slide,
                       image_provider=image_provider,
-                      deck_dir=deck_dir)
-        for entry in per_slide:
-            entry.setdefault("slide_index", slide_idx)
-            missing.append(entry)
+                      deck_dir=deck_dir,
+                      notes=notes)
+        for entry_d in per_slide:
+            entry_d.setdefault("slide_index", slide_idx)
+            missing.append(entry_d)
     for slide in prs.slides:
         sanitize_chrome(slide._element)
     prs.missing_assets = missing

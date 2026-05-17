@@ -88,3 +88,22 @@ def test_empty_slides_fails(validate_brief, valid_brief):
     valid_brief["slides"] = []
     errors = validate_brief(valid_brief)
     assert errors
+
+
+def test_slide_notes_optional_and_accepted(validate_brief, valid_brief):
+    """Speaker notes are optional per slide; when supplied they validate."""
+    # Optional — brief without notes still passes.
+    assert validate_brief(valid_brief) == []
+    # Title-slide carries the storyline (deck-level red-line arc).
+    valid_brief["slides"][0]["notes"] = (
+        "Storyline: pain → demo → results → what this unlocks.\n"
+        "• Open with the time-collapse stat.\n"
+        "• Hand off to the live demo at 0:45."
+    )
+    assert validate_brief(valid_brief) == []
+
+
+def test_slide_notes_too_long_fails(validate_brief, valid_brief):
+    valid_brief["slides"][0]["notes"] = "x" * 2001
+    errors = validate_brief(valid_brief)
+    assert errors, "Expected validator to reject notes longer than 2000 chars"

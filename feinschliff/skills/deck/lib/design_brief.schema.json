@@ -104,6 +104,12 @@
             "minLength": 5,
             "maxLength": 300,
             "description": "One-sentence note on what to emphasize / suppress for this audience."
+          },
+          "notes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Speaker notes attached to this slide in the rendered PPTX. Bullet points / core knowledge points the presenter wants surfaced while this slide is up are acceptable — these are listener cues, not on-slide prose. The hook slide (index 0) carries the deck's storyline: the full red-line arc the presenter walks through. Subsequent slides carry only what the presenter says while that slide is up."
           }
         }
       }
