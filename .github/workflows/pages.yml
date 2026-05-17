@@ -1,0 +1,54 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - name: Install feinschliff lib deps
+        working-directory: feinschliff
+        run: uv sync
+      - name: Build brand-gallery site
+        working-directory: feinschliff
+        run: uv run python scripts/build_brand_gallery_site.py
+      - name: Add root redirect to /brands/
+        run: |
+          cat > docs/index.html <<'HTML'
+          <!doctype html>
+          <meta charset="utf-8">
+          <title>feinschliff brand gallery</title>
+          <meta http-equiv="refresh" content="0; url=brands/">
+          <link rel="canonical" href="brands/">
+          <p>Redirecting to the <a href="brands/">feinschliff brand gallery</a>…</p>
+          HTML
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

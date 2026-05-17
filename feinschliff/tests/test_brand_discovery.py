@@ -91,7 +91,7 @@ def test_plugin_brands_roots_includes_sideload_layout(tmp_path, monkeypatch):
 
 def test_cwd_dev_brands_roots_finds_in_place_checkout(tmp_path, monkeypatch):
     """When $CWD is inside a feinschliff/ git checkout, brands/ should be discovered."""
-    checkout = tmp_path / "agentic-toolkit"
+    checkout = tmp_path / "feinschliff-repo"
     (checkout / ".git").mkdir(parents=True)
     fb = checkout / "feinschliff"
     (fb / "brands").mkdir(parents=True)
