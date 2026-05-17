@@ -145,6 +145,9 @@ def _build_pptx(job: LayoutJob) -> Path:
         "--skip-content-lint",  # gallery render: skip the Phase-1 content lints
                                 # (we want to surface real layout overflow via
                                 # `feinschliff verify`, not block on title-length)
+        "--allow-missing-assets",  # showcase render: blank slot beats missing
+                                   # thumbnail when a brand lacks an illustration
+                                   # the layout references
     ]
     res = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
     if res.returncode != 0:

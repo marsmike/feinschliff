@@ -11,6 +11,7 @@ dependencies = [
     "pyphen>=0.17.2",
     "pillow>=10",
     "cairosvg>=2.7",
+    "rough>=1.6",
 ]
 
 [project.scripts]
