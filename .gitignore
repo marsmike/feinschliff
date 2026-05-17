@@ -64,3 +64,12 @@ feinschliff/brands/*-private/
 feinschliff/brands/*-client/
 docs/brand-previews/*-private/
 docs/brand-previews/*-client/
+
+# Brand-gallery output: rendered locally for upload to R2 (assets.marsmike.com).
+# Never committed — the Pages workflow generates docs/brands/index.html which
+# references R2 URLs; the per-layout PNGs are too heavy for the repo.
+docs/brand-previews/
+docs/brands/
+
+# Wrangler local-emulator cache (sometimes created in unexpected dirs).
+.wrangler/
