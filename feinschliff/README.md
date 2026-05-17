@@ -216,9 +216,7 @@ feinschliff/
 ├── references/
 │   ├── brand-pack-spec.md             v2 brand-pack contract
 │   └── compounds.md                   standard compound catalog
-├── tests/
-│   ├── golden/feinschliff/            34 PNG fidelity references
-│   └── …                              brand discovery, layout picker, content + chrome verify
+├── tests/                            brand discovery, layout picker, content + chrome verify
 ├── CHANGELOG.md
 ├── README.md
 └── NOTICE.md                          third-party attribution

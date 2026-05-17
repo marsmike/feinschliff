@@ -79,3 +79,9 @@ docs/brands/
 # plugin install stay light (renderer ships, not pre-rendered artifacts).
 feinschliff/examples/**/*.pdf
 feinschliff/examples/**/*.pptx
+
+# Golden render references — manual fidelity baselines for
+# `scripts/dsl_golden_compare.py`. No pytest test gates against them,
+# so they're regenerated on demand via `scripts/render_v2_goldens.py`
+# and never committed (they drifted ~3 MB into the repo per refresh).
+feinschliff/tests/golden/

@@ -190,7 +190,7 @@ brand compounds, override layouts.
 |---|---|---|
 | **Schema** | `lib/design_md.parse` | Structurally-invalid DESIGN.md frontmatter |
 | **WCAG legibility** | `test_wcag_contrast.py` | At least one of `{ink, black, graphite, off-white}` on `paper` clears WCAG AA Large (3.0:1); accent on paper clears 2.0:1 (decorative floor) |
-| **Render sweep** | `test_dsl_pipeline.py` + golden PNGs at `tests/golden/feinschliff/` | Every brand × every toolkit layout parses, expands, emits, and matches the pre-deletion baseline |
+| **Render sweep** | `test_dsl_pipeline.py` | Every brand × every toolkit layout parses, expands, emits cleanly (visual baselines regenerated on demand via `scripts/render_v2_goldens.py`; not committed) |
 
 ## Adding a new brand — recipe
 
