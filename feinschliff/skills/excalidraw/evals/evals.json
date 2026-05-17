@@ -1,0 +1,11 @@
+{
+  "skill": "excalidraw",
+  "version": 1,
+  "tests": [
+    {
+      "name": "five-box-flow",
+      "prompt": "Make an excalidraw diagram showing 5 boxes in a horizontal flow: Browser → Edge → API → Queue → Database.",
+      "checks": ["valid-excalidraw-json", "five-rectangles", "four-arrows"]
+    }
+  ]
+}

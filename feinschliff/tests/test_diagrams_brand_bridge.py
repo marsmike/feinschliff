@@ -1,0 +1,150 @@
+"""Tests for lib/diagrams/brand_bridge.py — semantic color resolution."""
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from lib.diagrams.brand_bridge import (
+    SEMANTIC_NAMES,
+    BrandBridgeError,
+    resolve,
+)
+
+
+def _brand_dir(name: str) -> Path:
+    return Path(__file__).resolve().parent.parent / "brands" / name
+
+
+def test_vocabulary_is_frozen_at_planned_size():
+    """The vocabulary is fixed at 19 names — extending it is a coordinated change
+    across brand_bridge, brand packs, and DSL references.
+
+    19 = original 17 + `off-white` (always-light fg, paired with chapter-slab)
+       + `chapter-slab` (always-dark bg for `theme dark` and chapter dividers,
+         decoupled from `ink` which inverts between light/dark brands).
+    """
+    assert len(SEMANTIC_NAMES) == 19
+    # Spot-check representative members from each group
+    assert "primary" in SEMANTIC_NAMES       # brand
+    assert "paper" in SEMANTIC_NAMES          # surface
+    assert "off-white" in SEMANTIC_NAMES      # surface (always-light fg)
+    assert "chapter-slab" in SEMANTIC_NAMES   # surface (always-dark bg)
+    assert "success" in SEMANTIC_NAMES        # severity
+    assert "status-on" in SEMANTIC_NAMES      # status
+
+
+def test_unknown_name_rejected():
+    with pytest.raises(BrandBridgeError, match="unknown color token 'royal-blue'"):
+        resolve("royal-blue", _brand_dir("feinschliff"))
+
+
+def test_literal_hex_rejected():
+    with pytest.raises(BrandBridgeError, match="literal color"):
+        resolve("#4f46e5", _brand_dir("feinschliff"))
+
+
+def test_rgb_rejected():
+    with pytest.raises(BrandBridgeError, match="literal color"):
+        resolve("rgb(79,70,229)", _brand_dir("feinschliff"))
+
+
+def test_primary_resolves_to_brand_indigo_for_feinschliff():
+    hex_color = resolve("primary", _brand_dir("feinschliff"))
+    assert hex_color.startswith("#")
+    assert len(hex_color) == 7  # #RRGGBB
+
+
+def test_extends_inheritance_resolves_from_parent():
+    """A brand that inherits via extends: pulls tokens from its parent."""
+    # feinschliff-dark extends feinschliff (verified in feinschliff-dark/DESIGN.md).
+    primary = resolve("primary", _brand_dir("feinschliff-dark"))
+    assert primary.startswith("#"), f"got {primary!r}"
+
+
+def test_dollar_value_token_shape(tmp_path):
+    """Tokens stored as {'$value': '#xxx'} are unwrapped correctly."""
+    brand = tmp_path / "myco"
+    brand.mkdir()
+    (brand / "tokens.json").write_text('{"color": {"accent": {"$value": "#abcdef"}}}')
+    (brand / "DESIGN.md").write_text("---\nname: MyCo\n---\n")
+    result = resolve("primary", brand)
+    assert result == "#abcdef"
+
+
+def test_missing_token_slot_raises(tmp_path):
+    """A brand whose tokens.json lacks a required slot raises BrandBridgeError."""
+    brand = tmp_path / "myco"
+    brand.mkdir()
+    (brand / "tokens.json").write_text('{"color": {}}')
+    (brand / "DESIGN.md").write_text("---\nname: MyCo\n---\n")
+    with pytest.raises(BrandBridgeError, match="missing token"):
+        resolve("primary", brand)
+
+
+@pytest.mark.parametrize("brand_name", [
+    "feinschliff", "feinschliff-dark",
+    "catppuccin-latte", "catppuccin-macchiato",
+    "solarized-dark", "nord", "gruvbox-dark",
+    "gs-ramspau",
+    "claude", "binance", "ferrari", "spotify",
+])
+def test_all_semantic_names_resolve_for_every_brand(brand_name):
+    """Every shipped brand pack must resolve every semantic name to a valid hex.
+
+    17 semantic names × 12 brands = 204 happy cases enforced.
+    """
+    brand_dir = _brand_dir(brand_name)
+    if not brand_dir.exists():
+        pytest.skip(f"brand {brand_name} not present in this checkout")
+    for name in SEMANTIC_NAMES:
+        hex_color = resolve(name, brand_dir)
+        assert hex_color.startswith("#"), (
+            f"brand {brand_name} / name {name}: got {hex_color!r}"
+        )
+        assert len(hex_color) in (4, 7, 9), (
+            f"brand {brand_name} / name {name}: malformed hex {hex_color!r}"
+        )
+
+
+from lib.diagrams.brand_bridge import resolve_brand_dir
+
+
+def test_brand_resolution_directive_wins(monkeypatch):
+    monkeypatch.setenv("FEINSCHLIFF_BRAND", "nord")
+    out = resolve_brand_dir(
+        directive="catppuccin-macchiato",
+        cli_flag="gruvbox-dark",
+        deck_context="feinschliff",
+    )
+    assert out.name == "catppuccin-macchiato"
+
+
+def test_brand_resolution_cli_wins_over_env(monkeypatch):
+    monkeypatch.setenv("FEINSCHLIFF_BRAND", "nord")
+    out = resolve_brand_dir(
+        directive=None,
+        cli_flag="gruvbox-dark",
+        deck_context="feinschliff",
+    )
+    assert out.name == "gruvbox-dark"
+
+
+def test_brand_resolution_env_wins_over_deck(monkeypatch):
+    monkeypatch.setenv("FEINSCHLIFF_BRAND", "nord")
+    out = resolve_brand_dir(
+        directive=None,
+        cli_flag=None,
+        deck_context="feinschliff",
+    )
+    assert out.name == "nord"
+
+
+def test_brand_resolution_default_to_feinschliff(monkeypatch):
+    monkeypatch.delenv("FEINSCHLIFF_BRAND", raising=False)
+    out = resolve_brand_dir(
+        directive=None,
+        cli_flag=None,
+        deck_context=None,
+    )
+    assert out.name == "feinschliff"

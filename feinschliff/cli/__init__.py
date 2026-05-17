@@ -1,0 +1,1 @@
+"""Feinschliff CLI."""

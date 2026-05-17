@@ -1,0 +1,66 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+.env
+.env.local
+out/
+node_modules/
+.DS_Store
+
+# Intermediate per-slide PNGs from scripts/generate_showcase_visuals.py.
+# Only the composed hero-grid.png and showcase.gif are committed.
+feinschliff/docs/images/slides/
+
+# Per-deck PNG render directories produced by verify-quality --render and
+# render_pngs.py. These are ephemeral intermediates; never commit.
+*.pngs/
+
+# port_brand.py working files — keep local for review, never commit.
+feinschliff/brands/*/.port-needs-review.txt
+feinschliff/brands/*/.port-verify/
+
+# Python build artifacts
+*.egg-info/
+
+# Planning artifacts (brainstorming output, implementation plans).
+# Specs live in vault / external; they shouldn't pollute the public repo.
+feinschliff/docs/superpowers/
+
+# Intermediate / debug artifacts for example regeneration. Everything that
+# isn't a final deliverable (PDFs, .pptx, rendered PNGs, READMEs) lands here
+# so contributors can inspect inputs / wireframes / verify reports without
+# polluting the user-facing examples/ tree. See CLAUDE.md → "examples folder
+# discipline" for the policy.
+feinschliff/.debug/
+
+# Internal review / audit reports kept locally for follow-up. Findings get
+# distilled into the public CHANGELOG / commit messages.
+Review.md
+review.md
+*.review.md
+review-*.md
+Review-*.md
+
+# Demo / standalone examples are stored externally (Mike's vault:
+# 02_Projects/Feinschliff/Example-Decks/). Only the canonical 43-layout
+# showcase under examples/feinschliff/ stays in the public repo.
+# Recreating these locally is fine for iteration — just don't commit.
+feinschliff/examples/decks/
+feinschliff/examples/refurbish/
+feinschliff/examples/excalidraw/
+feinschliff/examples/svg/
+
+# Allow built artifacts under examples/feinschliff/out/.
+# The whole point of committing deck.pdf alongside content_plan.yaml is that
+# GitHub renders PDFs inline.
+!feinschliff/examples/feinschliff/out/
+!feinschliff/examples/feinschliff/out/**
+
+# Private / client brand packs — never bundled with the marketplace.
+# Client brand packs live in ~/.feinschliff/brands/ and are discovered
+# at runtime.
+feinschliff/brands/*-private/
+feinschliff/brands/*-client/
+docs/brand-previews/*-private/
+docs/brand-previews/*-client/

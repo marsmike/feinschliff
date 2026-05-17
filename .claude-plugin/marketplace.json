@@ -1,0 +1,14 @@
+{
+  "name": "feinschliff",
+  "owner": { "name": "Mike Mueller", "email": "mike@objektarium.de" },
+  "metadata": {
+    "description": "Feinschliff marketplace — brand-pluggable design system and adjacent content-creation plugins."
+  },
+  "plugins": [
+    {
+      "name": "feinschliff",
+      "description": "Brand-pluggable design system — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. Ships with the feinschliff default brand pack (indigo + Noto Sans, MIT).",
+      "source": "./feinschliff"
+    }
+  ]
+}

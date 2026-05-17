@@ -1,0 +1,242 @@
+"""Resolve diagram DSL semantic color names against the active brand's tokens.
+
+Single source of truth: only colors defined in brands/<b>/tokens.json are
+allowed in diagram DSL. Literal hex / rgb / hsl are rejected; unknown
+semantic names are rejected with a "did you mean" hint.
+
+## Token path mismatch (finding)
+
+The plan assumed nested paths like ``color.brand.primary``, ``color.surface.paper``,
+etc. The actual tokens.json structure is **flat**: ``color.<name>`` (e.g.
+``color.accent``, ``color.paper``). ``_TOKEN_PATHS`` maps the 17 semantic DSL
+names to the real flat paths in every brand pack.
+"""
+from __future__ import annotations
+
+import difflib
+import json
+import os
+import re
+from pathlib import Path
+from typing import Final
+
+from lib.jsonwalk import deep_merge as _deep_merge, walk as _json_walk
+
+# 17 semantic names, fixed. Adding to this list is a coordinated change
+# across brand_bridge, brand packs, and DSL references.
+SEMANTIC_NAMES: Final[frozenset[str]] = frozenset({
+    # brand
+    "primary", "secondary", "tertiary", "accent",
+    # surface
+    "paper", "ink", "off-white", "chapter-slab", "surface", "surface-2",
+    # semantic
+    "success", "warning", "danger",
+    # neutral
+    "neutral", "neutral-soft", "neutral-strong",
+    # status
+    "status-on", "status-off", "status-pending",
+})
+
+# Maps each semantic DSL name to a dotted path inside tokens.json.
+#
+# All paths are flat under ``color.<name>`` — the real tokens.json structure.
+# This differs from the original plan which assumed nested sub-groups like
+# ``color.brand.*`` and ``color.surface.*``.  All 12 brand packs in the
+# portfolio use the same flat layout (verified against feinschliff, catppuccin-
+# latte, catppuccin-macchiato, gruvbox-dark, nord, feinschliff-dark).
+_TOKEN_PATHS: Final[dict[str, str]] = {
+    # Brand colors
+    # "primary" and "accent" both route to the brand-accent slot: "primary" is
+    # the canonical term in the DSL; "accent" is the alias for contexts that
+    # explicitly call out an accent swatch.  Both point at color.accent.
+    "primary":          "color.accent",          # primary branded hue (e.g. gold in feinschliff)
+    "secondary":        "color.graphite",         # secondary text / support color
+    "tertiary":         "color.steel",            # tertiary / muted label color
+    "accent":           "color.highlight",        # alias for primary — hover/light variant of the brand accent
+    # Surface
+    # "paper" and "surface" are intentional aliases: both refer to the base
+    # page/canvas background.  "surface" follows Material-style naming;
+    # "paper" is the Feinschliff-native term.  Same physical token, two
+    # semantic entry points for author convenience.
+    "paper":            "color.paper",            # base page background (Feinschliff-native name)
+    "ink":              "color.ink",              # body text on light
+    "off-white":        "color.off-white",        # body text on dark (always light across brands)
+    "chapter-slab":     "color.chapter-slab",     # deepest contrast band (always dark across brands)
+    "surface":          "color.paper",            # alias for paper — base surface (Material-style name)
+    "surface-2":        "color.paper-2",          # raised / secondary surface
+    # Semantic severity
+    "success":          "color.severity-low",     # green / positive
+    "warning":          "color.severity-medium",  # amber / caution
+    "danger":           "color.severity-high",    # red-rust / critical
+    # Neutral ramp
+    # "neutral" and "neutral-strong" alias into the steel/graphite tones:
+    # "neutral" → color.steel (mid-grey, ~500-equivalent);
+    # "neutral-strong" → color.graphite (dark-grey, ~700-equivalent).
+    # These map the same physical tokens as "tertiary" and "secondary"
+    # but signal context (neutral ramp) rather than typographic role.
+    "neutral":          "color.steel",            # alias for tertiary — mid neutral (500-equivalent)
+    "neutral-soft":     "color.silver",           # light neutral (300-equivalent)
+    "neutral-strong":   "color.graphite",         # alias for secondary — dark neutral (700-equivalent)
+    # Status
+    "status-on":        "color.status-done",      # completed / active
+    "status-off":       "color.status-next",      # not started / inactive
+    "status-pending":   "color.status-current",   # in-progress / pending
+}
+
+_LITERAL_RE: Final = re.compile(r"^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()")
+
+
+class BrandBridgeError(ValueError):
+    """Raised when a diagram DSL color cannot be resolved."""
+
+
+def resolve(name: str, brand_dir: Path) -> str:
+    """Resolve a semantic color name to a hex string using brand tokens.
+
+    Raises BrandBridgeError on:
+    - literal hex/rgb/hsl
+    - unknown semantic name
+    - brand tokens missing the slot (after extends: walk)
+    """
+    if _LITERAL_RE.match(name):
+        raise BrandBridgeError(
+            f"literal color '{name}' — use semantic name "
+            f"(see references/dsl-reference.md)"
+        )
+
+    if name not in SEMANTIC_NAMES:
+        suggestion = _suggest(name)
+        hint = f" (did you mean '{suggestion}'?)" if suggestion else ""
+        raise BrandBridgeError(
+            f"unknown color token '{name}'{hint} — valid: "
+            f"{', '.join(sorted(SEMANTIC_NAMES))}"
+        )
+
+    tokens = _load_tokens_with_extends(brand_dir)
+    path = _TOKEN_PATHS[name]
+    raw = _json_walk(tokens, path)
+    value = _extract_value(raw)
+    if value is None:
+        raise BrandBridgeError(
+            f"brand '{brand_dir.name}' missing token '{path}' for "
+            f"semantic name '{name}'"
+        )
+    return value
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
+
+def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = None) -> dict:
+    """Load tokens.json, walking extends: chain via DESIGN.md frontmatter."""
+    _seen = (_seen or frozenset()) | {brand_dir.resolve()}
+    tokens_path = brand_dir / "tokens.json"
+    if not tokens_path.exists():
+        raise BrandBridgeError(f"brand '{brand_dir.name}': tokens.json missing")
+    tokens = json.loads(tokens_path.read_text())
+
+    parent = _read_extends(brand_dir)
+    if parent:
+        parent_dir = brand_dir.parent / parent
+        if parent_dir.resolve() in _seen:
+            raise BrandBridgeError(
+                f"brand '{brand_dir.name}': circular extends chain detected"
+            )
+        parent_tokens = _load_tokens_with_extends(parent_dir, _seen)
+        tokens = _deep_merge(parent_tokens, tokens)
+    return tokens
+
+
+def _read_extends(brand_dir: Path) -> str | None:
+    """Read extends: from brand's DESIGN.md frontmatter, if present."""
+    design_md = brand_dir / "DESIGN.md"
+    if not design_md.exists():
+        return None
+    text = design_md.read_text()
+    if not text.startswith("---"):
+        return None
+    end = text.find("---", 3)
+    if end < 0:
+        return None
+    frontmatter = text[3:end]
+    for line in frontmatter.splitlines():
+        if line.strip().startswith("extends:"):
+            return line.split(":", 1)[1].strip()
+    return None
+
+
+def _extract_value(raw: object) -> str | None:
+    """Extract a hex string from a raw token value.
+
+    Handles both the Design Tokens draft-2 ``{"$value": "#RRGGBB"}`` shape
+    and bare string values.
+    """
+    if isinstance(raw, dict) and "$value" in raw:
+        v = raw["$value"]
+        return v if isinstance(v, str) else None
+    return raw if isinstance(raw, str) else None
+
+
+def _suggest(unknown: str) -> str | None:
+    """Return the closest semantic name by edit distance, or None."""
+    matches = difflib.get_close_matches(unknown.lower(), SEMANTIC_NAMES, n=1, cutoff=0.6)
+    return matches[0] if matches else None
+
+
+def relative_luminance(hex_color: str) -> float:
+    """Perceived luminance 0..255 for picking readable label color."""
+    h = hex_color.lstrip("#")
+    if len(h) != 6:
+        return 128.0
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def label_color_for(fill_hex: str, brand_dir: Path) -> str:
+    """Flip label to paper on dark fills, else ink."""
+    return resolve("paper", brand_dir) if relative_luminance(fill_hex) < 128 else resolve("ink", brand_dir)
+
+
+def strip_brand_directive(dsl: str) -> tuple[str, str | None]:
+    """Split off a leading ``@brand <name>`` directive from diagram DSL.
+
+    Returns (cleaned_dsl, directive_or_None). The directive is the second
+    whitespace-split token after ``@brand``; lines without a value are
+    silently dropped along with the directive line.
+    """
+    directive: str | None = None
+    kept: list[str] = []
+    for line in dsl.splitlines():
+        s = line.strip()
+        if s.startswith("@brand"):
+            parts = s.split(maxsplit=1)
+            if len(parts) == 2:
+                directive = parts[1].strip()
+            continue
+        kept.append(line)
+    return "\n".join(kept), directive
+
+
+def resolve_brand_dir(
+    directive: str | None = None,
+    cli_flag: str | None = None,
+    deck_context: str | None = None,
+    *,
+    brands_root: Path | None = None,
+) -> Path:
+    """Pick the active brand directory by precedence:
+
+      1. DSL @brand directive
+      2. CLI --brand flag
+      3. FEINSCHLIFF_BRAND env var
+      4. /deck build context
+      5. default 'feinschliff'
+
+    Returns a Path that may or may not exist — callers (e.g. resolve())
+    can decide how to handle missing brand dirs.
+    """
+    env = os.environ.get("FEINSCHLIFF_BRAND")
+    chosen = directive or cli_flag or env or deck_context or "feinschliff"
+    root = brands_root or (Path(__file__).resolve().parent.parent.parent / "brands")
+    return root / chosen

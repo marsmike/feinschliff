@@ -1,0 +1,17 @@
+pgmeta: "Architecture"
+tracker: "How requests flow"
+action_title: "Five hops from browser to database in 80ms"
+diagram_dsl: |
+  box browser 60,160 280x160 "Browser"
+  box edge    400,160 280x160 "Edge proxy"
+  box api     740,160 280x160 "API"
+  box queue   1080,160 280x160 "Queue"
+  box db      1420,160 280x160 "Database"
+  arrow browser -> edge
+  arrow edge -> api
+  arrow api -> queue
+  arrow queue -> db
+so_what: "P95 latency budget is dominated by the queue hop"
+source: "Internal load test, 2026-05"
+footer_left: "Feinschliff"
+footer_right: "v0.3"

@@ -1,0 +1,11 @@
+{
+  "skill": "svg",
+  "version": 1,
+  "tests": [
+    {
+      "name": "bar-chart-4-bars",
+      "prompt": "Make an SVG bar chart with 4 bars labeled Q1-Q4 with values $85k, $62k, $98k, $41k.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    }
+  ]
+}
