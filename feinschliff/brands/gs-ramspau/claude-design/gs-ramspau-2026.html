@@ -1,0 +1,949 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>Grundschule Ramspau — PowerPoint Template</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Open+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      /* Brand tokens — Grundschule Ramspau */
+      --wiese:   #A8B86B;
+      --tief:    #3F4B2E;
+      --taupe:   #9A8F86;
+      --papier:  #F6F3EC;
+      --tinte:   #1F1F1C;
+      --rule:    rgba(31,31,28,0.14);
+
+      /* Type */
+      --font-sans: "Open Sans", system-ui, sans-serif;
+      --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+
+      /* Sizes authored on 1920 × 1080 */
+      --display:    160px;
+      --huge:       120px;
+      --quote:       84px;
+      --sub:         44px;
+      --slide-title: 56px;
+      --body:        26px;
+      --col-body:    22px;
+      --eyebrow:     18px;
+      --col-num:     14px;
+      --footer:      16px;
+
+      --pad-x: 120px;
+      --pad-t: 100px;
+      --pad-b: 80px;
+    }
+
+    html, body { margin: 0; padding: 0; background: #ECE7DC; font-family: var(--font-sans); color: var(--tinte); }
+    * { box-sizing: border-box; }
+
+    /* Canvas — one slide per section, scaled to viewport */
+    .deck { display: flex; flex-direction: column; align-items: center; gap: 32px; padding: 32px 0; }
+    .slide {
+      width: 1920px; height: 1080px;
+      position: relative;
+      background: #fff;
+      overflow: hidden;
+      font-family: var(--font-sans);
+      color: var(--tinte);
+      transform-origin: top left;
+    }
+    .slide.dark { background: var(--tief); color: var(--papier); }
+    .slide.papier { background: var(--papier); }
+
+    /* fit-to-viewport scaling */
+    @media (max-width: 1980px) {
+      .deck { transform-origin: top center; }
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: var(--eyebrow);
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      color: var(--taupe);
+    }
+    .claim-bar {
+      display: inline-block;
+      background: var(--wiese);
+      color: #fff;
+      font-style: italic;
+      padding: 10px 28px;
+      font-size: 28px;
+      letter-spacing: 0.01em;
+    }
+    .accent-rule {
+      display: inline-block;
+      width: 56px; height: 6px; background: var(--wiese);
+      vertical-align: middle;
+    }
+    .footer {
+      position: absolute;
+      left: var(--pad-x); right: var(--pad-x); bottom: 48px;
+      display: flex; justify-content: space-between; align-items: center;
+      font-family: var(--font-mono);
+      font-size: var(--footer);
+      color: rgba(31,31,28,0.55);
+      letter-spacing: 0.10em;
+      border-top: 1px solid var(--rule);
+      padding-top: 22px;
+    }
+    .footer.dark { color: rgba(246,243,236,0.65); border-color: rgba(246,243,236,0.18); }
+
+    .logo { height: 92px; width: auto; display: block; }
+    .logo.sm { height: 56px; }
+
+    /* photo placeholder */
+    .photo {
+      background-color: rgba(154,143,134,0.18);
+      background-image: repeating-linear-gradient(
+        135deg,
+        rgba(154,143,134,0.32) 0 1px,
+        transparent 1px 18px
+      );
+      border: 1px solid var(--rule);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--tinte);
+      font-family: var(--font-mono);
+      font-size: 16px; letter-spacing: 0.08em; text-transform: uppercase;
+    }
+
+    .card {
+      background: var(--papier);
+      padding: 44px 40px;
+      display: flex; flex-direction: column; gap: 18px;
+    }
+
+    /* Quote slide */
+    .quote-mark {
+      font-family: var(--font-sans);
+      font-weight: 700;
+      font-size: 240px;
+      color: var(--wiese);
+      line-height: 0.8;
+    }
+  </style>
+</head>
+<body>
+<div class="deck">
+
+  <!-- 01 · Titelfolie · Akzent ============================================ -->
+  <section class="slide papier"
+    data-label="Ramspau · Titel · Akzent"
+    data-role="title-primary"
+    data-concepts="cover, headline, full-slide-statement, schule-im-gruenen"
+    data-when-to-use="Decken-Titel oder Einzel-Statement-Folie, wenn die Überschrift selbst die Botschaft ist (≤ 8 Wörter)."
+    data-when-not-to-use="Wenn ein Hero-Foto, Termine oder Detail dazu gehört — dann Titel · Foto oder Kapitel verwenden."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "claim":   {"type":"string","maxLength":40,"optional":true,"description":"Italic claim bar, default: Die Schule im Grünen"},
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <img class="logo" src="assets/logo-full.jpg" alt="Grundschule Ramspau"
+         style="position:absolute; top:80px; left:120px;" />
+    <div style="position:absolute; left:120px; right:120px; top:420px;">
+      <div class="eyebrow">Schulversammlung · Mai 2026</div>
+      <div style="font-size: var(--display); font-weight:700; color: var(--tief); line-height:0.95; letter-spacing:-0.03em; margin-top: 32px;">
+        Schule im Grünen
+      </div>
+      <div class="claim-bar" style="margin-top: 40px;">Die Schule im Grünen</div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;SCHULJAHR 2026 / 27</span>
+      <span>GRUNDSCHULE-RAMSPAU.DE</span>
+    </div>
+  </section>
+
+  <!-- 02 · Titelfolie · Foto ============================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Titel · Foto"
+    data-role="title-with-visual"
+    data-concepts="cover, hero-image, headline-plus-context"
+    data-when-to-use="Decken-Titel mit prägnantem Foto (Pausenhof, Wald, Schulhaus). Foto-Frame rechts wird per Bild-einfügen befüllt."
+    data-when-not-to-use="Datenlastige Slides oder Mehrspalter — dort Inhalt · 3-Spalter oder Termine."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "claim":   {"type":"string","maxLength":40,"optional":true},
+      "photo":   {"type":"image","description":"Hero-Foto rechts, ca. 780×920","placeholder":"Foto · Schulhaus im Frühling"},
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <img class="logo" src="assets/logo-full.jpg" alt=""
+         style="position:absolute; top:80px; left:120px;" />
+    <div style="position:absolute; left:120px; right:980px; top:380px;">
+      <div class="eyebrow">Tag der offenen Tür</div>
+      <div style="font-size: 110px; font-weight:700; color: var(--tief); line-height:0.98; letter-spacing:-0.03em; margin-top: 24px;">
+        Komm vorbei. Lern uns kennen.
+      </div>
+      <div class="claim-bar" style="margin-top: 28px;">Die Schule im Grünen</div>
+    </div>
+    <div class="photo" style="position:absolute; top:80px; right:120px; width:780px; height:920px;">
+      Foto · Schulhaus im Frühling
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;SA · 27.06.2026 · 10 – 14 UHR</span>
+      <span>SEITE 2 / 14</span>
+    </div>
+  </section>
+
+  <!-- 03 · Kapitel ======================================================== -->
+  <section class="slide dark"
+    data-label="Ramspau · Kapitel"
+    data-role="chapter-opener"
+    data-concepts="chapter-opener, section-break, dark-mode"
+    data-when-to-use="Zwischen größeren Abschnitten. Kapitelnummer + Titel. Setzt ein klares Trenn-Signal."
+    data-when-not-to-use="Bei Decks mit nur einem Abschnitt — dann ganz weglassen."
+    data-slots='{
+      "chapterNumber": {"type":"string","maxLength":20,"description":"z.B. KAPITEL 02"},
+      "title":         {"type":"string","maxLength":100},
+      "footer":        {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; left:120px; top:100px;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" style="filter: brightness(0) invert(1) opacity(0.85);" />
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:420px; color: var(--papier);">
+      <div style="font-family: var(--font-mono); font-size: 28px; letter-spacing:0.18em; color: var(--wiese);">
+        KAPITEL 02
+      </div>
+      <div style="font-size: var(--huge); font-weight:700; line-height:1.0; letter-spacing:-0.025em; margin-top: 36px; max-width: 1400px;">
+        Was wir in der Waldwoche machen
+      </div>
+      <div style="margin-top: 40px; width: 120px; height: 6px; background: var(--wiese);"></div>
+    </div>
+    <div class="footer dark">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span>SCHULE IM GRÜNEN</span>
+      <span>SEITE 3 / 14</span>
+    </div>
+  </section>
+
+  <!-- 04 · Agenda ========================================================= -->
+  <section class="slide"
+    data-label="Ramspau · Agenda"
+    data-role="agenda"
+    data-concepts="agenda, table-of-contents, section-list"
+    data-when-to-use="Übersicht zum Schuljahr, Elternabend oder Veranstaltungs-Programm. 3–6 Punkte mit Titel + Einzeiler."
+    data-when-not-to-use="Bei weniger als 3 Punkten (Titelfolie) oder mehr als 6 (Inhalt · 3-Spalter)."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "items": {
+        "type":"array",
+        "minItems":3,"maxItems":6,
+        "items":{
+          "type":"object",
+          "properties":{
+            "number":{"type":"string","maxLength":4,"description":"z.B. 01"},
+            "title": {"type":"string","maxLength":60},
+            "desc":  {"type":"string","maxLength":120}
+          },
+          "required":["number","title"]
+        }
+      },
+      "footer": {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Agenda</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">
+        Elternabend · Klassen 1 – 4
+      </div>
+      <div style="display:grid; grid-template-columns: 80px 1fr 1fr; row-gap: 28px; column-gap: 56px; margin-top: 80px;">
+        <!-- repeated item: number / title / desc -->
+        <div style="font-family: var(--font-mono); font-size: 20px; color: var(--wiese); padding-top: 14px;">01</div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); border-top: 1px solid var(--rule); padding-top: 22px;">Begrüßung &amp; Rückblick</div>
+        <div style="font-size: var(--body); color: rgba(31,31,28,0.7); border-top: 1px solid var(--rule); padding-top: 22px; line-height: 1.5;">
+          Was uns im letzten Halbjahr getragen hat.
+        </div>
+
+        <div style="font-family: var(--font-mono); font-size: 20px; color: var(--wiese); padding-top: 14px;">02</div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); border-top: 1px solid var(--rule); padding-top: 22px;">Waldwoche im Juni</div>
+        <div style="font-size: var(--body); color: rgba(31,31,28,0.7); border-top: 1px solid var(--rule); padding-top: 22px; line-height: 1.5;">
+          Ablauf, Ausrüstung, Rücklaufzettel.
+        </div>
+
+        <div style="font-family: var(--font-mono); font-size: 20px; color: var(--wiese); padding-top: 14px;">03</div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); border-top: 1px solid var(--rule); padding-top: 22px;">Neuer Wochenplan</div>
+        <div style="font-size: var(--body); color: rgba(31,31,28,0.7); border-top: 1px solid var(--rule); padding-top: 22px; line-height: 1.5;">
+          Jahrgangsgemischter Unterricht ab dem 2. Halbjahr.
+        </div>
+
+        <div style="font-family: var(--font-mono); font-size: 20px; color: var(--wiese); padding-top: 14px;">04</div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); border-top: 1px solid var(--rule); padding-top: 22px;">Offene Fragen</div>
+        <div style="font-size: var(--body); color: rgba(31,31,28,0.7); border-top: 1px solid var(--rule); padding-top: 22px; line-height: 1.5;">
+          Eltern­wünsche, Anregungen, freie Runde.
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;ELTERNABEND · 12.05.2026</span>
+      <span>SEITE 4 / 14</span>
+    </div>
+  </section>
+
+  <!-- 05 · Inhalt · 3-Spalter ============================================= -->
+  <section class="slide"
+    data-label="Ramspau · Inhalt · 3-Spalter"
+    data-role="content-columns"
+    data-concepts="composition, triad, pillars, phases, programm"
+    data-when-to-use="Drei parallele Inhalte gleicher Gewichtung — Programmpunkte, Säulen, Phasen einer Projektwoche."
+    data-when-not-to-use="Bei 2 Punkten (Foto + Text) oder 4+ (Tabelle / Liste)."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "columns": {
+        "type":"array",
+        "minItems":3,"maxItems":3,
+        "items":{
+          "type":"object",
+          "properties":{
+            "photo": {"type":"image","description":"Foto im Karten-Kopf, ca. 480×200"},
+            "tag":   {"type":"string","maxLength":20,"description":"Mono-Tag, z.B. MO – DI"},
+            "title": {"type":"string","maxLength":40},
+            "body":  {"type":"string","maxLength":180}
+          },
+          "required":["title","body"]
+        }
+      },
+      "footer": {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Waldwoche · Programm</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:220px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">
+        Was wir in der Waldwoche machen
+      </div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:380px; display:grid; grid-template-columns: repeat(3, 1fr); gap: 40px;">
+      <div class="card">
+        <div class="photo" style="height: 200px; font-size: 14px;">Foto · Beobachten</div>
+        <div style="font-family: var(--font-mono); font-size: 16px; color: var(--taupe); letter-spacing:0.14em;">MO – DI</div>
+        <div style="font-size: 36px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Beobachten</div>
+        <div style="font-size: var(--col-body); line-height: 1.55; color: rgba(31,31,28,0.78);">
+          Tiere, Pflanzen und Spuren mit Lupe und Bestimmungs­buch erkunden.
+        </div>
+      </div>
+      <div class="card">
+        <div class="photo" style="height: 200px; font-size: 14px;">Foto · Bauen</div>
+        <div style="font-family: var(--font-mono); font-size: 16px; color: var(--taupe); letter-spacing:0.14em;">MI</div>
+        <div style="font-size: 36px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Bauen</div>
+        <div style="font-size: var(--col-body); line-height: 1.55; color: rgba(31,31,28,0.78);">
+          Brücken, Tipis und Insekten­hotels aus dem, was der Wald hergibt.
+        </div>
+      </div>
+      <div class="card">
+        <div class="photo" style="height: 200px; font-size: 14px;">Foto · Feiern</div>
+        <div style="font-family: var(--font-mono); font-size: 16px; color: var(--taupe); letter-spacing:0.14em;">DO – FR</div>
+        <div style="font-size: 36px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Feiern</div>
+        <div style="font-size: var(--col-body); line-height: 1.55; color: rgba(31,31,28,0.78);">
+          Waldolympiade, Lagerfeuer und gemeinsames Kochen zum Abschluss.
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;WALDWOCHE · JUNI 2026</span>
+      <span>SEITE 5 / 14</span>
+    </div>
+  </section>
+
+  <!-- 06 · Foto + Text ==================================================== -->
+  <section class="slide"
+    data-label="Ramspau · Foto + Text"
+    data-role="content-with-visual"
+    data-concepts="product-detail, hero-plus-description, story-beat"
+    data-when-to-use="Ein zentraler Gedanke mit unterstützendem Foto — pädagogisches Konzept, Schulhausführung, Lehrkraft-Porträt."
+    data-when-not-to-use="Bei reinem Text (Zitat) oder reinem Bild (Titel · Foto)."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "photo":   {"type":"image","description":"Foto links, ca. 820×720","placeholder":"Foto · Klassenzimmer / Outdoor"},
+      "title":   {"type":"string","maxLength":100},
+      "body":    {"type":"string","maxLength":420,"description":"1–2 Absätze"},
+      "buttons": {
+        "type":"array",
+        "minItems":0,"maxItems":2,
+        "items":{
+          "type":"object",
+          "properties":{
+            "label":   {"type":"string","maxLength":24},
+            "variant": {"type":"string","enum":["primary","secondary"]}
+          },
+          "required":["label"]
+        }
+      },
+      "footer": {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Konzept</div>
+    </div>
+    <div class="photo" style="position:absolute; top:220px; left:120px; width: 820px; height: 720px;">
+      Foto · Klassenzimmer / Outdoor
+    </div>
+    <div style="position:absolute; right:120px; top:240px; width: 760px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">
+        Jahrgangsgemischt lernen, draußen wie drinnen.
+      </div>
+      <div style="margin-top: 36px; font-size: var(--body); line-height: 1.6; color: rgba(31,31,28,0.82);">
+        Kinder lernen in altersgemischten Gruppen voneinander. Ältere erklären,
+        jüngere fragen — und alle gehen am Nachmittag in den Wald, weil dort
+        Lernen weitergeht, nur mit anderen Materialien.
+      </div>
+      <div style="margin-top: 36px; display: flex; gap: 16px;">
+        <div style="background: var(--wiese); color: #fff; padding: 14px 26px; font-size: 18px; font-weight:600;">
+          Mehr lesen
+        </div>
+        <div style="background: transparent; color: var(--tief); border: 1px solid var(--tief); padding: 14px 26px; font-size: 18px; font-weight:600;">
+          Termine ansehen
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;PÄDAGOGISCHES KONZEPT</span>
+      <span>SEITE 6 / 14</span>
+    </div>
+  </section>
+
+  <!-- 07 · Zitat ========================================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Zitat"
+    data-role="quote"
+    data-concepts="quote, statement, voice-guideline, stimme"
+    data-when-to-use="Starker Stimm-Moment — Kind, Elternstimme, Leitsatz der Schule."
+    data-when-not-to-use="Für normalen Text oder als Füller. Muss eine echte Stimme sein."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "quote":   {"type":"string","maxLength":260,"description":"Wörtliches Zitat ohne Anführungszeichen"},
+      "author":  {"type":"string","maxLength":40,"description":"z.B. MILA · KLASSE 2B"},
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Stimmen aus dem Schulhaus</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:280px;">
+      <div class="quote-mark">„</div>
+      <div style="font-size: var(--quote); font-weight:400; font-style: italic; color: var(--tief); letter-spacing:-0.015em; line-height: 1.12; max-width: 1500px; margin-top: -40px;">
+        Ich mag am liebsten, wenn wir draußen rechnen.<br/>Da sieht man die Aufgaben.
+      </div>
+      <div style="margin-top: 56px; display:flex; align-items:center; gap: 18px;">
+        <span class="accent-rule"></span>
+        <span style="font-family: var(--font-mono); font-size: 18px; letter-spacing: 0.14em; color: var(--taupe);">
+          MILA · KLASSE 2B
+        </span>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span>SCHULE IM GRÜNEN</span>
+      <span>SEITE 7 / 14</span>
+    </div>
+  </section>
+
+  <!-- 08 · Stundenplan ==================================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Stundenplan"
+    data-role="content-table"
+    data-concepts="schedule, weekly-grid, klassen-stundenplan, wochenplan"
+    data-when-to-use="Wöchentlicher Stundenplan einer Klasse: 5 Tage × bis zu 6 Stunden, mit Fachkürzeln. Für Eltern­abend oder Klassenraum-Aushang."
+    data-when-not-to-use="Für einzelne Termine oder Veranstaltungen — Termine-Liste verwenden. Für Tagesablauf-Pikto­gramme — Leitbild-Layout."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "days":    {"type":"array","minItems":5,"maxItems":5,"items":{"type":"string","maxLength":10}},
+      "rows": {
+        "type":"array","minItems":4,"maxItems":6,
+        "items":{
+          "type":"object",
+          "properties":{
+            "hour":  {"type":"string","maxLength":12,"description":"z.B. 1. STD"},
+            "time":  {"type":"string","maxLength":16,"description":"z.B. 08:00"},
+            "cells": {"type":"array","minItems":5,"maxItems":5,"items":{"type":"object","properties":{"subject":{"type":"string","maxLength":4},"variant":{"type":"string","enum":["plain","accent","dark"]}}}}
+          },
+          "required":["hour","cells"]
+        }
+      },
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Klasse 2 b · Wochenplan</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">Stundenplan · Schuljahr 2026 / 27</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:380px; display:grid; grid-template-columns: 160px repeat(5, 1fr); border-top: 1px solid var(--rule);">
+      <div></div>
+      <div style="font-family: var(--font-mono); font-size:16px; letter-spacing:0.14em; color: var(--taupe); padding: 18px 16px; border-bottom: 1px solid var(--rule);">MO</div>
+      <div style="font-family: var(--font-mono); font-size:16px; letter-spacing:0.14em; color: var(--taupe); padding: 18px 16px; border-bottom: 1px solid var(--rule);">DI</div>
+      <div style="font-family: var(--font-mono); font-size:16px; letter-spacing:0.14em; color: var(--taupe); padding: 18px 16px; border-bottom: 1px solid var(--rule);">MI</div>
+      <div style="font-family: var(--font-mono); font-size:16px; letter-spacing:0.14em; color: var(--taupe); padding: 18px 16px; border-bottom: 1px solid var(--rule);">DO</div>
+      <div style="font-family: var(--font-mono); font-size:16px; letter-spacing:0.14em; color: var(--taupe); padding: 18px 16px; border-bottom: 1px solid var(--rule);">FR</div>
+
+      <!-- rows -->
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); padding: 22px 16px; border-bottom: 1px solid var(--rule);">1. STD<br/><span style="color: rgba(31,31,28,0.5);">08:00</span></div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--wiese); color:#fff; font-weight:700; font-size: 28px;">D</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">D</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--wiese); color:#fff; font-weight:700; font-size: 28px;">HSU</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); padding: 22px 16px; border-bottom: 1px solid var(--rule);">2. STD<br/><span style="color: rgba(31,31,28,0.5);">08:50</span></div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--tief); color:#fff; font-weight:700; font-size: 28px;">SP</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">D</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--tief); color:#fff; font-weight:700; font-size: 28px;">SP</div>
+
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); padding: 22px 16px; border-bottom: 1px solid var(--rule);">3. STD<br/><span style="color: rgba(31,31,28,0.5);">09:55</span></div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">HSU</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">D</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--wiese); color:#fff; font-weight:700; font-size: 28px;">WALD</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">K</div>
+
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); padding: 22px 16px; border-bottom: 1px solid var(--rule);">4. STD<br/><span style="color: rgba(31,31,28,0.5);">10:45</span></div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">K</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">HSU</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); background: var(--wiese); color:#fff; font-weight:700; font-size: 28px;">WALD</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">RU</div>
+      <div style="padding: 22px 16px; border-bottom: 1px solid var(--rule); font-weight:700; font-size: 28px; color: var(--tief);">D</div>
+
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); padding: 22px 16px;">5. STD<br/><span style="color: rgba(31,31,28,0.5);">11:50</span></div>
+      <div style="padding: 22px 16px; font-weight:700; font-size: 28px; color: var(--tief);">MU</div>
+      <div style="padding: 22px 16px; font-weight:700; font-size: 28px; color: var(--tief);">D</div>
+      <div style="padding: 22px 16px; color: rgba(31,31,28,0.3); font-size: 22px;">—</div>
+      <div style="padding: 22px 16px; font-weight:700; font-size: 28px; color: var(--tief);">M</div>
+      <div style="padding: 22px 16px; font-weight:700; font-size: 28px; color: var(--tief);">SP</div>
+    </div>
+    <div style="position:absolute; left:120px; bottom: 130px; display:flex; gap:24px; font-family: var(--font-mono); font-size:14px; color: rgba(31,31,28,0.6); letter-spacing:0.06em;">
+      <span>D · DEUTSCH</span><span>M · MATHEMATIK</span><span>HSU · HEIMAT &amp; SACHUNTERRICHT</span><span>K · KUNST</span><span>SP · SPORT</span><span>MU · MUSIK</span><span>RU · RELIGION</span>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;STAND · 12.05.2026</span>
+      <span>SEITE 8 / 14</span>
+    </div>
+  </section>
+
+  <!-- 09 · Termine ======================================================== -->
+  <section class="slide"
+    data-label="Ramspau · Termine"
+    data-role="content-list"
+    data-concepts="calendar, dates, upcoming-events, kalender"
+    data-when-to-use="Chronologische Liste anstehender Termine — Eltern­sprech­tag, Schul­fest, Ferien­start. 4–8 Einträge."
+    data-when-not-to-use="Für Tagesordnung einer Versammlung — Agenda-Layout. Für Wochen­raster — Stundenplan."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "events": {
+        "type":"array","minItems":4,"maxItems":8,
+        "items":{
+          "type":"object",
+          "properties":{
+            "day":     {"type":"string","maxLength":3,"description":"Tag als Zahl, z.B. 12"},
+            "month":   {"type":"string","maxLength":4,"description":"Monatskürzel, z.B. JUN"},
+            "weekday": {"type":"string","maxLength":3,"description":"z.B. MO"},
+            "title":   {"type":"string","maxLength":50},
+            "time":    {"type":"string","maxLength":24,"optional":true},
+            "highlight": {"type":"boolean","optional":true}
+          },
+          "required":["day","month","title"]
+        }
+      },
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Schulkalender · Sommer 2026</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">Was bei uns ansteht</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:380px; display:flex; flex-direction:column;">
+      <div style="display:grid; grid-template-columns: 140px 80px 1fr 240px; gap: 32px; align-items:center; padding: 24px 0; border-top: 1px solid var(--rule);">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;"><div style="font-size:64px; font-weight:700; color: var(--tief); line-height:0.9; letter-spacing:-0.02em;">22</div><div style="font-family: var(--font-mono); font-size: 14px; letter-spacing:0.14em; color: var(--taupe); margin-top:4px;">JUN · MO</div></div>
+        <div></div>
+        <div style="font-size: 30px; font-weight:700; color: var(--tief); letter-spacing:-0.01em;">Start Waldwoche</div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: rgba(31,31,28,0.6); letter-spacing:0.08em;">TREFF · 08:00 · WALDRAND</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 140px 80px 1fr 240px; gap: 32px; align-items:center; padding: 24px 0; border-top: 1px solid var(--rule); background: var(--papier);">
+        <div style="display:flex; flex-direction:column; align-items:flex-start; padding-left: 12px;"><div style="font-size:64px; font-weight:700; color: var(--wiese); line-height:0.9; letter-spacing:-0.02em;">27</div><div style="font-family: var(--font-mono); font-size: 14px; letter-spacing:0.14em; color: var(--taupe); margin-top:4px;">JUN · SA</div></div>
+        <div><span style="display:inline-block; padding: 6px 12px; background: var(--wiese); color:#fff; font-family: var(--font-mono); font-size:12px; letter-spacing:0.12em;">HIGHLIGHT</span></div>
+        <div style="font-size: 30px; font-weight:700; color: var(--tief); letter-spacing:-0.01em;">Tag der offenen Tür</div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: rgba(31,31,28,0.6); letter-spacing:0.08em;">10 – 14 UHR · SCHULHAUS</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 140px 80px 1fr 240px; gap: 32px; align-items:center; padding: 24px 0; border-top: 1px solid var(--rule);">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;"><div style="font-size:64px; font-weight:700; color: var(--tief); line-height:0.9; letter-spacing:-0.02em;">04</div><div style="font-family: var(--font-mono); font-size: 14px; letter-spacing:0.14em; color: var(--taupe); margin-top:4px;">JUL · SA</div></div>
+        <div></div>
+        <div style="font-size: 30px; font-weight:700; color: var(--tief); letter-spacing:-0.01em;">Sommerschulfest</div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: rgba(31,31,28,0.6); letter-spacing:0.08em;">14 – 18 UHR · PAUSENHOF</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 140px 80px 1fr 240px; gap: 32px; align-items:center; padding: 24px 0; border-top: 1px solid var(--rule);">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;"><div style="font-size:64px; font-weight:700; color: var(--tief); line-height:0.9; letter-spacing:-0.02em;">23</div><div style="font-family: var(--font-mono); font-size: 14px; letter-spacing:0.14em; color: var(--taupe); margin-top:4px;">JUL · DO</div></div>
+        <div></div>
+        <div style="font-size: 30px; font-weight:700; color: var(--tief); letter-spacing:-0.01em;">Letzter Schultag · Zeugnisse</div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: rgba(31,31,28,0.6); letter-spacing:0.08em;">UNTERRICHT BIS 11:30</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 140px 80px 1fr 240px; gap: 32px; align-items:center; padding: 24px 0; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);">
+        <div style="display:flex; flex-direction:column; align-items:flex-start;"><div style="font-size:64px; font-weight:700; color: var(--tief); line-height:0.9; letter-spacing:-0.02em;">14</div><div style="font-family: var(--font-mono); font-size: 14px; letter-spacing:0.14em; color: var(--taupe); margin-top:4px;">SEP · MO</div></div>
+        <div></div>
+        <div style="font-size: 30px; font-weight:700; color: var(--tief); letter-spacing:-0.01em;">Erster Schultag · Einschulung</div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: rgba(31,31,28,0.6); letter-spacing:0.08em;">FEIER 09:00 · TURNHALLE</div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;STAND · 12.05.2026</span>
+      <span>SEITE 9 / 14</span>
+    </div>
+  </section>
+
+  <!-- 10 · Team / Lehrkräfte ============================================== -->
+  <section class="slide"
+    data-label="Ramspau · Team"
+    data-role="content-cards"
+    data-concepts="team, staff, lehrkraefte, kollegium, portraits"
+    data-when-to-use="Vorstellung Kollegium, Klassen­leitungen oder Förder­team — Foto, Name, Funktion, Sprechzeit."
+    data-when-not-to-use="Bei mehr als 8 Personen — Tabelle / Liste verwenden. Für eine Person — Foto + Text."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "members": {
+        "type":"array","minItems":3,"maxItems":4,
+        "items":{
+          "type":"object",
+          "properties":{
+            "photo":     {"type":"image","description":"Porträt, ca. 360×360"},
+            "name":      {"type":"string","maxLength":40},
+            "role":      {"type":"string","maxLength":50,"description":"z.B. Klassen­leitung 2 b"},
+            "contact":   {"type":"string","maxLength":80,"description":"E-Mail oder Sprechzeit"}
+          },
+          "required":["name","role"]
+        }
+      },
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Kollegium · Schuljahr 2026 / 27</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">Wer mit Ihren Kindern arbeitet</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:400px; display:grid; grid-template-columns: repeat(4, 1fr); gap: 32px;">
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div class="photo" style="width:100%; aspect-ratio: 1; font-size: 12px;">Porträt</div>
+        <div style="font-size: 28px; font-weight:700; color: var(--tief); letter-spacing:-0.01em; line-height:1.15;">Andrea Maierhofer</div>
+        <div style="font-family: var(--font-mono); font-size:14px; color: var(--wiese); letter-spacing:0.12em;">SCHULLEITUNG</div>
+        <div style="font-size:18px; line-height:1.5; color: rgba(31,31,28,0.7);"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="2d5d425e596d4a5f5843495e4e45584148005f4c405e5d4c58034948">[email&#160;protected]</a><br/>Mi · 14 – 16 Uhr</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div class="photo" style="width:100%; aspect-ratio: 1; font-size: 12px;">Porträt</div>
+        <div style="font-size: 28px; font-weight:700; color: var(--tief); letter-spacing:-0.01em; line-height:1.15;">Stefan Bauer</div>
+        <div style="font-family: var(--font-mono); font-size:14px; color: var(--wiese); letter-spacing:0.12em;">KLASSEN­LEITUNG 1 / 2 A</div>
+        <div style="font-size:18px; line-height:1.5; color: rgba(31,31,28,0.7);"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8ae8ebffeff8caedf8ffe4eef9e9e2ffe6efa7f8ebe7f9faebffa4eeef">[email&#160;protected]</a><br/>Di · 12:30 – 13:30 Uhr</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div class="photo" style="width:100%; aspect-ratio: 1; font-size: 12px;">Porträt</div>
+        <div style="font-size: 28px; font-weight:700; color: var(--tief); letter-spacing:-0.01em; line-height:1.15;">Franziska Huber</div>
+        <div style="font-family: var(--font-mono); font-size:14px; color: var(--wiese); letter-spacing:0.12em;">KLASSEN­LEITUNG 1 / 2 B</div>
+        <div style="font-size:18px; line-height:1.5; color: rgba(31,31,28,0.7);"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="0d65786f687f4d6a7f7863697e6e65786168207f6c607e7d6c78236968">[email&#160;protected]</a><br/>Do · 12:30 – 13:30 Uhr</div>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:18px;">
+        <div class="photo" style="width:100%; aspect-ratio: 1; font-size: 12px;">Porträt</div>
+        <div style="font-size: 28px; font-weight:700; color: var(--tief); letter-spacing:-0.01em; line-height:1.15;">Markus Kellner</div>
+        <div style="font-family: var(--font-mono); font-size:14px; color: var(--wiese); letter-spacing:0.12em;">FÖRDER­LEHRKRAFT</div>
+        <div style="font-size:18px; line-height:1.5; color: rgba(31,31,28,0.7);"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8ce7e9e0e0e2e9feccebfef9e2e8ffefe4f9e0e9a1feede1fffcedf9a2e8e9">[email&#160;protected]</a><br/>nach Vereinbarung</div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;KOLLEGIUM</span>
+      <span>SEITE 10 / 14</span>
+    </div>
+  </section>
+
+  <!-- 11 · Leitbild / Werte =============================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Leitbild"
+    data-role="content-columns"
+    data-concepts="values, principles, leitbild, schulwerte, pillars"
+    data-when-to-use="Vier Schul­werte oder Leitsätze als Quadrat-Raster — z.B. Eltern­abend Einleitung, Konzept­seite, Aushang."
+    data-when-not-to-use="Für drei Punkte (3-Spalter) oder mehr als vier (Liste). Für einzelne Stimme — Zitat-Layout."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "values": {
+        "type":"array","minItems":4,"maxItems":4,
+        "items":{
+          "type":"object",
+          "properties":{
+            "number": {"type":"string","maxLength":4,"description":"z.B. 01"},
+            "title":  {"type":"string","maxLength":24},
+            "body":   {"type":"string","maxLength":140}
+          },
+          "required":["title","body"]
+        }
+      },
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Leitbild</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">Vier Werte tragen unsere Schule</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:400px; display:grid; grid-template-columns: repeat(2, 1fr); gap: 36px;">
+      <div style="background: #fff; padding: 44px 40px; border-top: 6px solid var(--wiese); display:flex; flex-direction:column; gap:14px;">
+        <div style="font-family: var(--font-mono); font-size:18px; color: var(--taupe); letter-spacing:0.16em;">01</div>
+        <div style="font-size: 38px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Naturverbunden</div>
+        <div style="font-size: var(--col-body); line-height:1.55; color: rgba(31,31,28,0.78);">Wir lernen mit dem, was vor der Tür wächst. Wald, Wiese und Bach sind unser zweites Klassenzimmer.</div>
+      </div>
+      <div style="background: #fff; padding: 44px 40px; border-top: 6px solid var(--wiese); display:flex; flex-direction:column; gap:14px;">
+        <div style="font-family: var(--font-mono); font-size:18px; color: var(--taupe); letter-spacing:0.16em;">02</div>
+        <div style="font-size: 38px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Gemeinschaftlich</div>
+        <div style="font-size: var(--col-body); line-height:1.55; color: rgba(31,31,28,0.78);">Jahrgangs­gemischt heißt: Ältere erklären, jüngere fragen. Niemand sitzt allein vor seiner Aufgabe.</div>
+      </div>
+      <div style="background: #fff; padding: 44px 40px; border-top: 6px solid var(--wiese); display:flex; flex-direction:column; gap:14px;">
+        <div style="font-family: var(--font-mono); font-size:18px; color: var(--taupe); letter-spacing:0.16em;">03</div>
+        <div style="font-size: 38px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Selbstwirksam</div>
+        <div style="font-size: var(--col-body); line-height:1.55; color: rgba(31,31,28,0.78);">Kinder dürfen entscheiden, mit­gestalten und sich verirren. Daraus entsteht Vertrauen in sich selbst.</div>
+      </div>
+      <div style="background: #fff; padding: 44px 40px; border-top: 6px solid var(--wiese); display:flex; flex-direction:column; gap:14px;">
+        <div style="font-family: var(--font-mono); font-size:18px; color: var(--taupe); letter-spacing:0.16em;">04</div>
+        <div style="font-size: 38px; font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.1;">Verlässlich</div>
+        <div style="font-size: var(--col-body); line-height:1.55; color: rgba(31,31,28,0.78);">Klare Regeln, klare Zeiten, klare Ansprech­personen. Eltern wissen, woran sie sind.</div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;LEITBILD · STAND 2026</span>
+      <span>SEITE 11 / 14</span>
+    </div>
+  </section>
+
+  <!-- 12 · Statistik / Balken ============================================= -->
+  <section class="slide"
+    data-label="Ramspau · Statistik"
+    data-role="data-comparison"
+    data-concepts="comparison, ranking, distribution, anmeldungen, schulstatistik, bar-chart"
+    data-when-to-use="Vergleichende Zahlen — Anmelde­zahlen pro Klassen­stufe, Anwesen­heit, Mensa­tarife. 3–6 Werte mit Einheit."
+    data-when-not-to-use="Für Zeit­reihen (Linien­diagramm) oder mehr als 6 Werte (Tabelle)."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "unit":    {"type":"string","maxLength":24,"optional":true,"description":"z.B. KINDER"},
+      "bars": {
+        "type":"array","minItems":3,"maxItems":6,
+        "items":{
+          "type":"object",
+          "properties":{
+            "label": {"type":"string","maxLength":16},
+            "value": {"type":"number"},
+            "max":   {"type":"number","description":"Skalen-Maximum für die Balken­länge"},
+            "highlight": {"type":"boolean","optional":true}
+          },
+          "required":["label","value"]
+        }
+      },
+      "caption": {"type":"string","maxLength":160,"optional":true},
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Anmelde­zahlen · Schuljahr 2026 / 27</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px; display:flex; justify-content:space-between; align-items:flex-end;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05; max-width: 1100px;">Wo unsere Erstklässler herkommen</div>
+      <div style="font-family: var(--font-mono); font-size:14px; color: var(--taupe); letter-spacing:0.14em;">EINHEIT · KINDER</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:430px; display:flex; flex-direction:column; gap: 28px;">
+      <div style="display:grid; grid-template-columns: 200px 1fr 80px; gap: 28px; align-items:center;">
+        <div style="font-size: 28px; font-weight:700; color: var(--tief);">Ramspau</div>
+        <div style="height: 36px; background: var(--wiese); width: 80%;"></div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); text-align:right;">24</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 200px 1fr 80px; gap: 28px; align-items:center;">
+        <div style="font-size: 28px; font-weight:700; color: var(--tief);">Karlstein</div>
+        <div style="height: 36px; background: var(--tief); width: 47%;"></div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); text-align:right;">14</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 200px 1fr 80px; gap: 28px; align-items:center;">
+        <div style="font-size: 28px; font-weight:700; color: var(--tief);">Diesenbach</div>
+        <div style="height: 36px; background: var(--tief); width: 30%;"></div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); text-align:right;">9</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 200px 1fr 80px; gap: 28px; align-items:center;">
+        <div style="font-size: 28px; font-weight:700; color: var(--tief);">Eitlbrunn</div>
+        <div style="height: 36px; background: var(--taupe); width: 20%;"></div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); text-align:right;">6</div>
+      </div>
+      <div style="display:grid; grid-template-columns: 200px 1fr 80px; gap: 28px; align-items:center;">
+        <div style="font-size: 28px; font-weight:700; color: var(--tief);">Sonstige</div>
+        <div style="height: 36px; background: var(--taupe); width: 10%;"></div>
+        <div style="font-size: 32px; font-weight:700; color: var(--tief); text-align:right;">3</div>
+      </div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; bottom: 130px; font-size: 18px; color: rgba(31,31,28,0.6); line-height:1.5; max-width: 900px;">
+      Insgesamt 56 Anmeldungen · zwei Eingangs­klassen geplant · Stand 30.04.2026.
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;QUELLE · SCHULSEKRETARIAT</span>
+      <span>SEITE 12 / 14</span>
+    </div>
+  </section>
+
+  <!-- 13 · Materialliste / Checkliste ===================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Checkliste"
+    data-role="content-list"
+    data-concepts="checklist, packing-list, materialliste, einschulung, what-to-bring"
+    data-when-to-use="Konkrete Liste zum Mitbringen oder Erledigen — Schul­anfang-Material, Wald­woche-Packliste, Anmelde-Unterlagen."
+    data-when-not-to-use="Für Termine — Termine-Layout. Für offene Aufgaben mit Erklärung — 3-Spalter."
+    data-slots='{
+      "eyebrow": {"type":"string","maxLength":60,"optional":true},
+      "title":   {"type":"string","maxLength":80},
+      "groups": {
+        "type":"array","minItems":2,"maxItems":2,
+        "items":{
+          "type":"object",
+          "properties":{
+            "heading": {"type":"string","maxLength":40},
+            "items":   {"type":"array","minItems":3,"maxItems":8,"items":{"type":"string","maxLength":80}}
+          },
+          "required":["heading","items"]
+        }
+      },
+      "note":    {"type":"string","maxLength":200,"optional":true},
+      "footer":  {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <div style="position:absolute; top:100px; left:120px; right:120px; display:flex; justify-content:space-between; align-items:center;">
+      <img class="logo sm" src="assets/logo-full.jpg" alt="" />
+      <div class="eyebrow">Einschulung · September 2026</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:230px;">
+      <div style="font-size: var(--slide-title); font-weight:700; color: var(--tief); letter-spacing:-0.02em; line-height:1.05;">Was am ersten Schultag mitkommt</div>
+      <div class="claim-bar" style="margin-top: 18px; font-size: 22px; padding: 6px 18px;">Bitte beschriften Sie alles mit Namen.</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; top:480px; display:grid; grid-template-columns: repeat(2, 1fr); gap: 80px;">
+      <div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: var(--wiese); letter-spacing:0.14em; padding-bottom: 16px; border-bottom: 1px solid var(--rule);">SCHULRANZEN</div>
+        <div style="display:flex; flex-direction:column; gap: 18px; margin-top: 22px;">
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Federmäppchen mit Bleistiften, Buntstiften, Spitzer und Radiergummi</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Brotzeitbox und Trinkflasche (kein Glas)</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Hausschuhe in einem Stoffbeutel</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Sportbeutel mit T-Shirt, Hose und Turnschuhen</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Regenjacke und Gummistiefel im Schul­fach</span></div>
+        </div>
+      </div>
+      <div>
+        <div style="font-family: var(--font-mono); font-size:16px; color: var(--wiese); letter-spacing:0.14em; padding-bottom: 16px; border-bottom: 1px solid var(--rule);">UNTERLAGEN</div>
+        <div style="display:flex; flex-direction:column; gap: 18px; margin-top: 22px;">
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Unterschriebener Anmelde­bogen</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Kopie des Impf­ausweises</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Bestätigung Schul­ein­gangs­untersuchung</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Einzugs­ermächtigung Mensa­beitrag</span></div>
+          <div style="display:flex; gap:18px; align-items:flex-start;"><span style="width:24px; height:24px; border:2px solid var(--tief); display:inline-block; flex-shrink:0; margin-top:4px;"></span><span style="font-size: 24px; line-height:1.4;">Einverständnis für Foto­auf­nahmen</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;ABGABE BIS · 01.09.2026</span>
+      <span>SEITE 13 / 14</span>
+    </div>
+  </section>
+
+  <!-- 14 · Abschluss ====================================================== -->
+  <section class="slide papier"
+    data-label="Ramspau · Abschluss"
+    data-role="closer"
+    data-concepts="closer, thank-you, end, kontakt"
+    data-when-to-use="Letzte Folie jedes Decks — Dank, Kontakt, Claim."
+    data-when-not-to-use="Niemals weglassen. Auch interne Decks enden mit dieser Folie."
+    data-slots='{
+      "title":  {"type":"string","maxLength":40,"description":"z.B. Danke."},
+      "claim":  {"type":"string","maxLength":40,"optional":true},
+      "contact": {
+        "type":"array",
+        "minItems":1,"maxItems":3,
+        "items":{
+          "type":"object",
+          "properties":{
+            "label": {"type":"string","maxLength":20,"description":"z.B. Adresse / Kontakt / Web"},
+            "value": {"type":"string","maxLength":120}
+          },
+          "required":["label","value"]
+        }
+      },
+      "footer": {"type":"string","maxLength":80,"optional":true}
+    }'>
+    <img class="logo" src="assets/logo-full.jpg" alt=""
+         style="position:absolute; top:80px; left:120px;" />
+    <div style="position:absolute; left:120px; right:120px; top:380px;">
+      <div style="font-size: var(--display); font-weight:700; color: var(--tief); line-height:0.95; letter-spacing:-0.03em;">
+        Danke.
+      </div>
+      <div class="claim-bar" style="margin-top: 40px;">Die Schule im Grünen</div>
+    </div>
+    <div style="position:absolute; left:120px; right:120px; bottom: 200px; display:grid; grid-template-columns: repeat(3, 1fr); gap: 56px; border-top: 1px solid var(--rule); padding-top: 36px;">
+      <div>
+        <div class="eyebrow" style="font-size: 14px;">Adresse</div>
+        <div style="font-size: 22px; font-weight: 600; color: var(--tief); margin-top: 10px; line-height: 1.4;">
+          Schulstraße 4<br/>93128 Regenstauf
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow" style="font-size: 14px;">Kontakt</div>
+        <div style="font-size: 22px; font-weight: 600; color: var(--tief); margin-top: 10px; line-height: 1.4;">
+          +49 9402 9484-0<br/><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="8efee1fdfacee9fcfbe0eafdede6fbe2eba3fcefe3fdfeeffba0eaeb">[email&#160;protected]</a>
+        </div>
+      </div>
+      <div>
+        <div class="eyebrow" style="font-size: 14px;">Web</div>
+        <div style="font-size: 22px; font-weight: 600; color: var(--tief); margin-top: 10px; line-height: 1.4;">
+          grundschule-ramspau.de
+        </div>
+      </div>
+    </div>
+    <div class="footer">
+      <span>FLEXIBLE GRUNDSCHULE RAMSPAU</span>
+      <span><span class="accent-rule"></span>&nbsp;&nbsp;SCHULE IM GRÜNEN</span>
+      <span>SEITE 14 / 14</span>
+    </div>
+  </section>
+
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+  // Fit slides into the viewport (each .slide is 1920×1080)
+  function fit() {
+    const w = window.innerWidth;
+    const scale = Math.min(1, (w - 64) / 1920);
+    document.querySelectorAll('.slide').forEach(s => {
+      s.style.transform = 'scale(' + scale + ')';
+      s.style.transformOrigin = 'top left';
+      s.style.marginBottom = (1080 * scale - 1080) + 'px';
+      s.style.marginRight = (1920 * scale - 1920) + 'px';
+    });
+  }
+  window.addEventListener('resize', fit);
+  fit();
+</script>
+</body>
+</html>
