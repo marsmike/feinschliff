@@ -33,11 +33,25 @@ SLIDES_DIR = IMAGES_DIR / "slides"
 
 
 # --- Hero grid configuration -------------------------------------------------
-# Indices here map onto slide-NN.png produced by render_slides().
-# Picked across the deck for visual variety: cover (orange), kpi grid, two-col,
-# big number, quote-ish, and an end card. Adjust if a particular index is
-# visually weak after a first pass.
-HERO_PICKS = [0, 6, 12, 18, 24, 30]
+# Each entry is either:
+#   - an int → use SLIDES_DIR/slide-NN.png (from render_slides())
+#   - a Path → use the file at that path directly
+# The Path branch lets us mix in renders that don't come from the deck
+# HTML — for example, an Excalidraw layout from docs/brand-previews/ —
+# so the hero grid can showcase capabilities the deck doesn't itself
+# demonstrate.
+#
+# Picked across the deck for visual variety: cover (orange), kpi grid,
+# two-col, big number, Excalidraw diagram (HQ from atlas), end card.
+HERO_PICKS: list[int | Path] = [
+    0,
+    6,
+    12,
+    18,
+    REPO_ROOT / "docs" / "brand-previews" / "feinschliff"
+        / "13-excalidraw-diagram-full.png",
+    30,
+]
 HERO_COLS = 3
 HERO_ROWS = 2
 HERO_GAP = 24
@@ -131,10 +145,21 @@ async def render_slides() -> list[Path]:
         return rendered
 
 
+def _resolve_pick(pick: int | Path) -> Path:
+    """Map a HERO_PICKS entry to an actual PNG path.
+
+    ints reference the deck-rendered slides under SLIDES_DIR; Paths are
+    used as-is so the grid can blend in renders from other sources
+    (e.g., the Excalidraw atlas under docs/brand-previews/)."""
+    if isinstance(pick, int):
+        return SLIDES_DIR / f"slide-{pick:02d}.png"
+    return pick
+
+
 def build_hero_grid(rendered: list[Path]) -> Path:
     from PIL import Image
 
-    picks = [SLIDES_DIR / f"slide-{i:02d}.png" for i in HERO_PICKS]
+    picks = [_resolve_pick(p) for p in HERO_PICKS]
     missing = [p for p in picks if not p.exists()]
     if missing:
         raise SystemExit(f"Missing slide PNGs for hero grid: {missing}")
