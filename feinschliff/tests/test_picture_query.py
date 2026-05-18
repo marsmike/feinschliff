@@ -19,6 +19,8 @@ each test.
 """
 from __future__ import annotations
 
+import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -580,3 +582,282 @@ def test_picture_query_label_used_as_slot_id(tmp_path, tiny_png):
     _build(dsl, deck_dir=tmp_path, provider=provider)
     lock = json.loads((tmp_path / "asset_lock.json").read_text())
     assert "hero_image" in lock["slots"]
+
+
+# ---------------------------------------------------------------------------
+# Findings #2 + #3 — _materialise trusts HTTP Content-Type at download time
+# ---------------------------------------------------------------------------
+
+class _FakeHTTPResponse:
+    """Minimal stand-in for an ``http.client.HTTPResponse`` good enough for
+    ``_materialise``'s consumption: it reads bytes and exposes ``.headers``
+    that lookups ``Content-Type`` from."""
+
+    def __init__(self, data: bytes, content_type: str | None = None):
+        self._data = data
+        # ``email.message.Message`` is what urllib hands us in real life;
+        # a plain dict also works because we only call ``.get()``.
+        self.headers = {"Content-Type": content_type} if content_type else {}
+
+    def read(self) -> bytes:
+        return self._data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_a):
+        return False
+
+
+def test_materialise_trusts_content_type_over_hit_mime(tmp_path):
+    """When the HTTP response declares ``Content-Type: image/webp`` but the
+    provider's ``ImageHit.mime`` says ``image/jpeg``, the cached file
+    must take the ``.webp`` extension. This is the core Finding #2/#3
+    behaviour: the response is authoritative, the hint is a fallback."""
+    import urllib.request as _urlreq
+    import unittest.mock as _um
+
+    from io import BytesIO
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color=(0, 255, 0)).save(buf, "WEBP")
+    webp_bytes = buf.getvalue()
+
+    hit = ImageHit(
+        url="https://example.invalid/photo.jpg",
+        license="L", attribution="A",
+        width=10, height=10, mime="image/jpeg",  # hint says jpeg
+    )
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        # Response says webp — that wins.
+        return _FakeHTTPResponse(webp_bytes, content_type="image/webp")
+
+    from lib.dsl.pptx_emit import _materialise as _mat
+    cache_dir = tmp_path / "cache"
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        result, err = _mat(hit, cache_dir)
+
+    assert err is None, f"unexpected error: {err!r}"
+    assert result is not None, "materialise returned None for a happy fetch"
+    assert result.suffix == ".webp", (
+        f"expected .webp extension from Content-Type, got {result.suffix!r}"
+    )
+    assert result.is_file()
+
+
+def test_materialise_strips_charset_suffix_from_content_type(tmp_path):
+    """``Content-Type: image/png; charset=binary`` is a real-world variant.
+    The mime token must be parsed out before the lookup."""
+    import urllib.request as _urlreq
+    import unittest.mock as _um
+
+    from io import BytesIO
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color=(0, 0, 255)).save(buf, "PNG")
+    png_bytes = buf.getvalue()
+
+    hit = ImageHit(
+        url="https://example.invalid/img",  # no extension in URL
+        license="L", attribution="A",
+        width=10, height=10, mime="",  # no hint either
+    )
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        return _FakeHTTPResponse(png_bytes, content_type="image/png; charset=binary")
+
+    from lib.dsl.pptx_emit import _materialise as _mat
+    cache_dir = tmp_path / "cache"
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        result, err = _mat(hit, cache_dir)
+
+    assert err is None
+    assert result is not None
+    assert result.suffix == ".png", (
+        f"expected .png after stripping charset suffix, got {result.suffix!r}"
+    )
+
+
+def test_materialise_falls_back_to_hit_mime_when_content_type_missing(tmp_path):
+    """No ``Content-Type`` header — the cache filename must take its
+    extension from ``hit.mime`` (the pre-fix code path), so existing
+    callers that never set Content-Type behave unchanged."""
+    import urllib.request as _urlreq
+    import unittest.mock as _um
+
+    from io import BytesIO
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color=(255, 0, 0)).save(buf, "PNG")
+    png_bytes = buf.getvalue()
+
+    hit = ImageHit(
+        url="https://example.invalid/img",  # no extension hint in URL
+        license="L", attribution="A",
+        width=10, height=10, mime="image/png",
+    )
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        return _FakeHTTPResponse(png_bytes, content_type=None)
+
+    from lib.dsl.pptx_emit import _materialise as _mat
+    cache_dir = tmp_path / "cache"
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        result, err = _mat(hit, cache_dir)
+
+    assert err is None
+    assert result is not None
+    assert result.suffix == ".png", (
+        f"expected .png from hit.mime fallback, got {result.suffix!r}"
+    )
+
+
+def test_materialise_defaults_to_bin_when_nothing_resolvable(tmp_path):
+    """Pin the last-resort behaviour: no Content-Type header, no known
+    ``hit.mime``, no extension in the URL path → ``.bin``. This is rare
+    after the Content-Type trust fix but the fallback must stay intact."""
+    import urllib.request as _urlreq
+    import unittest.mock as _um
+
+    hit = ImageHit(
+        url="https://example.invalid/img",  # no extension
+        license="L", attribution="A",
+        width=10, height=10, mime="application/octet-stream",
+    )
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        # No Content-Type header, opaque bytes.
+        return _FakeHTTPResponse(b"\x00\x01\x02\x03", content_type=None)
+
+    from lib.dsl.pptx_emit import _materialise as _mat
+    cache_dir = tmp_path / "cache"
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        result, err = _mat(hit, cache_dir)
+
+    assert err is None
+    assert result is not None
+    assert result.suffix == ".bin", (
+        f"expected .bin last-resort fallback, got {result.suffix!r}"
+    )
+
+
+def test_mime_to_ext_recognises_extended_image_mimes():
+    """Direct lookup sanity check on the extended ``_MIME_TO_EXT`` map.
+    These are the new entries added with the Content-Type trust change."""
+    from lib.dsl.pptx_emit import _MIME_TO_EXT
+
+    assert _MIME_TO_EXT["image/webp"] == ".webp"
+    assert _MIME_TO_EXT["image/gif"] == ".gif"
+    assert _MIME_TO_EXT["image/avif"] == ".avif"
+    assert _MIME_TO_EXT["image/svg+xml"] == ".svg"
+    assert _MIME_TO_EXT["image/bmp"] == ".bmp"
+    assert _MIME_TO_EXT["image/tiff"] == ".tiff"
+    # The pre-existing entries must still be there.
+    assert _MIME_TO_EXT["image/jpeg"] == ".jpg"
+    assert _MIME_TO_EXT["image/jpg"] == ".jpg"  # tolerated variant
+    assert _MIME_TO_EXT["image/png"] == ".png"
+
+
+# ---------------------------------------------------------------------------
+# Finding #1 — atexit cleanup for throwaway tempdir caches
+# ---------------------------------------------------------------------------
+
+def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
+    """The throwaway-cache cleanup must register with ``atexit`` exactly
+    once, even across many fallback invocations. We don't drive the
+    process-exit path (atexit is too lifecycle-specific to unit-test);
+    we assert the registry shape instead — the handler is present, the
+    guard fires once, and tempdirs accumulate in the registry list."""
+    import urllib.request as _urlreq
+    import unittest.mock as _um
+
+    from io import BytesIO
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color=(128, 0, 128)).save(buf, "PNG")
+    png_bytes = buf.getvalue()
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        return _FakeHTTPResponse(png_bytes, content_type="image/png")
+
+    # Reset the module-level registry state so this test is hermetic.
+    # ``monkeypatch.setattr`` restores the originals on teardown.
+    from lib.dsl import pptx_emit as _pe
+    monkeypatch.setattr(_pe, "_THROWAWAY_CACHE_DIRS", [])
+    monkeypatch.setattr(_pe, "_THROWAWAY_CLEANUP_REGISTERED", False)
+
+    hit = ImageHit(
+        url="https://example.invalid/throwaway.png",
+        license="L", attribution="A",
+        width=10, height=10, mime="image/png",
+    )
+    provider = MagicMock(spec=ImageProvider)
+    provider.name = "fakeprov"
+    provider.search.return_value = [hit]
+
+    dsl_a = (
+        'canvas 1920x1080\n'
+        'theme test\n'
+        'picture 100,100 200x200 query:"throwaway one"'
+    )
+    dsl_b = (
+        'canvas 1920x1080\n'
+        'theme test\n'
+        'picture 100,100 200x200 query:"throwaway two"'
+    )
+
+    from lib.dsl.pptx_emit import build_presentation as _bp
+
+    # Track atexit.register calls so we can assert single registration.
+    mock_register = MagicMock()
+    monkeypatch.setattr(_pe.atexit, "register", mock_register)
+
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        # Build A — first fallback, expect atexit.register fired once.
+        with pytest.warns(RuntimeWarning, match="deck_dir is unset"):
+            nodes_a, _ = parse_lines(dsl_a)
+            _bp(nodes_a, _minimal_tokens(),
+                image_provider=provider, deck_dir=None)
+        # Build B — second fallback, expect NO additional registration.
+        with pytest.warns(RuntimeWarning, match="deck_dir is unset"):
+            nodes_b, _ = parse_lines(dsl_b)
+            _bp(nodes_b, _minimal_tokens(),
+                image_provider=provider, deck_dir=None)
+
+    # The guard ensures register fires exactly once across both builds.
+    assert mock_register.call_count == 1, (
+        f"expected atexit.register to fire exactly once across two "
+        f"fallback invocations, got {mock_register.call_count}"
+    )
+    # The handler the guard registered is our cleanup function.
+    registered_callable = mock_register.call_args.args[0]
+    assert registered_callable is _pe._cleanup_throwaway_caches
+
+    # Both throwaway dirs accumulated in the registry — the single atexit
+    # handler walks the full list on exit.
+    assert len(_pe._THROWAWAY_CACHE_DIRS) == 2, (
+        f"expected two registered tempdirs, got {_pe._THROWAWAY_CACHE_DIRS!r}"
+    )
+    # And the guard reflects the registration happened.
+    assert _pe._THROWAWAY_CLEANUP_REGISTERED is True
+
+
+def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
+    """The atexit handler must be safe to invoke even when a registered
+    tempdir was already removed by something else (a second handler, the
+    OS wiping ``/tmp``, an explicit teardown). ``shutil.rmtree`` with
+    ``ignore_errors=True`` swallows the FileNotFoundError."""
+    import unittest.mock as _um
+
+    from lib.dsl import pptx_emit as _pe
+
+    # Use real tempdirs so the rmtree call is meaningful.
+    d1 = Path(tempfile.mkdtemp(prefix="feinschliff-cleanup-test-"))
+    d2 = Path(tempfile.mkdtemp(prefix="feinschliff-cleanup-test-"))
+    # Pre-remove d2 so the cleanup hits a "missing" entry.
+    shutil.rmtree(d2)
+    assert not d2.exists()
+
+    with _um.patch.object(_pe, "_THROWAWAY_CACHE_DIRS", [d1, d2]):
+        # Must not raise — ignore_errors=True swallows the missing dir.
+        _pe._cleanup_throwaway_caches()
+
+    # d1 was actually cleaned.
+    assert not d1.exists(), "live dir should have been removed by cleanup"

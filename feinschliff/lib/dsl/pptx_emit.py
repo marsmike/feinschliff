@@ -18,11 +18,13 @@ Primitives implemented:
 """
 from __future__ import annotations
 
+import atexit
 import hashlib
 import io
 import json
 import os
 import re
+import shutil
 import tempfile
 import time
 import urllib.error
@@ -604,14 +606,28 @@ _SLOT_SLUG_RE = re.compile(r"[^A-Za-z0-9]+")
 # MIME → file extension map for materialised cache filenames. Defaults to
 # `.bin` for unknown/missing — the renderer falls back to PIL's auto-format
 # detection which usually still works.
+#
+# ``image/jpg`` is the wrong-but-common variant of ``image/jpeg`` — some CDNs
+# emit it; tolerating both keeps the extension chain honest.
 _MIME_TO_EXT = {
     "image/jpeg": ".jpg",
     "image/jpg":  ".jpg",
     "image/png":  ".png",
     "image/webp": ".webp",
     "image/gif":  ".gif",
+    "image/avif": ".avif",
     "image/svg+xml": ".svg",
+    "image/bmp":  ".bmp",
+    "image/tiff": ".tiff",
 }
+
+# Image mimes we accept as authoritative when read from a response's
+# ``Content-Type`` header at download time (Findings #2 + #3). Provider hits
+# carry a best-effort mime hint, but the actual bytes' type is determined
+# by what the server returned — trusting Content-Type here kills both the
+# Unsplash-hardcoded-mime fragility AND the ``.bin`` fallback risk for
+# servers that swap the body's encoding via content negotiation.
+_AUTHORITATIVE_IMAGE_MIMES = frozenset(_MIME_TO_EXT)
 
 # HTTP materialise timing knobs — mirror the constants used in
 # lib/providers/unsplash.py so the math is comprehensible. Two attempts
@@ -619,6 +635,66 @@ _MIME_TO_EXT = {
 # safely under the 30 s wall budget the spec promises.
 _PER_ATTEMPT_TIMEOUT_S = 14
 _BACKOFF_S = 1.0
+
+
+def _pick_ext_from_content_type(content_type: str) -> str:
+    """Return a cache-file extension from an HTTP ``Content-Type`` header,
+    or ``""`` if the header is missing, unparseable, or names a mime we
+    don't recognise as an image.
+
+    The header may carry a ``; charset=…`` or ``; boundary=…`` suffix;
+    we strip everything after the first ``;`` and lowercase before
+    looking the mime up. Whitespace either side of the mime token is
+    tolerated. An empty / non-image / unknown mime returns ``""`` so
+    the caller falls back to ``hit.mime`` → URL-path-suffix → ``.bin``.
+    """
+    if not content_type:
+        return ""
+    mime = content_type.split(";", 1)[0].strip().lower()
+    if mime in _AUTHORITATIVE_IMAGE_MIMES:
+        return _MIME_TO_EXT[mime]
+    return ""
+
+
+# Throwaway-cache cleanup (Finding #1).
+#
+# When ``_emit_picture`` is invoked without ``ctx.deck_dir`` (library-mode
+# callers who forgot to wire it) and a ``query:`` slot needs HTTP
+# materialise, we fall back to a ``tempfile.mkdtemp`` directory. The
+# RuntimeWarning at the call site prompts the operator to fix the wiring,
+# but repeated library invocations across a long-running process would
+# otherwise leak one tempdir per build.
+#
+# We register a single ``atexit`` handler the first time the fallback
+# fires, and the handler ``shutil.rmtree``s every dir we've created. The
+# ``_THROWAWAY_CLEANUP_REGISTERED`` guard ensures we only register once
+# even across many fallback invocations.
+_THROWAWAY_CACHE_DIRS: list[Path] = []
+_THROWAWAY_CLEANUP_REGISTERED = False
+
+
+def _cleanup_throwaway_caches() -> None:
+    """Remove every throwaway cache dir we created during this process.
+
+    Uses ``ignore_errors=True`` because any of these dirs may already have
+    been cleaned by another path (a previous explicit teardown, the OS
+    wiping ``/tmp``, etc.), and a process-exit handler must never raise.
+    """
+    for d in _THROWAWAY_CACHE_DIRS:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def _register_throwaway_cache_cleanup() -> None:
+    """Register ``_cleanup_throwaway_caches`` with ``atexit`` exactly once.
+
+    Subsequent calls are no-ops — the cleanup walks the full registry,
+    so we don't need a separate atexit entry per dir.
+    """
+    global _THROWAWAY_CLEANUP_REGISTERED
+    if _THROWAWAY_CLEANUP_REGISTERED:
+        return
+    _THROWAWAY_CLEANUP_REGISTERED = True
+    atexit.register(_cleanup_throwaway_caches)
 
 
 def _slot_id_from_query(query: str) -> str:
@@ -836,14 +912,21 @@ def _materialise(
         return (p, None) if p.is_file() else (None, None)
     if url.startswith(("http://", "https://")):
         cache_dir.mkdir(parents=True, exist_ok=True)
+        # Pre-compute fallback extension from the hit's mime hint or the URL
+        # path. The response's ``Content-Type`` may override this at
+        # download time (Findings #2 + #3).
         ext = _MIME_TO_EXT.get(hit.mime.lower(), "")
         if not ext:
-            # Fall back to URL path extension.
             from urllib.parse import urlparse
             url_path = urlparse(url).path
             url_ext = Path(url_path).suffix.lower()
             ext = url_ext if url_ext else ".bin"
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+        # Fast-path: a prior run already cached this URL with the
+        # fallback extension. Re-use without hitting the network. We
+        # deliberately accept a small risk of staleness (Content-Type
+        # might have flipped server-side) in exchange for not re-paying
+        # the HTTP round trip on every rebuild.
         target = cache_dir / f"{digest}{ext}"
         if target.is_file():
             return (target, None)
@@ -858,7 +941,29 @@ def _materialise(
                 with urllib.request.urlopen(  # noqa: S310
                     url, timeout=_PER_ATTEMPT_TIMEOUT_S,
                 ) as resp:
+                    # Trust the response's ``Content-Type`` over ``hit.mime``
+                    # when it names a known image mime (Findings #2 + #3).
+                    # This protects against servers that content-negotiate
+                    # (e.g. Unsplash → webp) and against ``hit.mime`` hints
+                    # that were never set authoritatively in the first place.
+                    # ``resp.headers`` is always present on a real
+                    # ``http.client.HTTPResponse``; ``getattr`` keeps us
+                    # safe against test fakes / unusual urlopen returns.
+                    response_headers = getattr(resp, "headers", None)
+                    response_ct = ""
+                    if response_headers is not None:
+                        # Both ``email.message.Message`` and ``dict`` support .get.
+                        response_ct = response_headers.get("Content-Type", "") or ""
+                    ct_ext = _pick_ext_from_content_type(response_ct)
+                    if ct_ext:
+                        ext = ct_ext
                     data = resp.read()
+                # Re-derive target after the Content-Type override.
+                target = cache_dir / f"{digest}{ext}"
+                if target.is_file():
+                    # Another build raced ahead and cached this URL with
+                    # the same extension — re-use rather than re-write.
+                    return (target, None)
                 target.write_bytes(data)
                 return (target, None)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
@@ -955,8 +1060,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
             # process-temp dir so the build still completes — but warn so
             # library callers who forgot to wire deck_dir notice the
             # misconfig (downloads won't be reused across rebuilds).
-            import tempfile
+            #
+            # Register the dir with the throwaway-cache cleanup so a
+            # long-running library-mode process (many builds, all with
+            # deck_dir=None) doesn't leak disk. The atexit handler runs
+            # once per process and walks the full registry.
             cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
+            _THROWAWAY_CACHE_DIRS.append(cache_dir)
+            _register_throwaway_cache_cleanup()
             warnings.warn(
                 "EmitContext.deck_dir is unset; HTTP image materialise will "
                 "use a throwaway tempdir cache (no rebuild reuse). Wire "

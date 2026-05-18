@@ -191,6 +191,12 @@ def _parse_results(payload: dict[str, Any]) -> list[ImageHit]:
                 attribution=f"{author} on Unsplash",
                 width=int(width) if isinstance(width, int) else None,
                 height=int(height) if isinstance(height, int) else None,
+                # ``image/jpeg`` is a best-effort hint — the ``urls.regular``
+                # endpoint carries ``?fm=jpg`` so jpeg is the typical body,
+                # but Unsplash may content-negotiate to webp / avif. The
+                # ``_materialise`` step in ``lib/dsl/pptx_emit`` re-types
+                # the cache file from the response's ``Content-Type`` at
+                # download time, so this hint is non-authoritative.
                 mime="image/jpeg",
             )
         )
