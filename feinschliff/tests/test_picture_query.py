@@ -372,13 +372,20 @@ def test_brand_switch_invalidates_lock(tmp_path, tiny_png):
     assert lock["provider"] == "provider_b"
 
 
-def test_picture_query_search_exception_treated_as_no_hit(tmp_path):
+def test_picture_query_search_exception_marked_as_search_error(tmp_path):
     """``provider.search()`` raising must be caught at the
-    ``_emit_picture`` boundary and treated like an empty result — same
-    as ``return []``. Per spec §"Failure modes": placeholder rect +
-    ``missing_assets`` entry, no crash. Without this test a future
-    refactor could silently drop the ``except Exception: return None``
-    in ``_lookup_lock_then_search``.
+    ``_emit_picture`` boundary so the build still completes with a
+    placeholder rect (per spec §"Failure modes"), BUT the failure must
+    be distinguishable from a legitimate empty-result miss:
+
+    - A ``RuntimeWarning`` is emitted naming the provider, query, and
+      exception type so the operator notices in the build log.
+    - The ``missing_assets`` entry is ``kind="search-error"`` (not
+      ``"no-hit"``) and carries an ``exc_type`` field.
+
+    Without these signals a transient provider crash (e.g. expired API
+    token, network blip) would look identical to "we searched and the
+    provider has nothing matching this query" — masking real bugs.
     """
     provider = MagicMock(spec=ImageProvider)
     provider.name = "fakeprov"
@@ -389,16 +396,23 @@ def test_picture_query_search_exception_treated_as_no_hit(tmp_path):
         'theme test\n'
         'picture 100,100 200x200 query:"explodes"'
     )
-    # No exception should bubble out of the build.
-    prs = _build(dsl, deck_dir=tmp_path, provider=provider)
+    # No exception should bubble out of the build, but a RuntimeWarning
+    # must fire identifying the provider crash.
+    with pytest.warns(RuntimeWarning, match="raised on search"):
+        prs = _build(dsl, deck_dir=tmp_path, provider=provider)
 
-    # missing_assets gets a no-hit entry (impl maps exceptions to the same
-    # path as a `[]` return — see `_lookup_lock_then_search`).
+    # missing_assets gets a search-error entry (distinct from no-hit).
     assert prs.missing_assets, "expected a missing_assets entry"
-    no_hit = [e for e in prs.missing_assets if e.get("kind") == "no-hit"]
-    assert len(no_hit) == 1
-    assert no_hit[0]["query"] == "explodes"
-    assert no_hit[0]["provider"] == "fakeprov"
+    errors = [e for e in prs.missing_assets if e.get("kind") == "search-error"]
+    assert len(errors) == 1
+    assert errors[0]["query"] == "explodes"
+    assert errors[0]["provider"] == "fakeprov"
+    assert errors[0]["exc_type"] == "RuntimeError"
+
+    # And specifically NOT a no-hit entry — those are reserved for
+    # provider returning ``[]``.
+    no_hits = [e for e in prs.missing_assets if e.get("kind") == "no-hit"]
+    assert no_hits == []
 
     # Placeholder rect emitted (not a picture).
     from pptx.enum.shapes import MSO_SHAPE_TYPE
@@ -485,6 +499,64 @@ def test_picture_query_warns_when_deck_dir_unset_for_http_hit(tmp_path):
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     shapes = list(prs.slides[0].shapes)
     assert shapes and shapes[0].shape_type == MSO_SHAPE_TYPE.PICTURE
+
+
+def test_picture_query_fetch_failed_carries_error_diagnostic(tmp_path):
+    """When the HTTP materialise step fails on every retry, the
+    ``missing_assets`` entry for ``kind="fetch-failed"`` must carry an
+    ``error`` field naming the underlying exception type and message.
+    Without that diagnostic, a build that silently degraded a slot to a
+    placeholder rect looks identical to a slot that hit ``[]`` from the
+    provider — operators have no way to triage transient HTTP failures.
+    """
+    import urllib.error
+    import urllib.request as _urlreq
+
+    hit = ImageHit(
+        url="https://example.invalid/never-resolves.png",
+        license="L", attribution="A",
+        width=10, height=10, mime="image/png",
+    )
+    provider = MagicMock(spec=ImageProvider)
+    provider.name = "fakeprov"
+    provider.search.return_value = [hit]
+
+    def _raising_urlopen(url, timeout=None):  # noqa: ARG001
+        raise urllib.error.HTTPError(
+            url, 404, "Not Found", hdrs=None, fp=None,  # type: ignore[arg-type]
+        )
+
+    dsl = (
+        'canvas 1920x1080\n'
+        'theme test\n'
+        'picture 100,100 200x200 query:"http boom"'
+    )
+
+    import unittest.mock as _um
+    with _um.patch.object(_urlreq, "urlopen", _raising_urlopen):
+        prs = _build(dsl, deck_dir=tmp_path, provider=provider)
+
+    fetch_failed = [e for e in prs.missing_assets if e.get("kind") == "fetch-failed"]
+    assert len(fetch_failed) == 1, (
+        f"expected exactly one fetch-failed entry, got {prs.missing_assets}"
+    )
+    entry = fetch_failed[0]
+    assert entry["query"] == "http boom"
+    assert entry["url"] == "https://example.invalid/never-resolves.png"
+    assert entry["provider"] == "fakeprov"
+    # Error context is the whole point of this test.
+    assert "error" in entry, (
+        f"fetch-failed entry missing 'error' diagnostic: {entry!r}"
+    )
+    assert "HTTPError" in entry["error"], (
+        f"expected exception type in error string, got {entry['error']!r}"
+    )
+
+    # Placeholder rect emitted in place of the un-fetchable picture.
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    shapes = list(prs.slides[0].shapes)
+    assert len(shapes) == 1
+    assert shapes[0].shape_type != MSO_SHAPE_TYPE.PICTURE
 
 
 def test_picture_query_label_used_as_slot_id(tmp_path, tiny_png):

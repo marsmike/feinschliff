@@ -21,7 +21,9 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import re
+import tempfile
 import urllib.error
 import urllib.request
 import warnings
@@ -644,13 +646,29 @@ def _read_lock(deck_dir: Path | None) -> dict:
 
 
 def _write_lock(deck_dir: Path | None, lock: dict) -> None:
-    """Persist the lock as pretty-printed JSON. No-op if deck_dir is None."""
+    """Persist the lock as pretty-printed JSON. No-op if deck_dir is None.
+
+    The write is done via tmp-file + ``os.replace`` so a crashed or
+    interrupted build can't leave a half-written ``asset_lock.json`` that
+    future runs fail to parse. The tmp file is created in the same
+    directory as the lock so the rename is atomic on POSIX (cross-
+    filesystem renames aren't atomic).
+    """
     if deck_dir is None:
         return
     deck_dir.mkdir(parents=True, exist_ok=True)
-    (deck_dir / "asset_lock.json").write_text(
-        json.dumps(lock, indent=2, sort_keys=True) + "\n"
-    )
+    lock_path = deck_dir / "asset_lock.json"
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        dir=lock_path.parent,
+        prefix=".asset_lock.",
+        suffix=".tmp",
+        delete=False,
+    ) as tmp:
+        json.dump(lock, tmp, indent=2, sort_keys=True)
+        tmp.write("\n")
+        tmp_path = Path(tmp.name)
+    os.replace(tmp_path, lock_path)
 
 
 def _hit_from_lock_entry(entry: dict) -> "ImageHit | None":
@@ -708,12 +726,29 @@ def _entry_from_hit(hit: "ImageHit", query: str) -> dict:
     return entry
 
 
+class _SearchError:
+    """Sentinel returned by ``_lookup_lock_then_search`` when
+    ``provider.search`` raised.
+
+    Distinct from ``None`` (legitimate empty-result miss) so the caller
+    can mark the ``missing_assets`` entry as ``kind="search-error"``
+    rather than ``kind="no-hit"``. Carries the exception type so the
+    caller can surface a useful diagnostic without re-raising.
+    """
+    __slots__ = ("exc_type",)
+
+    def __init__(self, exc_type: type):
+        self.exc_type = exc_type
+
+
 def _lookup_lock_then_search(
     ctx: EmitContext, slot_id: str, query: str,
-) -> "ImageHit | None":
+) -> "ImageHit | _SearchError | None":
     """Return a pinned hit for `slot_id` if available + valid; otherwise
     call ``ctx.image_provider.search(query, count=1)``, pin the first
     result, and return it. Returns ``None`` if the provider returns ``[]``.
+    Returns a ``_SearchError`` sentinel if the provider raises — callers
+    differentiate provider-crash from legitimate-no-hit on this signal.
 
     Failed searches are NOT pinned — a stale "no results" entry would
     block the slot from ever resolving, even after the provider's
@@ -739,9 +774,18 @@ def _lookup_lock_then_search(
     # belongs to a different provider. Re-search.
     try:
         hits = provider.search(query, count=1)
-    except Exception:
-        # Per spec §"Failure modes": treat exceptions the same as `[]`.
-        return None
+    except Exception as exc:
+        # Provider crashed (network, library bug, bad token, …). Surface
+        # via warning + sentinel so the caller writes a search-error
+        # entry to missing_assets; the build still completes with a
+        # placeholder rect so a single bad slot doesn't block delivery.
+        warnings.warn(
+            f"image provider {provider.name!r} raised on search({query!r}): "
+            f"{type(exc).__name__}: {exc}",
+            RuntimeWarning,
+            stacklevel=3,
+        )
+        return _SearchError(type(exc))
     if not hits:
         return None
     hit = hits[0]
@@ -756,14 +800,22 @@ def _lookup_lock_then_search(
     return hit
 
 
-def _materialise(hit: "ImageHit", cache_dir: Path) -> Path | None:
+def _materialise(
+    hit: "ImageHit", cache_dir: Path,
+) -> tuple[Path | None, Exception | None]:
     """Resolve an ``ImageHit`` URL to a local Path.
 
     - ``file://`` → just check the file exists.
     - ``http(s)://`` → download to ``<cache_dir>/<sha1(url)>.<ext>`` if
-      not already present. Single retry. 30s timeout. Returns ``None``
-      on persistent failure.
+      not already present. Single retry. 30s timeout. Returns
+      ``(None, last_err)`` on persistent failure.
     - Bare path → treat as a filesystem path.
+
+    Returns ``(path, None)`` on success and ``(None, err_or_None)`` on
+    failure. The second element carries the last exception raised on the
+    HTTP path so the caller can include error diagnostics in
+    ``missing_assets`` entries; it is ``None`` for non-HTTP misses where
+    no exception was involved (e.g. a missing ``file://`` target).
 
     The sha1+ext naming keeps re-runs cheap: repeated builds against the
     same URL skip the network entirely after the first successful fetch.
@@ -771,7 +823,7 @@ def _materialise(hit: "ImageHit", cache_dir: Path) -> Path | None:
     url = hit.url
     if url.startswith("file://"):
         p = Path(url[len("file://"):])
-        return p if p.is_file() else None
+        return (p, None) if p.is_file() else (None, None)
     if url.startswith(("http://", "https://")):
         cache_dir.mkdir(parents=True, exist_ok=True)
         ext = _MIME_TO_EXT.get(hit.mime.lower(), "")
@@ -784,7 +836,7 @@ def _materialise(hit: "ImageHit", cache_dir: Path) -> Path | None:
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
         target = cache_dir / f"{digest}{ext}"
         if target.is_file():
-            return target
+            return (target, None)
         # Single retry, 30s budget. urllib.request.urlretrieve uses the
         # default socket timeout — override globally for this call by
         # building a custom opener with a timeout-aware urlopen.
@@ -794,17 +846,14 @@ def _materialise(hit: "ImageHit", cache_dir: Path) -> Path | None:
                 with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
                     data = resp.read()
                 target.write_bytes(data)
-                return target
+                return (target, None)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 last_err = exc
                 continue
-        # Suppress unused-variable lint while preserving the diagnostic
-        # for a future logging pass.
-        _ = last_err
-        return None
+        return (None, last_err)
     # Bare path fallback.
     p = Path(url)
-    return p if p.is_file() else None
+    return (p, None) if p.is_file() else (None, None)
 
 
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
@@ -865,15 +914,18 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
             )
         slot_id = node.label or _slot_id_from_query(query)
         hit = _lookup_lock_then_search(ctx, slot_id, query)
-        if hit is None:
-            ctx.missing_assets.append({
-                "kind": "no-hit",
+        if hit is None or isinstance(hit, _SearchError):
+            entry: dict = {
+                "kind": "search-error" if isinstance(hit, _SearchError) else "no-hit",
                 "query": query,
                 "slot_id": slot_id,
                 "provider": ctx.image_provider.name,
                 "line_no": node.line_no,
                 "source": node.source,
-            })
+            }
+            if isinstance(hit, _SearchError):
+                entry["exc_type"] = hit.exc_type.__name__
+            ctx.missing_assets.append(entry)
             _emit_rect(slide, DSLNode(
                 kind="rect", pos_args=[_pos_xy, _pos_wh],
                 kw_args={"fill": "paper-2", "stroke": "fog"},
@@ -897,9 +949,9 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 RuntimeWarning,
                 stacklevel=2,
             )
-        materialised = _materialise(hit, cache_dir)
+        materialised, fetch_err = _materialise(hit, cache_dir)
         if materialised is None:
-            ctx.missing_assets.append({
+            fail_entry: dict = {
                 "kind": "fetch-failed",
                 "query": query,
                 "slot_id": slot_id,
@@ -907,7 +959,10 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 "provider": ctx.image_provider.name,
                 "line_no": node.line_no,
                 "source": node.source,
-            })
+            }
+            if fetch_err is not None:
+                fail_entry["error"] = f"{type(fetch_err).__name__}: {fetch_err}"
+            ctx.missing_assets.append(fail_entry)
             _emit_rect(slide, DSLNode(
                 kind="rect", pos_args=[_pos_xy, _pos_wh],
                 kw_args={"fill": "paper-2", "stroke": "fog"},
