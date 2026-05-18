@@ -294,11 +294,14 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     p_aspect.add_argument(
         "aspect",
-        choices=["bbox", "font", "narrative", "brand", "image", "content"],
+        choices=["bbox", "font", "narrative", "brand", "image", "content",
+                 "notes-coherence"],
         help="bbox = bounding-box / overflow; font = legibility / role "
              "mismatches; narrative = SCQA / claim-title across titles; "
              "brand = color contrast / token discipline; image = picture "
-             "slot fit / style consistency; content = title-body coherence.",
+             "slot fit / style consistency; content = title-body coherence; "
+             "notes-coherence = per-slide speaker notes track the deck's "
+             "red_line.",
     )
     p_aspect.add_argument("--plan", required=True,
                           help="Path to the deck plan.yaml.")
@@ -1421,6 +1424,47 @@ def cmd_verify_aspect(args) -> int:
                         "message": f"{key} contains filler: {', '.join(hits)}",
                         "hint": "Cut the filler — strong sentences don't need it.",
                     })
+
+    elif aspect == "notes-coherence":
+        # Pair the deck's red_line against each slide's (claim, notes).
+        # The orchestrator LLM judges whether the spoken delivery tracks
+        # the arc: drift / contradiction / off-arc tangents → dirty.
+        from lib.verify.deck.notes_coherence import (
+            SlideForCoherence,
+            render_contact_sheet as _render_notes_sheet,
+        )
+        out["needs_llm"] = True
+        red_line = ""
+        if args.design_brief:
+            db_path = Path(args.design_brief).resolve()
+            if db_path.is_file():
+                try:
+                    db = _json.loads(db_path.read_text(encoding="utf-8"))
+                    red_line = db.get("red_line", "") or ""
+                    out["red_line"] = red_line
+                    out["design_brief"] = db
+                except _json.JSONDecodeError:
+                    pass
+        coherence_slides: list[SlideForCoherence] = []
+        for i, spec in enumerate(slides):
+            c = spec.get("content") or {}
+            coherence_slides.append(SlideForCoherence(
+                index=i,
+                role=spec.get("_meta", {}).get("role", ""),
+                claim=c.get("title") or c.get("action_title") or "",
+                notes=spec.get("notes"),
+            ))
+        # Cheap deterministic pre-flag: hook slide missing notes.
+        # The LLM judge handles drift / off-arc semantics.
+        if coherence_slides and not (coherence_slides[0].notes or "").strip():
+            out["findings"].append({
+                "slide": 1, "kind": "hook-notes-missing",
+                "severity": "warn",
+                "message": "Hook slide has no speaker notes; expected the "
+                           "deck-level storyline articulating the red_line.",
+                "hint": "Author the full red_line arc into slide 1's notes.",
+            })
+        out["contact_sheet"] = _render_notes_sheet(red_line, coherence_slides)
 
     out["iteration_check_ms"] = int(
         (__import__("time").perf_counter() - (_t0 or 0)) * 1000
