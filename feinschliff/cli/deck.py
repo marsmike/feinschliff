@@ -200,6 +200,31 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     p_polish.set_defaults(func=cmd_polish)
 
+    p_book = sub.add_parser(
+        "book",
+        help="Render an annotated speaker-book PDF from a deck plan + "
+             "design brief. Front matter (takeaway, audience, frame, "
+             "red_line, hook) + one page per slide with the rendered "
+             "thumbnail, claim, speaker notes, audience_fit, and role.",
+    )
+    p_book.add_argument("plan", help="Path to the deck plan YAML.")
+    p_book.add_argument(
+        "--design-brief", required=True,
+        help="Path to design_brief.json (front matter + per-slide role / "
+             "audience_fit come from here).",
+    )
+    p_book.add_argument(
+        "--pptx", default=None,
+        help="Path to the rendered .pptx (used to extract per-slide PNG "
+             "thumbnails). If omitted, the book is rendered without "
+             "thumbnails — useful for fast preview while authoring.",
+    )
+    p_book.add_argument(
+        "-o", "--output", required=True,
+        help="Output path for the speaker-book .pdf.",
+    )
+    p_book.set_defaults(func=cmd_book)
+
     # `deck plan` is a thin alias for `deck storyline` — same CLI surface,
     # same handler. The mode-level work (steps 0 → 1c only, no render) is
     # the skill orchestrator's job; the CLI part is just the storyline
@@ -1004,6 +1029,104 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
+
+
+def cmd_book(args) -> int:
+    """`feinschliff deck book` — annotated speaker-book PDF.
+
+    Loads the deck plan + design brief, optionally renders per-slide
+    PNG thumbnails from the built .pptx (via the existing
+    `lib.verify.render_pngs.render_slides_to_png` helper), and writes a
+    multi-page PDF: front matter page + one page per slide.
+
+    The brief is the source of truth for deck-level fields (takeaway,
+    audience, frame, …) and per-slide role / audience_fit. Speaker
+    notes come from the plan's per-slide `notes:` field (preferred);
+    when absent, the brief's per-slide `notes` is used as fallback.
+    """
+    import json as _json
+    import tempfile as _tempfile
+
+    from lib.book import (
+        BookSlide, DeckFrontMatter, compose_book_pdf,
+    )
+    from lib.verify.render_pngs import render_slides_to_png
+
+    plan_path = Path(args.plan).resolve()
+    brief_path = Path(args.design_brief).resolve()
+    out_path = Path(args.output).resolve()
+
+    if not plan_path.is_file():
+        print(f"deck book: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+    if not brief_path.is_file():
+        print(f"deck book: design_brief not found: {brief_path}",
+              file=sys.stderr)
+        return 2
+
+    plan = yaml.safe_load(plan_path.read_text()) or {}
+    brief = _json.loads(brief_path.read_text(encoding="utf-8"))
+
+    front = DeckFrontMatter(
+        takeaway=brief.get("takeaway", ""),
+        audience=brief.get("audience", ""),
+        audience_notes=brief.get("audience_notes", ""),
+        frame=brief.get("frame", ""),
+        frame_rationale=brief.get("frame_rationale", ""),
+        red_line=brief.get("red_line", ""),
+        hook_technique=(brief.get("hook") or {}).get("technique", ""),
+        hook_opener=(brief.get("hook") or {}).get("opener", ""),
+        deck_title=brief.get("takeaway") or plan.get("title"),
+    )
+
+    # Optional thumbnail render. The PDF is still useful without —
+    # the speaker reads notes + claims even when the .pptx isn't
+    # built yet (early-iteration mode).
+    thumbnails: dict[int, Path] = {}
+    tmp_ctx = None
+    if args.pptx:
+        pptx_path = Path(args.pptx).resolve()
+        if pptx_path.is_file():
+            tmp_ctx = _tempfile.TemporaryDirectory()
+            thumbnails = render_slides_to_png(pptx_path, Path(tmp_ctx.name))
+        else:
+            print(f"deck book: --pptx not found, skipping thumbnails: "
+                  f"{pptx_path}", file=sys.stderr)
+
+    plan_slides = plan.get("slides") or []
+    brief_slides = {int(s.get("index", 0)): s
+                    for s in (brief.get("slides") or [])}
+
+    book_slides: list[BookSlide] = []
+    for i, spec in enumerate(plan_slides):
+        brief_s = brief_slides.get(i, {})
+        content = spec.get("content") or {}
+        claim = (brief_s.get("claim")
+                 or content.get("title")
+                 or content.get("action_title")
+                 or "")
+        notes = spec.get("notes") or brief_s.get("notes") or ""
+        thumb = thumbnails.get(i + 1)  # render_slides_to_png is 1-based
+        book_slides.append(BookSlide(
+            index=i,
+            role=brief_s.get("role", ""),
+            claim=claim,
+            notes=notes,
+            audience_fit=brief_s.get("audience_fit", ""),
+            thumbnail_path=thumb,
+            section_label=spec.get("section"),
+        ))
+
+    try:
+        compose_book_pdf(front, book_slides, out_path)
+    finally:
+        if tmp_ctx is not None:
+            tmp_ctx.cleanup()
+
+    print(f"wrote {out_path} ({len(book_slides)} slide page(s) + 1 "
+          f"front-matter page; thumbnails: "
+          f"{'yes' if thumbnails else 'no'})")
+    return 0
 
 
 def cmd_storyline(args) -> int:
