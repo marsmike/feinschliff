@@ -14,12 +14,18 @@ Primitives implemented:
   rect X,Y WxH fill:role stroke:role stroke-width:N
   line X,Y X2,Y2 stroke:role stroke-width:N
   picture X,Y WxH path:PATH cover:true
+  picture X,Y WxH query:"…" — resolve at build time via image_provider
 """
 from __future__ import annotations
 
+import hashlib
 import io
+import json
 import re
+import urllib.error
+import urllib.request
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -36,7 +42,18 @@ from .polish import normalize_text
 from .tokens import Tokens
 
 if TYPE_CHECKING:
-    from ..image_provider import ImageProvider
+    from ..image_provider import ImageHit, ImageProvider
+
+
+class DSLError(Exception):
+    """Raised when a DSL primitive carries a parse-or-emit-time error
+    that the brand author or layout author can fix by editing source
+    (e.g. mutually-exclusive keywords, missing required wiring).
+
+    Distinct from ``ValueError`` / ``SyntaxError`` so callers can branch
+    on "the deck source is malformed" vs. "the parser hit an internal
+    inconsistency".
+    """
 
 
 # 1920 design-px → 12,192,000 EMU (PowerPoint widescreen). Hence 6350 EMU/px.
@@ -571,6 +588,224 @@ def _apply_picture_treatment(
     return pil_image
 
 
+# ---------------------------------------------------------------------------
+# Picture-query helpers (Task 7 — pluggable image provider)
+# ---------------------------------------------------------------------------
+
+# Stable slot-id derivation: lowercase, collapse non-alnum to single `_`,
+# trim leading/trailing `_`, truncate to 40 chars. Used so re-running a
+# build with the same DSL pins the same image again from asset_lock.json.
+_SLOT_SLUG_RE = re.compile(r"[^A-Za-z0-9]+")
+
+# MIME → file extension map for materialised cache filenames. Defaults to
+# `.bin` for unknown/missing — the renderer falls back to PIL's auto-format
+# detection which usually still works.
+_MIME_TO_EXT = {
+    "image/jpeg": ".jpg",
+    "image/jpg":  ".jpg",
+    "image/png":  ".png",
+    "image/webp": ".webp",
+    "image/gif":  ".gif",
+    "image/svg+xml": ".svg",
+}
+
+
+def _slot_id_from_query(query: str) -> str:
+    """Derive a stable, deterministic slot id from a query string.
+
+    "Kitchen morning light!" → "kitchen_morning_light".
+    Empty/non-alnum-only inputs collapse to "asset" so the lock file
+    never gets an empty key.
+    """
+    slug = _SLOT_SLUG_RE.sub("_", query.lower()).strip("_")
+    if not slug:
+        slug = "asset"
+    return slug[:40]
+
+
+def _read_lock(deck_dir: Path | None) -> dict:
+    """Read ``<deck_dir>/asset_lock.json`` or return a fresh empty lock."""
+    if deck_dir is None:
+        return {"version": 1, "provider": None, "slots": {}}
+    lock_path = deck_dir / "asset_lock.json"
+    if not lock_path.is_file():
+        return {"version": 1, "provider": None, "slots": {}}
+    try:
+        data = json.loads(lock_path.read_text())
+    except (OSError, json.JSONDecodeError):
+        return {"version": 1, "provider": None, "slots": {}}
+    if not isinstance(data, dict):
+        return {"version": 1, "provider": None, "slots": {}}
+    data.setdefault("version", 1)
+    data.setdefault("provider", None)
+    data.setdefault("slots", {})
+    return data
+
+
+def _write_lock(deck_dir: Path | None, lock: dict) -> None:
+    """Persist the lock as pretty-printed JSON. No-op if deck_dir is None."""
+    if deck_dir is None:
+        return
+    deck_dir.mkdir(parents=True, exist_ok=True)
+    (deck_dir / "asset_lock.json").write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n"
+    )
+
+
+def _hit_from_lock_entry(entry: dict) -> "ImageHit | None":
+    """Reconstruct an ``ImageHit`` from a lock-file slot dict. Returns None
+    if the entry is missing required fields."""
+    from ..image_provider import ImageHit
+    try:
+        return ImageHit(
+            url=entry["url"],
+            license=entry.get("license", ""),
+            attribution=entry.get("attribution", ""),
+            width=entry.get("width"),
+            height=entry.get("height"),
+            mime=entry.get("mime", ""),
+        )
+    except KeyError:
+        return None
+
+
+def _url_is_resolvable(url: str) -> bool:
+    """For ``file://`` URLs, verify the path exists on disk. For
+    ``http(s)://`` URLs we trust the pin — pre-flighting every HEAD on
+    every build would defeat the point of the lock cache."""
+    if url.startswith("file://"):
+        return Path(url[len("file://"):]).is_file()
+    if url.startswith(("http://", "https://")):
+        return True
+    # Bare path — treat as filesystem; resolvable if it exists.
+    return Path(url).is_file()
+
+
+def _utc_now_iso_seconds() -> str:
+    """ISO 8601 timestamp in UTC, truncated to seconds, with `Z` suffix.
+
+    `datetime.now(timezone.utc).isoformat()` produces `+00:00` — we
+    replace it with `Z` to match the spec example.
+    """
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _entry_from_hit(hit: "ImageHit", query: str) -> dict:
+    """Serialise an ImageHit + query into a lock-slot dict."""
+    entry: dict = {
+        "query": query,
+        "url": hit.url,
+        "license": hit.license,
+        "attribution": hit.attribution,
+        "mime": hit.mime,
+        "pinned_at": _utc_now_iso_seconds(),
+    }
+    if hit.width is not None:
+        entry["width"] = hit.width
+    if hit.height is not None:
+        entry["height"] = hit.height
+    return entry
+
+
+def _lookup_lock_then_search(
+    ctx: EmitContext, slot_id: str, query: str,
+) -> "ImageHit | None":
+    """Return a pinned hit for `slot_id` if available + valid; otherwise
+    call ``ctx.image_provider.search(query, count=1)``, pin the first
+    result, and return it. Returns ``None`` if the provider returns ``[]``.
+
+    Failed searches are NOT pinned — a stale "no results" entry would
+    block the slot from ever resolving, even after the provider's
+    backing data improves.
+    """
+    provider = ctx.image_provider
+    assert provider is not None  # caller guards this
+    lock = _read_lock(ctx.deck_dir)
+
+    # Lock is scoped to a provider name; a brand switch invalidates the
+    # whole file (different URL schemes, different licensing).
+    if lock.get("provider") == provider.name:
+        slot_entry = lock["slots"].get(slot_id)
+        if slot_entry and slot_entry.get("query") == query:
+            pinned_url = slot_entry.get("url", "")
+            if _url_is_resolvable(pinned_url):
+                hit = _hit_from_lock_entry(slot_entry)
+                if hit is not None:
+                    return hit
+            # Stale — fall through to re-search and overwrite below.
+
+    # Either no lock entry for this slot, or it's stale, or the lock
+    # belongs to a different provider. Re-search.
+    try:
+        hits = provider.search(query, count=1)
+    except Exception:
+        # Per spec §"Failure modes": treat exceptions the same as `[]`.
+        return None
+    if not hits:
+        return None
+    hit = hits[0]
+
+    # If the lock belongs to a different provider, blow it away rather
+    # than mixing pin sources in one file.
+    if lock.get("provider") != provider.name:
+        lock = {"version": 1, "provider": provider.name, "slots": {}}
+    lock["slots"][slot_id] = _entry_from_hit(hit, query)
+    lock["provider"] = provider.name
+    _write_lock(ctx.deck_dir, lock)
+    return hit
+
+
+def _materialise(hit: "ImageHit", cache_dir: Path) -> Path | None:
+    """Resolve an ``ImageHit`` URL to a local Path.
+
+    - ``file://`` → just check the file exists.
+    - ``http(s)://`` → download to ``<cache_dir>/<sha1(url)>.<ext>`` if
+      not already present. Single retry. 30s timeout. Returns ``None``
+      on persistent failure.
+    - Bare path → treat as a filesystem path.
+
+    The sha1+ext naming keeps re-runs cheap: repeated builds against the
+    same URL skip the network entirely after the first successful fetch.
+    """
+    url = hit.url
+    if url.startswith("file://"):
+        p = Path(url[len("file://"):])
+        return p if p.is_file() else None
+    if url.startswith(("http://", "https://")):
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        ext = _MIME_TO_EXT.get(hit.mime.lower(), "")
+        if not ext:
+            # Fall back to URL path extension.
+            from urllib.parse import urlparse
+            url_path = urlparse(url).path
+            url_ext = Path(url_path).suffix.lower()
+            ext = url_ext if url_ext else ".bin"
+        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
+        target = cache_dir / f"{digest}{ext}"
+        if target.is_file():
+            return target
+        # Single retry, 30s budget. urllib.request.urlretrieve uses the
+        # default socket timeout — override globally for this call by
+        # building a custom opener with a timeout-aware urlopen.
+        last_err: Exception | None = None
+        for _ in range(2):
+            try:
+                with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+                    data = resp.read()
+                target.write_bytes(data)
+                return target
+            except (urllib.error.URLError, TimeoutError, OSError) as exc:
+                last_err = exc
+                continue
+        # Suppress unused-variable lint while preserving the diagnostic
+        # for a future logging pass.
+        _ = last_err
+        return None
+    # Bare path fallback.
+    p = Path(url)
+    return p if p.is_file() else None
+
+
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     """picture X,Y WxH path:PATH cover:true
 
@@ -596,12 +831,78 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         path = node.kw_args.get("src")
         _pos_xy = f"{x},{y}"
         _pos_wh = f"{w}x{h}"
+        query: str | None = None
     else:
         x, y = parse_xy(node.pos_args[0])
         w, h = parse_wh(node.pos_args[1])
         path = node.kw_args.get("path")
+        query = node.kw_args.get("query")
         _pos_xy = node.pos_args[0]
         _pos_wh = node.pos_args[1]
+
+    # `query:` and `path:` are mutually exclusive — a brand author who
+    # set both has either copy-pasted half a migration or doesn't know
+    # which mode they meant. Fail loud at emit time so the mistake
+    # surfaces before the deck ships.
+    if query and path:
+        raise DSLError(
+            f"picture at line {node.line_no}: `query:` and `path:` are "
+            f"mutually exclusive (got query={query!r}, path={path!r})"
+        )
+
+    if query:
+        if not ctx.image_provider:
+            # The brand author wrote `query:` in a layout but forgot to
+            # wire `$image_provider` in tokens.json. Silent-fallback to a
+            # placeholder rect would mask the misconfiguration — fail
+            # loud so the next build run surfaces the problem.
+            raise DSLError(
+                f"picture at line {node.line_no}: `query:{query!r}` requires "
+                f"an image_provider on the EmitContext, but ctx.image_provider "
+                f"is None. Add `$image_provider` to your brand's tokens.json "
+                f"(or your `extends` ancestor) so the build can resolve it."
+            )
+        slot_id = node.label or _slot_id_from_query(query)
+        hit = _lookup_lock_then_search(ctx, slot_id, query)
+        if hit is None:
+            ctx.missing_assets.append({
+                "kind": "no-hit",
+                "query": query,
+                "slot_id": slot_id,
+                "provider": ctx.image_provider.name,
+                "line_no": node.line_no,
+                "source": node.source,
+            })
+            _emit_rect(slide, DSLNode(
+                kind="rect", pos_args=[_pos_xy, _pos_wh],
+                kw_args={"fill": "paper-2", "stroke": "fog"},
+                label=None, line_no=node.line_no, source=node.source,
+            ), ctx)
+            return
+        cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
+        if cache_dir is None:
+            # No deck_dir means we can't cache HTTP downloads. Use a
+            # process-temp dir so the build still completes.
+            import tempfile
+            cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
+        materialised = _materialise(hit, cache_dir)
+        if materialised is None:
+            ctx.missing_assets.append({
+                "kind": "fetch-failed",
+                "query": query,
+                "slot_id": slot_id,
+                "url": hit.url,
+                "provider": ctx.image_provider.name,
+                "line_no": node.line_no,
+                "source": node.source,
+            })
+            _emit_rect(slide, DSLNode(
+                kind="rect", pos_args=[_pos_xy, _pos_wh],
+                kw_args={"fill": "paper-2", "stroke": "fog"},
+                label=None, line_no=node.line_no, source=node.source,
+            ), ctx)
+            return
+        path = str(materialised)
 
     optional = str(node.kw_args.get("optional", "false")).lower() == "true"
     if not path:
@@ -920,7 +1221,9 @@ def _slide_canvas(nodes: list[DSLNode]) -> tuple[float, float]:
 def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                   asset_root: Path | None,
                   asset_root_fallback: Path | None = None,
-                  missing_assets: list[dict] | None = None) -> None:
+                  missing_assets: list[dict] | None = None,
+                  image_provider: "ImageProvider | None" = None,
+                  deck_dir: Path | None = None) -> None:
     """Append one slide built from `nodes` to `prs`, using the tokens for fills."""
     cw, ch = _slide_canvas(nodes)
     slide = prs.slides.add_slide(prs.slide_layouts[6])    # blank
@@ -932,7 +1235,8 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
         pass
 
     ctx = EmitContext(tokens=tokens, canvas_w=cw, canvas_h=ch,
-                      asset_root=asset_root, asset_root_fallback=asset_root_fallback)
+                      asset_root=asset_root, asset_root_fallback=asset_root_fallback,
+                      image_provider=image_provider, deck_dir=deck_dir)
     for n in nodes:
         cond = n.kw_args.get("if")
         if cond is not None:
@@ -954,7 +1258,9 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
 
 def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
                        asset_root: Path | None = None,
-                       asset_root_fallback: Path | None = None) -> Presentation:
+                       asset_root_fallback: Path | None = None,
+                       image_provider: "ImageProvider | None" = None,
+                       deck_dir: Path | None = None) -> Presentation:
     """Walk primitive nodes, build a Presentation with one filled slide.
 
     The returned Presentation carries `missing_assets: list[dict]` as an
@@ -964,6 +1270,10 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
     `asset_root_fallback` is the plugin-level shared assets dir; it is
     walked when the per-brand `asset_root` does not contain the requested
     relative path. Brand-specific files always win over plugin defaults.
+
+    `image_provider` and `deck_dir` are the optional pair for the picture
+    ``query:`` branch (Task 7). Both default to ``None``; when unset, any
+    ``query:`` keyword on a picture node raises :class:`DSLError`.
     """
     cw, ch = _slide_canvas(nodes)
     prs = Presentation()
@@ -972,7 +1282,9 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
     missing: list[dict] = []
     _append_slide(prs, nodes, tokens, asset_root=asset_root,
                   asset_root_fallback=asset_root_fallback,
-                  missing_assets=missing)
+                  missing_assets=missing,
+                  image_provider=image_provider,
+                  deck_dir=deck_dir)
     for slide in prs.slides:
         sanitize_chrome(slide._element)
     prs.missing_assets = missing
@@ -983,6 +1295,8 @@ def build_multi_slide(
     slides: list[tuple[list[DSLNode], Tokens, Path | None]],
     *,
     asset_root_fallback: Path | None = None,
+    image_provider: "ImageProvider | None" = None,
+    deck_dir: Path | None = None,
 ) -> Presentation:
     """Build a Presentation with N slides. Each slide entry is
     `(nodes, tokens, asset_root)`. The slide deck's canvas comes from
@@ -990,6 +1304,9 @@ def build_multi_slide(
 
     `asset_root_fallback` applies to every slide; see
     :func:`build_presentation` for semantics.
+
+    `image_provider` and `deck_dir` are the optional pair for the picture
+    ``query:`` branch (Task 7).
     """
     if not slides:
         raise ValueError("build_multi_slide: no slides provided")
@@ -1003,7 +1320,9 @@ def build_multi_slide(
         per_slide: list[dict] = []
         _append_slide(prs, nodes, tokens, asset_root=asset_root,
                       asset_root_fallback=asset_root_fallback,
-                      missing_assets=per_slide)
+                      missing_assets=per_slide,
+                      image_provider=image_provider,
+                      deck_dir=deck_dir)
         for entry in per_slide:
             entry.setdefault("slide_index", slide_idx)
             missing.append(entry)
