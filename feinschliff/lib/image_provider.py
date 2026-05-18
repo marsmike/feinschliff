@@ -19,6 +19,7 @@ one bad provider must not block unrelated builds.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import sys
@@ -216,10 +217,21 @@ def _plugin_label_for(root: Path) -> str:
     Most provider roots end in ``feinschliff_providers`` — in that case
     the parent directory name is the plugin name. Otherwise fall back to
     the root's own name so the synthetic module name stays stable.
+
+    A short hash of the absolute parent path is appended so two roots
+    that happen to share a directory name (e.g. two different
+    ``providers/`` dirs from different sources) don't alias into the
+    same key in :data:`sys.modules`. The readable slug stays first so
+    debug output remains scannable.
     """
+    try:
+        parent = root.parent.resolve()
+    except OSError:
+        parent = root.parent
+    parent_hash = hashlib.sha1(str(parent).encode("utf-8")).hexdigest()[:8]
     if root.name == "feinschliff_providers":
-        return root.parent.name or "anon"
-    return root.name or "anon"
+        return f"{root.parent.name or 'anon'}_{parent_hash}"
+    return f"{root.name or 'anon'}_{parent_hash}"
 
 
 def discover_providers() -> None:
@@ -230,7 +242,15 @@ def discover_providers() -> None:
     :func:`lib.pipeline_log.log_event` and skipped; one broken plugin
     must not block unrelated builds.
 
-    Discovery order:
+    The five sources below are scanned in the order listed. Providers
+    register by name and **first-write-wins**: once a name is in the
+    registry, a later source registering the same name raises
+    :class:`ValueError` (swallowed by the broad discovery ``except``)
+    and the later definition is ignored. Later sources can therefore
+    only **add** new names — bundled providers are canonical, plugins
+    extend rather than override.
+
+    Sources, scanned in order:
       1. bundled  — ``lib/providers/``
       2. plugin   — ``~/.claude/plugins/.../feinschliff_providers/``
       3. env      — ``FEINSCHLIFF_PROVIDER_PATH`` (os.pathsep list)
@@ -266,8 +286,11 @@ def discover_providers() -> None:
                 # Remove the half-loaded module so a later retry can
                 # start clean if the underlying issue is fixed.
                 sys.modules.pop(module_name, None)
+                # Discovery has no deck context — pass deck_dir=None so
+                # the event is recorded in-memory only (returned dict)
+                # rather than polluting $CWD with a stray timing.jsonl.
                 log_event(
-                    Path.cwd(),
+                    None,
                     "image_provider:discover",
                     "fail",
                     source=source,

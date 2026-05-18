@@ -8,6 +8,7 @@ plugin directories under ``tmp_path``.
 from __future__ import annotations
 
 import dataclasses
+import os
 import textwrap
 
 import pytest
@@ -185,3 +186,95 @@ def test_discover_providers_skips_broken_plugins_and_logs(tmp_path, monkeypatch,
         "broken" in str(rec.get("path", "")) or "broken" in str(rec.get("module", ""))
         for rec in captured
     ), f"expected a log record about broken.py, got: {captured}"
+
+
+def test_discover_broken_plugin_does_not_pollute_cwd(tmp_path, monkeypatch):
+    """Regression: broken-plugin discovery must NOT write ``timing.jsonl``
+    into the current working directory. Previously the discovery loop
+    passed ``Path.cwd()`` as ``deck_dir`` and every broken import created
+    a stray log in ``$HOME`` (or wherever the user happened to be).
+    """
+    # Switch cwd to a clean tmp dir so we can assert nothing lands there.
+    work_dir = tmp_path / "workdir"
+    work_dir.mkdir()
+    monkeypatch.chdir(work_dir)
+
+    plugin_root = tmp_path / "providers_nopollute"
+    plugin_root.mkdir()
+    (plugin_root / "broken.py").write_text(
+        "raise ImportError('synthetic failure — timing.jsonl pollution probe')\n"
+    )
+    monkeypatch.setenv("FEINSCHLIFF_PROVIDER_PATH", str(plugin_root))
+
+    discover_providers()  # must not raise
+
+    # Nothing should have been written into cwd as a side-effect.
+    assert not (work_dir / "timing.jsonl").exists(), (
+        "broken-plugin discovery created timing.jsonl in cwd; "
+        "log_event should no-op when deck_dir is None"
+    )
+    # And nothing in the plugin root either.
+    assert not (plugin_root / "timing.jsonl").exists()
+
+
+def test_plugin_label_disambiguates_same_named_roots(tmp_path, monkeypatch):
+    """Two provider roots with the same directory name but different
+    absolute parents must produce distinct synthetic module names, so a
+    same-stem ``*.py`` in each one does not alias in ``sys.modules``.
+
+    The previous label ignored the parent path, so e.g. ``/a/providers/``
+    and ``/b/providers/`` both yielded ``..._auto.providers_<stem>`` —
+    the second ``exec_module`` clobbered the first, and any duplicate
+    ``name`` collision in ``register_provider`` got swallowed.
+    """
+    root_a = tmp_path / "alpha" / "providers"
+    root_b = tmp_path / "beta" / "providers"
+    root_a.mkdir(parents=True)
+    root_b.mkdir(parents=True)
+
+    # Same file stem in each root, but they register under DIFFERENT
+    # provider names — both should land in the registry.
+    (root_a / "shared.py").write_text(
+        textwrap.dedent(
+            """
+            from lib.image_provider import ImageProvider, register_provider
+
+            @register_provider
+            class AlphaProvider(ImageProvider):
+                name = "alpha_provider"
+                def search(self, query, *, count=1, hints=None):
+                    return []
+            """
+        )
+    )
+    (root_b / "shared.py").write_text(
+        textwrap.dedent(
+            """
+            from lib.image_provider import ImageProvider, register_provider
+
+            @register_provider
+            class BetaProvider(ImageProvider):
+                name = "beta_provider"
+                def search(self, query, *, count=1, hints=None):
+                    return []
+            """
+        )
+    )
+
+    monkeypatch.setenv(
+        "FEINSCHLIFF_PROVIDER_PATH",
+        f"{root_a}{os.pathsep}{root_b}",
+    )
+
+    # Labels alone must differ — proves the hash disambiguator works.
+    label_a = image_provider._plugin_label_for(root_a)
+    label_b = image_provider._plugin_label_for(root_b)
+    assert label_a != label_b, (
+        f"_plugin_label_for collided: {label_a!r} == {label_b!r}; "
+        "two distinct roots must produce distinct synthetic module labels"
+    )
+
+    discover_providers()
+
+    assert "alpha_provider" in image_provider._REGISTRY
+    assert "beta_provider" in image_provider._REGISTRY
