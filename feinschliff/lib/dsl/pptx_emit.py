@@ -21,6 +21,7 @@ import io
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image
 from pptx import Presentation
@@ -33,6 +34,9 @@ from .. import textfit
 from .parser import DSLNode, parse_xy, parse_wh
 from .polish import normalize_text
 from .tokens import Tokens
+
+if TYPE_CHECKING:
+    from ..image_provider import ImageProvider
 
 
 # 1920 design-px → 12,192,000 EMU (PowerPoint widescreen). Hence 6350 EMU/px.
@@ -128,6 +132,16 @@ class EmitContext:
     # file AND that does not carry `optional:true`. Callers consult this
     # post-build to decide whether to abort.
     missing_assets: list[dict] = field(default_factory=list)
+    # Active image provider for resolving `picture query:"..."` nodes
+    # (Task 7). String forward-ref keeps module import cheap and avoids any
+    # circular-import risk between `lib.dsl.pptx_emit` and `lib.image_provider`.
+    # Defaults to None so existing callers that never set it keep working.
+    image_provider: "ImageProvider | None" = None
+    # Deck output directory — used by the picture-query path to write the
+    # `asset_lock.json` manifest and the `.cache/` of downloaded images
+    # alongside the produced `.pptx`. Defaults to None; the picture-query
+    # branch falls back to a temp dir / disabled cache when unset.
+    deck_dir: Path | None = None
 
 
 def _hex_to_rgb(hex_color: str) -> RGBColor:
