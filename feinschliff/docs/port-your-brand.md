@@ -316,8 +316,14 @@ use `picture query:"..."` to resolve images at build time (rather than
 pre-bundled `path:`), declare an `$image_provider` in `tokens.json`:
 
 ```jsonc
-"$image_provider": { "kind": "unsplash", "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" } }
+"$image_provider": { "kind": "unsplash" }
 ```
+
+Set `UNSPLASH_ACCESS_KEY` in your shell environment so the provider
+can authenticate. Do **NOT** put the literal key in `tokens.json` —
+that file is committed to the brand pack repo. The Unsplash provider
+reads `UNSPLASH_ACCESS_KEY` from the environment; if it is unset, the
+provider runs in stub mode and `search()` returns no hits.
 
 The toolkit ships `unsplash` as the built-in reference provider; custom
 providers live in plugins. See

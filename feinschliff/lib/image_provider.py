@@ -24,6 +24,7 @@ import importlib.util
 import os
 import sys
 import traceback
+import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
@@ -289,6 +290,10 @@ def discover_providers() -> None:
                 # Discovery has no deck context — pass deck_dir=None so
                 # the event is recorded in-memory only (returned dict)
                 # rather than polluting $CWD with a stray timing.jsonl.
+                # The return value is intentionally discarded; the call
+                # is retained so a future caller with a real deck_dir
+                # gets the structured record for free without another
+                # code change.
                 log_event(
                     None,
                     "image_provider:discover",
@@ -298,6 +303,21 @@ def discover_providers() -> None:
                     module=module_name,
                     error=str(exc)[:200],
                     traceback=traceback.format_exc(limit=4),
+                )
+                # log_event is a no-op when deck_dir is None, so the
+                # JSONL record never lands anywhere observable. Emit a
+                # RuntimeWarning as well so the operator gets a visible
+                # signal — without this, a broken plugin vanishes and
+                # later resurfaces as a confusing "unknown provider"
+                # KeyError far from the actual cause.
+                warnings.warn(
+                    (
+                        f"image_provider discovery skipped a broken plugin "
+                        f"[source={source}] {path} "
+                        f"(module={module_name}): {exc!r}"
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
                 )
 
 

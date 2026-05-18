@@ -105,8 +105,7 @@ as it always has.
 ```jsonc
 {
   "$image_provider": {
-    "kind":   "unsplash",
-    "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" }
+    "kind": "unsplash"
   }
 }
 ```
@@ -114,8 +113,11 @@ as it always has.
 - **`kind`** — name of a registered provider. Built-ins live under
   `lib/providers/`; out-of-tree providers ship as plugin files (see
   [`image-providers.md`](image-providers.md) for discovery rules).
-- **`config`** — provider-specific dict passed through to the provider
-  constructor. Schema is opaque to the toolkit.
+- **`config`** — optional provider-specific dict passed through to the
+  provider constructor. Schema is opaque to the toolkit. Values are
+  taken as literal strings — there is **no** `${env:…}` interpolation.
+  Secrets such as API keys belong in shell environment variables, not
+  in `tokens.json`.
 
 When a brand declares `$image_provider`, slides may write:
 
@@ -144,16 +146,18 @@ automatically. The merge rules are:
 ```jsonc
 {
   "$image_provider": {
-    "kind":   "unsplash",
-    "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" }
+    "kind": "unsplash"
   }
 }
 ```
 
-`UnsplashProvider` reads `access_key` from `config` first, falls back to
-the `UNSPLASH_ACCESS_KEY` env var, and runs in **stub mode** (returns
-`[]`, emits one warning per process) when neither is set so OSS builds
-without a key still complete.
+Set `UNSPLASH_ACCESS_KEY` in your shell environment to enable live
+lookups. Do **NOT** embed the literal key in `tokens.json` — there is
+no env-var interpolation, the value would be sent verbatim as the
+`Client-ID`, and `tokens.json` is committed to the brand pack repo.
+`UnsplashProvider` reads `UNSPLASH_ACCESS_KEY` from the environment;
+if unset, it runs in **stub mode** (returns `[]`, emits one warning
+per process) so OSS builds without a key still complete.
 
 ### Worked example — downstream plugin provider
 

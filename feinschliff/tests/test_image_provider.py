@@ -188,6 +188,40 @@ def test_discover_providers_skips_broken_plugins_and_logs(tmp_path, monkeypatch,
     ), f"expected a log record about broken.py, got: {captured}"
 
 
+def test_discover_broken_plugin_emits_runtime_warning(tmp_path, monkeypatch):
+    """A broken plugin must surface as a ``RuntimeWarning`` so operators
+    see a visible signal in addition to the ``pipeline_log.log_event``
+    record (which is a no-op when ``deck_dir is None`` — i.e. exactly
+    during discovery). Without this warning, a broken plugin vanishes
+    and later resurfaces as a confusing "unknown provider" KeyError far
+    from the underlying cause.
+    """
+    plugin_root = tmp_path / "providers_warn"
+    plugin_root.mkdir()
+    (plugin_root / "broken.py").write_text(
+        "raise ImportError('synthetic warn-probe failure')\n"
+    )
+    monkeypatch.setenv("FEINSCHLIFF_PROVIDER_PATH", str(plugin_root))
+
+    with pytest.warns(RuntimeWarning, match=r"broken plugin.*broken\.py") as record:
+        discover_providers()
+
+    # Exactly one warning for the single broken file.
+    matching = [w for w in record.list if issubclass(w.category, RuntimeWarning)]
+    assert len(matching) >= 1
+    msg = str(matching[0].message)
+    # The warning must include enough context to diagnose:
+    #   - source tier (env, since we used FEINSCHLIFF_PROVIDER_PATH)
+    #   - filesystem path to the broken file
+    #   - synthetic module name
+    #   - exception repr (type + message)
+    assert "source=env" in msg
+    assert "broken.py" in msg
+    assert "feinschliff_providers._auto" in msg
+    assert "ImportError" in msg
+    assert "synthetic warn-probe failure" in msg
+
+
 def test_discover_broken_plugin_does_not_pollute_cwd(tmp_path, monkeypatch):
     """Regression: broken-plugin discovery must NOT write ``timing.jsonl``
     into the current working directory. Previously the discovery loop

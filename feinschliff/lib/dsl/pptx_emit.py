@@ -24,6 +24,7 @@ import json
 import os
 import re
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import warnings
@@ -612,6 +613,13 @@ _MIME_TO_EXT = {
     "image/svg+xml": ".svg",
 }
 
+# HTTP materialise timing knobs — mirror the constants used in
+# lib/providers/unsplash.py so the math is comprehensible. Two attempts
+# at 14 s each plus a 1 s backoff between = 14 + 1 + 14 = 29 s worst case,
+# safely under the 30 s wall budget the spec promises.
+_PER_ATTEMPT_TIMEOUT_S = 14
+_BACKOFF_S = 1.0
+
 
 def _slot_id_from_query(query: str) -> str:
     """Derive a stable, deterministic slot id from a query string.
@@ -807,8 +815,10 @@ def _materialise(
 
     - ``file://`` → just check the file exists.
     - ``http(s)://`` → download to ``<cache_dir>/<sha1(url)>.<ext>`` if
-      not already present. Single retry. 30s timeout. Returns
-      ``(None, last_err)`` on persistent failure.
+      not already present. Two attempts at ``_PER_ATTEMPT_TIMEOUT_S`` s
+      each with a ``_BACKOFF_S`` s pause between (worst case 29 s,
+      under the 30 s spec ceiling). Returns ``(None, last_err)`` on
+      persistent failure.
     - Bare path → treat as a filesystem path.
 
     Returns ``(path, None)`` on success and ``(None, err_or_None)`` on
@@ -837,18 +847,25 @@ def _materialise(
         target = cache_dir / f"{digest}{ext}"
         if target.is_file():
             return (target, None)
-        # Single retry, 30s budget. urllib.request.urlretrieve uses the
-        # default socket timeout — override globally for this call by
-        # building a custom opener with a timeout-aware urlopen.
+        # Two-attempt budget mirrors lib/providers/unsplash.py:
+        #   _PER_ATTEMPT_TIMEOUT_S (14) + _BACKOFF_S (1) + _PER_ATTEMPT_TIMEOUT_S (14)
+        #   = 29 s worst case, safely under the 30 s spec ceiling.
+        # urllib.request.urlretrieve uses the default socket timeout —
+        # override per call by passing `timeout=` to urlopen explicitly.
         last_err: Exception | None = None
-        for _ in range(2):
+        for attempt in range(2):
             try:
-                with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+                with urllib.request.urlopen(  # noqa: S310
+                    url, timeout=_PER_ATTEMPT_TIMEOUT_S,
+                ) as resp:
                     data = resp.read()
                 target.write_bytes(data)
                 return (target, None)
             except (urllib.error.URLError, TimeoutError, OSError) as exc:
                 last_err = exc
+                # Backoff only between attempts, never after the last.
+                if attempt == 0:
+                    time.sleep(_BACKOFF_S)
                 continue
         return (None, last_err)
     # Bare path fallback.
