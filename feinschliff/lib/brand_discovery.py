@@ -1,6 +1,7 @@
 """Locate brand packs across bundled, plugin-installed, env, and user-local paths."""
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -14,6 +15,11 @@ class Brand:
     design_path: Path | None = None
     layouts_path: Path | None = None   # brand-specific layouts/ (overrides toolkit)
     compounds_path: Path | None = None # brand-specific compounds/
+    # `$image_provider` from tokens.json: {"kind": "<name>", "config": {...}}.
+    # The `extends` chain is NOT resolved here — this is the raw block from
+    # the brand's own tokens.json. `load_tokens()` produces the fully-merged
+    # view via `tokens.raw["$image_provider"]`.
+    image_provider_config: dict | None = None
 
 
 def _bundled_brands_root() -> Path:
@@ -123,12 +129,25 @@ def discover_brands() -> list[Brand]:
                 continue
             if d.name in seen:
                 continue
+            image_provider_config: dict | None = None
+            if tokens.is_file():
+                try:
+                    raw = json.loads(tokens.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    # Bad / unreadable tokens.json: leave as None and let
+                    # downstream validators (load_tokens) surface a better
+                    # diagnostic at the point the brand is actually used.
+                    raw = {}
+                ip = raw.get("$image_provider") if isinstance(raw, dict) else None
+                if isinstance(ip, dict):
+                    image_provider_config = ip
             seen[d.name] = Brand(
                 name=d.name, root=d,
                 tokens_path=tokens if tokens.is_file() else None,
                 design_path=design if design.is_file() else None,
                 layouts_path=(d / "layouts") if (d / "layouts").is_dir() else None,
                 compounds_path=(d / "compounds") if (d / "compounds").is_dir() else None,
+                image_provider_config=image_provider_config,
             )
     return list(seen.values())
 

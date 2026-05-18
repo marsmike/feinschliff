@@ -345,6 +345,23 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
         tj = b / "tokens.json"
         if tj.is_file():
             data = json.loads(tj.read_text())
+            # `$image_provider` semantics: when the child swaps `kind`, the
+            # parent's `config` must NOT carry over (it was scoped to a
+            # different provider). Drop merged's `config` before deep-merge
+            # so the child can declare a kind-only override cleanly. The
+            # standard deep_merge already handles the same-kind case where
+            # the child only refines `config` keys.
+            child_ip = data.get("$image_provider") if isinstance(data, dict) else None
+            parent_ip = merged.get("$image_provider")
+            if (
+                isinstance(child_ip, dict)
+                and isinstance(parent_ip, dict)
+                and "kind" in child_ip
+                and child_ip.get("kind") != parent_ip.get("kind")
+            ):
+                # Replace parent's $image_provider entirely with the child's
+                # block so deep_merge sees nothing to merge under it.
+                merged = {**merged, "$image_provider": {}}
             merged = deep_merge(merged, data)
     validate_tokens(merged, brand_root.name)
     return Tokens(raw=merged, brand_name=brand_root.name)
