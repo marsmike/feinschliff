@@ -17,12 +17,13 @@ Design notes
 * **Transient-failure retry.** A single retry covers 429 / 5xx and
   network errors (``socket.timeout`` / :class:`urllib.error.URLError`).
   Permanent 4xx (401, 403, 404, …) gets a single attempt — retrying
-  won't help. 30s total wall budget split as ``timeout=15`` per attempt
-  plus a short backoff sleep between.
+  won't help. 30s total wall budget split as ``timeout=14`` per attempt
+  plus a short backoff sleep between (14 + 1 + 14 = 29s worst case).
 """
 from __future__ import annotations
 
 import json
+import os
 import socket
 import time
 import urllib.error
@@ -35,7 +36,9 @@ from lib.image_provider import ImageHit, ImageProvider, register_provider
 
 # Endpoint + timing knobs.
 _ENDPOINT = "https://api.unsplash.com/search/photos"
-_PER_ATTEMPT_TIMEOUT_S = 15
+# Two-attempt budget: 14 + 1 (backoff) + 14 = 29s, within the 30s
+# total-budget commitment in the spec.
+_PER_ATTEMPT_TIMEOUT_S = 14
 _BACKOFF_S = 1.0
 _RETRYABLE_STATUS = {429, 500, 502, 503, 504}
 
@@ -54,8 +57,6 @@ class UnsplashProvider(ImageProvider):
     def __init__(self, config: dict | None = None) -> None:
         super().__init__(config)
         # Config key wins over env; both empty → stub mode.
-        import os
-
         cfg_key = self.config.get("access_key")
         env_key = os.environ.get("UNSPLASH_ACCESS_KEY")
         self.access_key: str | None = cfg_key or env_key or None

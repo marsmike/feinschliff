@@ -193,6 +193,23 @@ def test_search_with_key_returns_parsed_image_hit():
     assert req.get_header("Authorization") == "Client-ID test-key"
 
 
+def test_search_url_encodes_special_characters():
+    """Query with accents and ampersands must be percent-encoded into the URL."""
+    from lib.providers.unsplash import UnsplashProvider
+
+    p = UnsplashProvider({"access_key": "test-key"})
+
+    with patch("lib.providers.unsplash.urlopen") as mock_urlopen:
+        mock_urlopen.return_value = _fake_response({"results": []})
+        p.search("café & küche")
+
+    req = mock_urlopen.call_args[0][0]
+    assert "caf%C3%A9" in req.full_url
+    assert "k%C3%BCche" in req.full_url
+    # `urlencode` defaults to quote_plus → space becomes '+', '&' becomes '%26'.
+    assert "%26" in req.full_url
+
+
 def test_search_handles_empty_results():
     from lib.providers.unsplash import UnsplashProvider
 
