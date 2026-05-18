@@ -18,6 +18,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from lib.brand_discovery import discover_brands
 from lib.dsl.tokens import load_tokens
 
@@ -215,17 +217,30 @@ def test_brand_overrides_image_provider_kind(tmp_path):
         tokens.raw["$image_provider"].get("config") in (None, {})
 
 
+@pytest.mark.xfail(
+    reason=(
+        "tokens.schema.json now constrains $image_provider to {kind, config} "
+        "with additionalProperties:false (Task 5). A hypothetical future "
+        "extension key like `enabled` no longer passes validation, so this "
+        "future-shape invariant cannot be exercised through load_tokens "
+        "until the schema grows. The precise-drop merge logic in "
+        "lib/dsl/tokens.py (drop only `config`, not the whole parent block) "
+        "is preserved as future-proofing. When a new top-level "
+        "$image_provider key lands in the schema, re-enable this test "
+        "and audit the kind-swap block per its contract comment."
+    ),
+    strict=True,
+)
 def test_kind_swap_preserves_non_config_parent_keys(tmp_path):
     """When the child swaps `kind`, the parent's `config` is dropped (scoped
     to a different provider) but any OTHER parent-level `$image_provider`
     keys survive.
 
-    Today `$image_provider` only carries `kind` + `config`, so this test
-    primarily locks in the invariant for future shape extensions
-    (e.g. `enabled`, `fallback`). The top-level tokens schema allows
-    additionalProperties, and `$image_provider`'s shape is not constrained
-    by the current schema, so a hypothetical `enabled: false` key in
-    parent's block passes validation and exercises the precise-drop logic.
+    Today `$image_provider` only carries `kind` + `config` (enforced by
+    tokens.schema.json as of Task 5), so this test primarily locks in the
+    invariant for future shape extensions (e.g. `enabled`, `fallback`).
+    The schema's additionalProperties:false on $image_provider means the
+    test key below currently fails validation — see the @pytest.mark.xfail.
     """
     _write_brand(
         tmp_path,
