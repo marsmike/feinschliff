@@ -57,6 +57,7 @@ from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect
 from lib.brand_discovery import find_brand
+from lib.image_provider import discover_providers, get_provider
 from lib.verify.deck.titles import extract_titles_from_plan
 from lib.verify.deck.storyline import render_contact_sheet, write_storyline_report
 from lib.pipeline_log import (
@@ -343,6 +344,28 @@ def cmd_build(args) -> int:
         print(f"deck: plan '{plan_path}' has no slides", file=sys.stderr)
         return 2
 
+    # Resolve build-time image provider from the default brand's
+    # `$image_provider` (extends-resolved). Per-slide `brand:` overrides
+    # still drive tokens/compounds, but the provider used to resolve
+    # `picture query:` nodes is deck-wide — `asset_lock.json` lives next
+    # to the output deck. Absent → provider is None; brands using only
+    # `picture path:` build as before. A typo'd kind raises KeyError with
+    # a registry listing — surfaces as the normal CLI traceback.
+    discover_providers()
+    provider = None
+    try:
+        default_brand_obj = find_brand(default_brand)
+    except ValueError as e:
+        print(f"deck: {e}", file=sys.stderr)
+        return 2
+    if default_brand_obj.image_provider_config:
+        cfg = default_brand_obj.image_provider_config
+        provider = get_provider(cfg["kind"], cfg.get("config"))
+
+    # Compute the output deck path up front so it can serve as `deck_dir`
+    # for `asset_lock.json` + `.cache/` during the build.
+    out_path = Path(args.output or plan.get("out", "deck.pptx")).resolve()
+
     plan_dir = plan_path.parent
     slides_payload: list[tuple[list, object, Path]] = []
     content_defects_by_slide: dict[int, list] | None = (
@@ -459,7 +482,12 @@ def cmd_build(args) -> int:
             )
             return 1
 
-        prs = build_multi_slide(slides_payload, asset_root_fallback=REPO_ROOT / "assets")
+        prs = build_multi_slide(
+            slides_payload,
+            asset_root_fallback=REPO_ROOT / "assets",
+            image_provider=provider,
+            deck_dir=out_path.parent,
+        )
         missing = getattr(prs, "missing_assets", []) or []
         if missing and not getattr(args, "allow_missing_assets", False):
             for entry in missing:
@@ -479,7 +507,6 @@ def cmd_build(args) -> int:
                 file=sys.stderr,
             )
             return 1
-        out_path = Path(args.output or plan.get("out", "deck.pptx")).resolve()
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
         print(f"wrote {out_path} ({len(prs.slides)} slides)")
@@ -887,9 +914,19 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
     from lib.dsl.pptx_emit import build_multi_slide
 
     try:
-        brand_dir = find_brand(brand).root
+        brand_obj = find_brand(brand)
     except ValueError as e:
         raise ValueError(f"deck polish: {e}") from None
+    brand_dir = brand_obj.root
+
+    # Resolve build-time image provider for `picture query:` resolution.
+    # Same semantic as `deck build`: provider is brand-scoped, lock file
+    # lives next to the polished output deck.
+    discover_providers()
+    provider = None
+    if brand_obj.image_provider_config:
+        cfg = brand_obj.image_provider_config
+        provider = get_provider(cfg["kind"], cfg.get("config"))
 
     tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
     compounds = load_compounds_for_brand(
@@ -927,7 +964,12 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
 
             slides_payload.append((primitives, tokens, brand_dir / "assets"))
 
-        prs = build_multi_slide(slides_payload, asset_root_fallback=REPO_ROOT / "assets")
+        prs = build_multi_slide(
+            slides_payload,
+            asset_root_fallback=REPO_ROOT / "assets",
+            image_provider=provider,
+            deck_dir=out_path.parent,
+        )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
 
