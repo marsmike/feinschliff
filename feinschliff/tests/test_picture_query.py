@@ -372,6 +372,121 @@ def test_brand_switch_invalidates_lock(tmp_path, tiny_png):
     assert lock["provider"] == "provider_b"
 
 
+def test_picture_query_search_exception_treated_as_no_hit(tmp_path):
+    """``provider.search()`` raising must be caught at the
+    ``_emit_picture`` boundary and treated like an empty result — same
+    as ``return []``. Per spec §"Failure modes": placeholder rect +
+    ``missing_assets`` entry, no crash. Without this test a future
+    refactor could silently drop the ``except Exception: return None``
+    in ``_lookup_lock_then_search``.
+    """
+    provider = MagicMock(spec=ImageProvider)
+    provider.name = "fakeprov"
+    provider.search.side_effect = RuntimeError("upstream API exploded")
+
+    dsl = (
+        'canvas 1920x1080\n'
+        'theme test\n'
+        'picture 100,100 200x200 query:"explodes"'
+    )
+    # No exception should bubble out of the build.
+    prs = _build(dsl, deck_dir=tmp_path, provider=provider)
+
+    # missing_assets gets a no-hit entry (impl maps exceptions to the same
+    # path as a `[]` return — see `_lookup_lock_then_search`).
+    assert prs.missing_assets, "expected a missing_assets entry"
+    no_hit = [e for e in prs.missing_assets if e.get("kind") == "no-hit"]
+    assert len(no_hit) == 1
+    assert no_hit[0]["query"] == "explodes"
+    assert no_hit[0]["provider"] == "fakeprov"
+
+    # Placeholder rect emitted (not a picture).
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    shapes = list(prs.slides[0].shapes)
+    assert len(shapes) == 1
+    assert shapes[0].shape_type != MSO_SHAPE_TYPE.PICTURE
+
+    # Failed search must NOT be pinned in asset_lock.json — a stale
+    # "no results" entry would block the slot forever.
+    lock_path = tmp_path / "asset_lock.json"
+    if lock_path.is_file():
+        import json
+        lock = json.loads(lock_path.read_text())
+        assert "explodes" not in lock.get("slots", {}), (
+            "exception-raising search must not be pinned in asset_lock.json"
+        )
+
+
+def test_picture_query_warns_when_deck_dir_unset_for_http_hit(tmp_path):
+    """When ``ctx.deck_dir`` is ``None`` and the resolved hit needs HTTP
+    materialise, a ``RuntimeWarning`` must fire so library callers who
+    forgot to wire ``deck_dir`` notice (no rebuild cache reuse). The
+    fallback itself still completes the build via a throwaway tempdir.
+
+    We mock ``urllib.request.urlopen`` so no real network call happens.
+    """
+    import urllib.request as _urlreq
+
+    # Minimal valid PNG payload — pptx Picture insertion calls Pillow to
+    # introspect dimensions, so the bytes need to actually be parseable.
+    from io import BytesIO
+    buf = BytesIO()
+    Image.new("RGB", (10, 10), color=(0, 0, 255)).save(buf, "PNG")
+    png_bytes = buf.getvalue()
+
+    class _FakeResp:
+        def __init__(self, data):
+            self._data = data
+
+        def read(self):
+            return self._data
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_a):
+            return False
+
+    def _fake_urlopen(url, timeout=None):  # noqa: ARG001
+        return _FakeResp(png_bytes)
+
+    hit = ImageHit(
+        url="https://example.invalid/test.png",
+        license="L", attribution="A",
+        width=10, height=10, mime="image/png",
+    )
+    provider = MagicMock(spec=ImageProvider)
+    provider.name = "fakeprov"
+    provider.search.return_value = [hit]
+
+    dsl = (
+        'canvas 1920x1080\n'
+        'theme test\n'
+        'picture 100,100 200x200 query:"needs http"'
+    )
+
+    # deck_dir=None forces the tempdir fallback path. We still need a
+    # tmp_path for any other I/O the build might do, but pass None to
+    # the EmitContext via the helper signature.
+    nodes, _ = parse_lines(dsl)
+    from lib.dsl.pptx_emit import build_presentation as _bp
+
+    import unittest.mock as _um
+    with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
+        with pytest.warns(RuntimeWarning, match="deck_dir is unset"):
+            prs = _bp(
+                nodes,
+                _minimal_tokens(),
+                image_provider=provider,
+                deck_dir=None,
+            )
+
+    # Build still produces a picture shape (tempdir fallback works).
+    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    shapes = list(prs.slides[0].shapes)
+    assert shapes and shapes[0].shape_type == MSO_SHAPE_TYPE.PICTURE
+
+
 def test_picture_query_label_used_as_slot_id(tmp_path, tiny_png):
     """When the picture node carries a quoted label, that label becomes the
     slot id (overriding the query-derived slug)."""

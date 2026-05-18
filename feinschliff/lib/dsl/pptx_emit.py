@@ -24,6 +24,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+import warnings
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -882,9 +883,20 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
         if cache_dir is None:
             # No deck_dir means we can't cache HTTP downloads. Use a
-            # process-temp dir so the build still completes.
+            # process-temp dir so the build still completes — but warn so
+            # library callers who forgot to wire deck_dir notice the
+            # misconfig (downloads won't be reused across rebuilds).
             import tempfile
             cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
+            warnings.warn(
+                "EmitContext.deck_dir is unset; HTTP image materialise will "
+                "use a throwaway tempdir cache (no rebuild reuse). Wire "
+                "deck_dir on the EmitContext (or pass it to "
+                "build_presentation/build_multi_slide) to persist cached "
+                "downloads in <deck_dir>/.cache/.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
         materialised = _materialise(hit, cache_dir)
         if materialised is None:
             ctx.missing_assets.append({
