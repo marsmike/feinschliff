@@ -215,6 +215,51 @@ def test_brand_overrides_image_provider_kind(tmp_path):
         tokens.raw["$image_provider"].get("config") in (None, {})
 
 
+def test_kind_swap_preserves_non_config_parent_keys(tmp_path):
+    """When the child swaps `kind`, the parent's `config` is dropped (scoped
+    to a different provider) but any OTHER parent-level `$image_provider`
+    keys survive.
+
+    Today `$image_provider` only carries `kind` + `config`, so this test
+    primarily locks in the invariant for future shape extensions
+    (e.g. `enabled`, `fallback`). The top-level tokens schema allows
+    additionalProperties, and `$image_provider`'s shape is not constrained
+    by the current schema, so a hypothetical `enabled: false` key in
+    parent's block passes validation and exercises the precise-drop logic.
+    """
+    _write_brand(
+        tmp_path,
+        "parent",
+        tokens_extra={
+            "$image_provider": {
+                "kind": "unsplash",
+                "config": {"api_version": "v1"},
+                # Future-shape key — not in the schema today, but the merge
+                # engine must preserve it across kind-swaps. If validation
+                # ever tightens to reject this key, this test will FAIL
+                # AT VALIDATION and signal the audit-this-block contract
+                # comment in lib/dsl/tokens.py needs honoring.
+                "enabled": False,
+            }
+        },
+    )
+    _write_brand(
+        tmp_path,
+        "child",
+        extends="parent",
+        tokens_extra={"$image_provider": {"kind": "bsh-designkit"}},
+    )
+
+    tokens = load_tokens(tmp_path / "child", brands_dir=tmp_path)
+    ip = tokens.raw["$image_provider"]
+    # Kind from child wins.
+    assert ip["kind"] == "bsh-designkit"
+    # Parent's `config` was dropped (provider-scoped, not portable).
+    assert "config" not in ip or ip.get("config") in (None, {})
+    # Parent's non-`config` key SURVIVES — the precise-drop, not whole-block-clear.
+    assert ip.get("enabled") is False
+
+
 def test_brand_deep_merges_image_provider_config(tmp_path):
     """Child provides only `config` (no `kind`) → inherit parent's `kind`,
     deep-merge `config` with child winning per key.

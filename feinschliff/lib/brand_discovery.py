@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import warnings
 from dataclasses import dataclass
+from json import JSONDecodeError
 from pathlib import Path
 
 from lib.dsl.tokens import load_tokens
@@ -136,16 +138,26 @@ def discover_brands() -> list[Brand]:
             # block. Use `load_tokens` so a child that inherits the
             # provider from a parent surfaces it correctly. `brands_dir`
             # defaults to the brand's parent in `load_tokens`, which
-            # matches how we discovered `d` (under `root`). On any
-            # failure (malformed JSON, missing parent, schema error)
-            # fall back to None — downstream validators will surface
-            # the better diagnostic at the point the brand is used.
+            # matches how we discovered `d` (under `root`). On a
+            # *survivable* failure (malformed JSON, missing parent file,
+            # cyclic `extends`, schema-validation error) fall back to
+            # None AND emit a RuntimeWarning so the operator sees why
+            # the field is empty — silent swallow makes a misconfigured
+            # brand indistinguishable from one with no provider declared.
+            # Genuine bugs / aborts (KeyboardInterrupt, SystemExit,
+            # MemoryError, RecursionError) intentionally propagate.
             try:
                 resolved = load_tokens(d, brands_dir=root)
                 ip = resolved.raw.get("$image_provider") if isinstance(resolved.raw, dict) else None
                 if isinstance(ip, dict):
                     image_provider_config = ip
-            except Exception:
+            except (OSError, ValueError, JSONDecodeError) as exc:
+                warnings.warn(
+                    f"discover_brands: skipping $image_provider for brand "
+                    f"{d.name!r}: {type(exc).__name__}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
                 image_provider_config = None
             seen[d.name] = Brand(
                 name=d.name, root=d,

@@ -1,4 +1,5 @@
 import json
+import warnings
 from pathlib import Path
 
 import pytest
@@ -138,3 +139,62 @@ def test_discover_brands_ignores_dir_without_brand_marker(tmp_path, monkeypatch)
     monkeypatch.setattr("lib.brand_discovery._cwd_dev_brands_roots", lambda: [])
 
     assert "no-marker" not in {b.name for b in discover_brands()}
+
+
+def test_discover_brands_warns_on_broken_image_provider(tmp_path, monkeypatch):
+    """A brand whose `load_tokens` raises must (a) NOT crash discovery, (b)
+    still surface that brand with `image_provider_config=None`, (c) emit a
+    RuntimeWarning naming the brand, and (d) leave sibling brands unaffected.
+
+    Regression guard against the prior `except Exception: pass` swallow that
+    made misconfigured brands indistinguishable from brands with no provider
+    declared.
+    """
+    bundled = tmp_path / "bundled" / "brands"
+    # Broken brand: malformed JSON in tokens.json → JSONDecodeError, caught.
+    broken = bundled / "image-provider-broken"
+    broken.mkdir(parents=True)
+    (broken / "tokens.json").write_text("{not valid json")
+    # Good sibling: minimum valid tokens.json so load_tokens succeeds.
+    good = bundled / "image-provider-good"
+    good.mkdir(parents=True)
+    (good / "tokens.json").write_text(json.dumps({
+        "color": {"ink": "#111111", "accent": "#ff0000", "paper": "#ffffff"},
+        "font-family": {
+            "display": ["Inter"],
+            "body": ["Inter"],
+            "mono": ["Consolas"],
+        },
+        "font-size": {"slide-title": "56px", "body": "18px", "eyebrow": "14px"},
+        "font-weight": {"regular": 400, "semibold": 600, "bold": 700},
+        "$image_provider": {"kind": "unsplash", "config": {"rate_limit": 50}},
+    }))
+
+    monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
+    monkeypatch.setattr("lib.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("lib.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("lib.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("lib.brand_discovery._cwd_dev_brands_roots", lambda: [])
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        brands = {b.name: b for b in discover_brands()}
+
+    # (a) + (b): both brands surfaced; broken brand has no provider config.
+    assert "image-provider-broken" in brands
+    assert "image-provider-good" in brands
+    assert brands["image-provider-broken"].image_provider_config is None
+
+    # (c) RuntimeWarning fired, names the broken brand + the exception type.
+    runtime_msgs = [
+        str(w.message) for w in caught if issubclass(w.category, RuntimeWarning)
+    ]
+    matching = [m for m in runtime_msgs if "image-provider-broken" in m]
+    assert matching, f"expected RuntimeWarning naming the broken brand; got {runtime_msgs}"
+    assert "$image_provider" in matching[0]
+
+    # (d) sibling unaffected.
+    assert brands["image-provider-good"].image_provider_config == {
+        "kind": "unsplash",
+        "config": {"rate_limit": 50},
+    }
