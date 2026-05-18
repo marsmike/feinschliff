@@ -103,6 +103,64 @@ def test_brand_with_image_provider_populates_field(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
+# discover_brands → Brand.image_provider_config is extends-resolved
+# ---------------------------------------------------------------------------
+
+
+def test_brand_image_provider_resolved_via_discover_brands(tmp_path, monkeypatch):
+    """A child brand without its own `$image_provider` must surface the
+    parent's via `discover_brands` → `Brand.image_provider_config` (the
+    field is spec'd as extends-resolved, not the raw child-only block).
+
+    Also covers the override case: when the child swaps `kind`, the
+    Brand surfaces the child's `kind` and the parent's `config` is
+    dropped (kind-swap invalidates parent config — same semantic as
+    `load_tokens`).
+    """
+    bundled = tmp_path / "bundled" / "brands"
+    bundled.mkdir(parents=True, exist_ok=True)
+    # Parent declares the provider; child inherits, no override.
+    _write_brand(
+        bundled,
+        "parent",
+        tokens_extra={
+            "$image_provider": {
+                "kind": "unsplash",
+                "config": {"api_version": "v1", "rate_limit": 50},
+            }
+        },
+    )
+    _write_brand(bundled, "child", extends="parent")
+    # A second child that swaps `kind` — parent's config must NOT carry.
+    _write_brand(
+        bundled,
+        "child-swapped",
+        extends="parent",
+        tokens_extra={"$image_provider": {"kind": "bsh-designkit"}},
+    )
+
+    monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
+    monkeypatch.setattr("lib.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("lib.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("lib.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("lib.brand_discovery._cwd_dev_brands_roots", lambda: [])
+
+    brands = {b.name: b for b in discover_brands()}
+
+    # Inheritance: child surfaces the parent's full provider block.
+    assert brands["child"].image_provider_config == {
+        "kind": "unsplash",
+        "config": {"api_version": "v1", "rate_limit": 50},
+    }
+
+    # Override (kind swap): child wins; parent's config is dropped.
+    swapped = brands["child-swapped"].image_provider_config
+    assert swapped is not None
+    assert swapped["kind"] == "bsh-designkit"
+    assert swapped.get("config") in (None, {})
+
+
+# ---------------------------------------------------------------------------
 # load_tokens → extends chain propagates $image_provider
 # ---------------------------------------------------------------------------
 

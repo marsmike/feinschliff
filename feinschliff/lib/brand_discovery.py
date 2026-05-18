@@ -1,10 +1,11 @@
 """Locate brand packs across bundled, plugin-installed, env, and user-local paths."""
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
+
+from lib.dsl.tokens import load_tokens
 
 
 @dataclass
@@ -15,10 +16,11 @@ class Brand:
     design_path: Path | None = None
     layouts_path: Path | None = None   # brand-specific layouts/ (overrides toolkit)
     compounds_path: Path | None = None # brand-specific compounds/
-    # `$image_provider` from tokens.json: {"kind": "<name>", "config": {...}}.
-    # The `extends` chain is NOT resolved here — this is the raw block from
-    # the brand's own tokens.json. `load_tokens()` produces the fully-merged
-    # view via `tokens.raw["$image_provider"]`.
+    # `$image_provider`: extends-resolved block from tokens.json. None when
+    # the brand (and none of its parents) declares a provider. `config` is
+    # deep-merged across `extends`; `kind` is fully replaced by the child
+    # if specified (and a `kind` swap drops the parent's `config` since it
+    # was scoped to a different provider).
     image_provider_config: dict | None = None
 
 
@@ -130,17 +132,21 @@ def discover_brands() -> list[Brand]:
             if d.name in seen:
                 continue
             image_provider_config: dict | None = None
-            if tokens.is_file():
-                try:
-                    raw = json.loads(tokens.read_text(encoding="utf-8"))
-                except (OSError, json.JSONDecodeError):
-                    # Bad / unreadable tokens.json: leave as None and let
-                    # downstream validators (load_tokens) surface a better
-                    # diagnostic at the point the brand is actually used.
-                    raw = {}
-                ip = raw.get("$image_provider") if isinstance(raw, dict) else None
+            # Spec: `Brand.image_provider_config` is the extends-resolved
+            # block. Use `load_tokens` so a child that inherits the
+            # provider from a parent surfaces it correctly. `brands_dir`
+            # defaults to the brand's parent in `load_tokens`, which
+            # matches how we discovered `d` (under `root`). On any
+            # failure (malformed JSON, missing parent, schema error)
+            # fall back to None — downstream validators will surface
+            # the better diagnostic at the point the brand is used.
+            try:
+                resolved = load_tokens(d, brands_dir=root)
+                ip = resolved.raw.get("$image_provider") if isinstance(resolved.raw, dict) else None
                 if isinstance(ip, dict):
                     image_provider_config = ip
+            except Exception:
+                image_provider_config = None
             seen[d.name] = Brand(
                 name=d.name, root=d,
                 tokens_path=tokens if tokens.is_file() else None,
