@@ -18,13 +18,25 @@ flowchart LR
     DSL([.slide.dsl<br/>+ content yaml]) --> P[1 · Parser]
     P --> E[2 · Expander<br/>slot interpolate +<br/>expand diagram blocks]
     Tokens([brand tokens.json<br/>+ DESIGN.md extends:]) --> T[3 · Tokens]
+    T --> IP[3a · Provider lookup<br/>if brand declares<br/>$image_provider]
     E --> Em[4 · Emitter]
     T --> Em
+    IP --> Em
     Em --> Out([.pptx])
     Em --> DC[diagram checks<br/>overflow · color · size]
     style Out fill:#F2F4F8,stroke:#5C6470,color:#1A1F2E
     style DC fill:#E8F4FF,stroke:#5C8ECC,color:#1A1F2E
+    style IP fill:#F4F0E8,stroke:#A68B5C,color:#1A1F2E
 ```
+
+When the active brand declares `$image_provider` in `tokens.json`, the
+CLI (`cli/build.py`, `cli/deck.py`) instantiates the named provider and
+threads it onto `EmitContext.image_provider`. The emitter's `picture`
+primitive then resolves any `query:"..."` node through that provider
+(materialised + pinned in `<deck_dir>/asset_lock.json`). Brands without
+`$image_provider` skip this step entirely; `picture path:"..."` is
+unaffected. Full ABC + extension contract:
+[`references/image-providers.md`](../references/image-providers.md).
 
 ### Stage 1 — Parser (`lib/dsl/parser.py`)
 
@@ -171,6 +183,7 @@ Outputs: `<deck-out>/refurbished/slide-N.{exc.dsl|svg.dsl}` + `refurbish_report.
 
 - **DSL pipeline:** [`lib/dsl/parser.py`](../lib/dsl/parser.py), [`lib/dsl/expander.py`](../lib/dsl/expander.py), [`lib/dsl/tokens.py`](../lib/dsl/tokens.py), [`lib/dsl/pptx_emit.py`](../lib/dsl/pptx_emit.py).
 - **Brand discovery + tokens:** [`lib/brand_discovery.py`](../lib/brand_discovery.py), [`lib/design_md.py`](../lib/design_md.py).
+- **Image-provider framework:** [`lib/image_provider.py`](../lib/image_provider.py) (ABC + registry + 5-tier discovery), [`lib/providers/`](../lib/providers/) (built-ins, currently `unsplash`). See [`references/image-providers.md`](../references/image-providers.md).
 - **Layout picker:** [`lib/layout_picker.py`](../lib/layout_picker.py) (per-slide affinity scoring) and [`lib/layout_budget.py`](../lib/layout_budget.py) (two-pass deck-wide planner that re-ranks picker output with a usage-budget bonus so eligible-but-overlooked layouts surface across long decks).
 - **Layout validator:** [`lib/layout_validator.py`](../lib/layout_validator.py).
 - **Toolkit layouts (41):** [`layouts/`](../layouts/).

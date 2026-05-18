@@ -1,5 +1,47 @@
 # Changelog
 
+## Unreleased — image-provider framework
+
+### Added
+- **`lib/image_provider.py`** — pluggable image-provider ABC + global
+  registry + 5-tier discovery (bundled → plugin → env → cwd-dev →
+  user). Mirrors `lib/brand_discovery.py`'s scan idiom; plugin
+  providers land under `~/.claude/plugins/.../feinschliff_providers/`
+  and survive every upstream resync. Discovery is idempotent;
+  first-write-wins on name collisions; broken provider files log a
+  truncated traceback and skip rather than blocking unrelated builds.
+- **`lib/providers/unsplash.py`** — reference `UnsplashProvider`
+  built-in. Uses stdlib `urllib.request` (no new dependency). Stub
+  mode is the default when `UNSPLASH_ACCESS_KEY` is unset, with one
+  `RuntimeWarning` per process — OSS builds without a key still
+  complete. Single retry on 429 / 5xx and network errors, 30 s total
+  wall budget.
+- **`$image_provider` field on `tokens.json`** (schema-validated,
+  `extends:`-inherited). `kind` selects a registered provider; `config`
+  is forwarded to its constructor. `config` is deep-merged across
+  `extends`; a child swapping `kind` drops the parent's
+  provider-scoped `config`.
+- **`picture query:"..."` DSL primitive.** Resolves through the
+  active brand's provider at build time. Deterministic per-deck
+  pinning via `<deck_dir>/asset_lock.json` (atomic writes; brand /
+  provider switch invalidates the file). HTTP hits are materialised
+  into `<deck_dir>/.cache/<sha1(url)>.<ext>`; `file://` and bare-path
+  hits are checked on disk. `query:` and `path:` are mutually
+  exclusive on a single picture node.
+- **CLI auto-wires providers.** `cli/build.py` and `cli/deck.py`
+  (both single-slide and multi-slide build paths) call
+  `discover_providers()` + `get_provider()` after brand resolution
+  and thread the result onto `EmitContext.image_provider` along with
+  `deck_dir`. Brands without `$image_provider` build unchanged —
+  the field is opt-in and the existing `path:` flow is untouched.
+- **Docs.** New [`references/image-providers.md`](references/image-providers.md)
+  covers the ABC, the 5-tier discovery, a worked custom-provider
+  example, lock-file format, the built-in `unsplash`, and the
+  failure-modes table. `references/brand-pack-spec.md` gains an
+  "Image provider" section; `docs/architecture.md` gets the lookup
+  step in the pipeline diagram; `docs/port-your-brand.md` points
+  brand authors at the new reference.
+
 ## Unreleased
 
 ### Added — water-cycle showcase + 7 image-slot layouts

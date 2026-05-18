@@ -309,6 +309,21 @@ feinschliff verify /tmp/<new>-deck.pptx --json
 A pass on `verify --json` (no overlap / out-of-bounds defects) and a
 visual eyeball is the ship gate.
 
+## Optional: pick an image provider
+
+Most brand ports do not need to think about this. If your slides will
+use `picture query:"..."` to resolve images at build time (rather than
+pre-bundled `path:`), declare an `$image_provider` in `tokens.json`:
+
+```jsonc
+"$image_provider": { "kind": "unsplash", "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" } }
+```
+
+The toolkit ships `unsplash` as the built-in reference provider; custom
+providers live in plugins. See
+[`../references/image-providers.md`](../references/image-providers.md)
+for the full extension contract.
+
 ## Dark-brand variants
 
 If you're authoring a brand with a **dark canvas** (`paper` is a dark

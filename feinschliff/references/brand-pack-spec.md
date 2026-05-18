@@ -94,6 +94,89 @@ layouts touch (or inherit them — see "Inheritance" below).
 `static` means catalog-bundled assets only. `search` declares a CDN
 the resolver can query (Unsplash, Iconify, Wikimedia, etc.).
 
+## Image provider
+
+Optional. A brand may declare a build-time image provider so that the
+`picture` primitive can resolve images by **query** instead of by
+filesystem path. The provider hook is opt-in — brands that omit
+`$image_provider` are unaffected, and `picture path:"..."` keeps working
+as it always has.
+
+```jsonc
+{
+  "$image_provider": {
+    "kind":   "unsplash",
+    "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" }
+  }
+}
+```
+
+- **`kind`** — name of a registered provider. Built-ins live under
+  `lib/providers/`; out-of-tree providers ship as plugin files (see
+  [`image-providers.md`](image-providers.md) for discovery rules).
+- **`config`** — provider-specific dict passed through to the provider
+  constructor. Schema is opaque to the toolkit.
+
+When a brand declares `$image_provider`, slides may write:
+
+```
+picture 320,200 1280x720 query:"morning kitchen light"
+```
+
+At build time the active provider's `search(query)` resolves to an
+`ImageHit`; the URL is materialised into `<deck_dir>/.cache/` and pinned
+in `<deck_dir>/asset_lock.json` so rebuilds are deterministic.
+`query:` and `path:` are mutually exclusive on a single `picture` node.
+
+### Inheritance through `extends`
+
+`$image_provider` is inherited via the `extends:` chain — a child brand
+that lives on top of a parent with a configured provider picks it up
+automatically. The merge rules are:
+
+- **`config` is deep-merged** when child and parent both target the same
+  `kind` (the child only refines specific keys).
+- **`kind` is fully replaced** when the child swaps it; the parent's
+  `config` is dropped because it was scoped to a different provider.
+
+### Worked example — built-in `unsplash`
+
+```jsonc
+{
+  "$image_provider": {
+    "kind":   "unsplash",
+    "config": { "access_key": "${env:UNSPLASH_ACCESS_KEY}" }
+  }
+}
+```
+
+`UnsplashProvider` reads `access_key` from `config` first, falls back to
+the `UNSPLASH_ACCESS_KEY` env var, and runs in **stub mode** (returns
+`[]`, emits one warning per process) when neither is set so OSS builds
+without a key still complete.
+
+### Worked example — downstream plugin provider
+
+A downstream Claude Code plugin can ship its own provider without
+patching upstream. For example, an internal brand backed by a curated
+design-kit mirror (the `feinschliff-bsh` plugin's `bsh-designkit`)
+declares:
+
+```jsonc
+{
+  "$image_provider": {
+    "kind":   "bsh-designkit",
+    "config": { "kit_root": "/srv/bsh/designkit" }
+  }
+}
+```
+
+The provider class lives in the plugin under
+`feinschliff_providers/bsh_designkit.py`; the upstream toolkit discovers
+it on every build and looks it up by `kind`. See
+[`image-providers.md`](image-providers.md) for the discovery rules and
+the authoring contract.
+
 ## Inheritance via DESIGN.md frontmatter
 
 ```yaml
@@ -161,5 +244,6 @@ $ feinschliff brand inspect <brand>
 ## Sibling references
 
 - [`compounds.md`](compounds.md) — toolkit-standard compound catalog
+- [`image-providers.md`](image-providers.md) — `$image_provider` ABC + authoring guide
 - [`../docs/dsl-grammar.md`](../docs/dsl-grammar.md) — `.slide.dsl` reference
 - [`../docs/port-your-brand.md`](../docs/port-your-brand.md) — end-to-end tutorial
