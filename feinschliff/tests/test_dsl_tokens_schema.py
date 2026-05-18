@@ -74,6 +74,77 @@ def test_invalid_font_size_unit_raises():
     assert "font-size.body" in str(exc.value)
 
 
+def test_image_provider_valid_minimal():
+    """`$image_provider` with only `kind` is valid (config is optional)."""
+    ok = {
+        "color": {"accent": "#FF0000"},
+        "font-family": {"display": ["Noto Sans"]},
+        "font-size": {"body": "26px"},
+        "$image_provider": {"kind": "unsplash"},
+    }
+    validate_tokens(ok, "ok-brand")  # must not raise
+
+
+def test_image_provider_valid_with_config():
+    """`$image_provider` with a free-form `config` object is valid."""
+    ok = {
+        "color": {"accent": "#FF0000"},
+        "font-family": {"display": ["Noto Sans"]},
+        "font-size": {"body": "26px"},
+        "$image_provider": {
+            "kind": "unsplash",
+            "config": {"access_key": "abc123", "per_page": 5},
+        },
+    }
+    validate_tokens(ok, "ok-cfg-brand")  # must not raise
+
+
+def test_image_provider_missing_kind_raises():
+    """`$image_provider` without required `kind` is rejected."""
+    bad = {
+        "color": {"accent": "#FF0000"},
+        "font-family": {"display": ["Noto Sans"]},
+        "font-size": {"body": "26px"},
+        "$image_provider": {},
+    }
+    with pytest.raises(ValueError) as exc:
+        validate_tokens(bad, "no-kind-brand")
+    msg = str(exc.value)
+    assert "no-kind-brand" in msg
+    assert "$image_provider" in msg
+    assert "kind" in msg
+
+
+def test_image_provider_extra_field_raises():
+    """`$image_provider` rejects unknown fields (additionalProperties:false)."""
+    bad = {
+        "color": {"accent": "#FF0000"},
+        "font-family": {"display": ["Noto Sans"]},
+        "font-size": {"body": "26px"},
+        "$image_provider": {"kind": "unsplash", "rogue": 1},
+    }
+    with pytest.raises(ValueError) as exc:
+        validate_tokens(bad, "rogue-field-brand")
+    msg = str(exc.value)
+    assert "rogue-field-brand" in msg
+    assert "$image_provider" in msg
+
+
+def test_image_provider_config_must_be_object():
+    """`$image_provider.config` must be an object, not a string."""
+    bad = {
+        "color": {"accent": "#FF0000"},
+        "font-family": {"display": ["Noto Sans"]},
+        "font-size": {"body": "26px"},
+        "$image_provider": {"kind": "unsplash", "config": "string-not-object"},
+    }
+    with pytest.raises(ValueError) as exc:
+        validate_tokens(bad, "bad-cfg-brand")
+    msg = str(exc.value)
+    assert "bad-cfg-brand" in msg
+    assert "config" in msg
+
+
 def test_load_tokens_surfaces_schema_error_for_bad_brand(tmp_path):
     """A brand pack with a malformed tokens.json should surface validation error from load_tokens."""
     brand = tmp_path / "shabby"

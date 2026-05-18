@@ -36,7 +36,7 @@ def _now_iso() -> str:
 
 
 def log_event(
-    deck_dir: str | Path,
+    deck_dir: str | Path | None,
     phase: str,
     status: str,
     *,
@@ -46,11 +46,20 @@ def log_event(
     """Append one event row to `<deck_dir>/timing.jsonl`. Always succeeds —
     the timing log is best-effort and never raises on write failure (the
     pipeline must not abort because logging is unavailable).
+
+    When ``deck_dir`` is ``None`` the event is built and returned but not
+    written anywhere — callers without a deck context (e.g. plugin
+    discovery, which has no deck yet) use this to record an event in
+    memory without polluting ``$CWD`` with a stray ``timing.jsonl``.
     """
     rec: dict[str, Any] = {"t": _now_iso(), "phase": phase, "status": status}
     if elapsed_ms is not None:
         rec["elapsed_ms"] = int(elapsed_ms)
     rec.update({k: v for k, v in extra.items() if v is not None})
+    if deck_dir is None:
+        # No deck context — return the record without writing. Callers
+        # that want visibility should log to stderr themselves.
+        return rec
     path = Path(deck_dir) / "timing.jsonl"
     try:
         path.parent.mkdir(parents=True, exist_ok=True)

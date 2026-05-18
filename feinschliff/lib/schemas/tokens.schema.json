@@ -176,6 +176,16 @@
         "axis_color_role": { "type": "string" },
         "legend_threshold": { "type": "integer", "minimum": 1 }
       }
+    },
+    "$image_provider": {
+      "type": "object",
+      "description": "Build-time image provider for picture primitives using query:. Lookup by `kind` against the global provider registry. `config` is passed through to the provider constructor.",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": { "type": "string" },
+        "config": { "type": "object", "additionalProperties": true }
+      }
     }
   },
   "additionalProperties": true

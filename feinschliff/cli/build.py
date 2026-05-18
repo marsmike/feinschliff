@@ -22,6 +22,7 @@ from lib.content_validator import validate_content, emit_defects_and_abort_messa
 from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect
+from lib.image_provider import discover_providers, get_provider
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -62,10 +63,23 @@ def cmd_build(args) -> int:
 
     layout_path = Path(args.layout).resolve()
     try:
-        brand_dir = find_brand(args.brand).root
+        brand = find_brand(args.brand)
     except ValueError as e:
         print(f"feinschliff: {e}", file=sys.stderr)
         return 2
+    brand_dir = brand.root
+
+    # Resolve build-time image provider from `$image_provider` in the
+    # brand's tokens.json (extends-resolved by `discover_brands`). Absent
+    # → provider is None and any `picture query:` raises a loud DSLError
+    # inside the emitter; brands that only use `picture path:` build as
+    # before. `get_provider` raises KeyError with a registry listing on a
+    # typo'd kind, which surfaces as the normal CLI traceback.
+    discover_providers()
+    provider = None
+    if brand.image_provider_config:
+        cfg = brand.image_provider_config
+        provider = get_provider(cfg["kind"], cfg.get("config"))
 
     tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
     compounds = load_compounds_for_brand(
@@ -133,10 +147,13 @@ def cmd_build(args) -> int:
 
     asset_root = brand_dir / "assets"
     asset_root_fallback = REPO_ROOT / "assets"
+    out_path = Path(args.output).resolve()
     prs = build_presentation(
         primitives, tokens,
         asset_root=asset_root,
         asset_root_fallback=asset_root_fallback,
+        image_provider=provider,
+        deck_dir=out_path.parent,
     )
     missing = getattr(prs, "missing_assets", []) or []
     if missing and not getattr(args, "allow_missing_assets", False):
@@ -156,10 +173,9 @@ def cmd_build(args) -> int:
             file=sys.stderr,
         )
         return 1
-    out = Path(args.output).resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(str(out))
-    print(f"wrote {out} ({len(prs.slides)} slide, "
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    prs.save(str(out_path))
+    print(f"wrote {out_path} ({len(prs.slides)} slide, "
           f"{len(primitives)} primitives expanded from "
           f"{len(layout_nodes)} layout nodes)")
     return 0
