@@ -52,7 +52,9 @@ from lib.dsl.expander import (
     load_compounds_for_brand,
 )
 from lib.dsl.pptx_emit import build_multi_slide
-from lib.content_validator import validate_content, emit_defects_and_abort_message
+from lib.content_validator import (
+    emit_defects_and_abort_message, validate_content, validate_notes,
+)
 from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect
@@ -339,6 +341,9 @@ def cmd_build(args) -> int:
     plan = yaml.safe_load(plan_path.read_text()) or {}
 
     default_brand = plan.get("brand", "feinschliff")
+    # Notes lint reads the deck-level verbosity (mirrors design_brief.verbosity)
+    # to pick a per-slide word budget. Unset → budget check is skipped.
+    plan_verbosity = plan.get("verbosity")
     slides_spec = plan.get("slides") or []
     if not slides_spec:
         print(f"deck: plan '{plan_path}' has no slides", file=sys.stderr)
@@ -437,6 +442,12 @@ def cmd_build(args) -> int:
                     ctx, slide_index=slide_index, layout=layout_name,
                     slot_budgets=slot_budgets,
                 )
+                slide_defects.extend(validate_notes(
+                    spec.get("notes"),
+                    slide_index=slide_index,
+                    is_hook=(i == 0),
+                    verbosity=plan_verbosity,
+                ))
                 if slide_defects:
                     content_defects_by_slide[slide_index] = slide_defects
 
