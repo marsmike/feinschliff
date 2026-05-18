@@ -459,7 +459,17 @@ def cmd_build(args) -> int:
             for d in slide_result.defects:
                 print(f"deck: slide {i + 1}: {format_defect(d)}", file=sys.stderr)
             all_diagram_defects.extend(slide_result.defects)
-            slides_payload.append((slide_result.primitives, slide_result.tokens, brand_dir / "assets"))
+            notes = spec.get("notes")
+            if notes is not None:
+                slides_payload.append(
+                    (slide_result.primitives, slide_result.tokens,
+                     brand_dir / "assets", notes)
+                )
+            else:
+                slides_payload.append(
+                    (slide_result.primitives, slide_result.tokens,
+                     brand_dir / "assets")
+                )
 
         if content_defects_by_slide:
             emit_defects_and_abort_message(content_defects_by_slide, cli_name="deck build")
@@ -962,7 +972,15 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
             for d in diagnostics:
                 print(f"deck polish: {d.format()}", file=sys.stderr)
 
-            slides_payload.append((primitives, tokens, brand_dir / "assets"))
+            notes = entry.get("notes")
+            if notes is not None:
+                slides_payload.append(
+                    (primitives, tokens, brand_dir / "assets", notes)
+                )
+            else:
+                slides_payload.append(
+                    (primitives, tokens, brand_dir / "assets")
+                )
 
         prs = build_multi_slide(
             slides_payload,
