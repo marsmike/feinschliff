@@ -39,7 +39,7 @@ from PIL import Image
 from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Emu, Pt
 
 from .. import textfit
@@ -366,6 +366,20 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     tf.word_wrap = True
     tf.margin_left = tf.margin_right = 0
     tf.margin_top = tf.margin_bottom = 0
+    valign = node.kw_args.get("valign", "top")
+    if valign == "middle":
+        tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+    elif valign == "bottom":
+        tf.vertical_anchor = MSO_ANCHOR.BOTTOM
+    # When autoshrink:true is set, also enable PowerPoint's native
+    # shrink-text-to-fit autofit. The Python-side textfit estimate is
+    # rough — real font metrics in PPT can wrap a line earlier and
+    # overflow the bbox even after our pre-shrink. The native autofit
+    # uses PPT's true metrics as a last line of defense; it's a no-op
+    # when the (already-shrunk) text fits, but rescues edge cases that
+    # the heuristic underestimates.
+    if autoshrink:
+        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
     p0.alignment = align

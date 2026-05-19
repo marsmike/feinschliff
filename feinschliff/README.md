@@ -10,12 +10,23 @@
 
 Four Claude Code skills, one CLI:
 
-- **`/deck`** — create or polish a brand-compliant `.pptx` from a brief or rough deck.
+- **`/deck`** — create or polish a brand-compliant `.pptx` from a brief or rough deck. Generates speaker notes per slide and an annotated speaker-book PDF (handouts) via `deck book`.
 - **`/compile`** — scaffold v2 `.slide.dsl` skeletons from claude-design HTML.
 - **`/excalidraw`** — author concept-flow diagrams in a brand-aware DSL.
 - **`/svg`** — author SVG infographics and custom charts in a brand-aware DSL.
 
-Under the hood: `feinschliff build` / `deck build` / `compile-html` / `verify` / `ship`. See [`docs/architecture.md`](docs/architecture.md) for the full pipeline — five phases, 14-class verify pass, iteration budget.
+Under the hood: `feinschliff build` / `deck build` / `deck book` / `compile-html` / `verify` / `ship`. See [`docs/architecture.md`](docs/architecture.md) for the full pipeline — five phases, 14-class verify pass, iteration budget.
+
+## By the numbers
+
+| Surface | Count |
+|---|---|
+| Shared layouts (`.slide.dsl`) | **50** |
+| Brand packs in the box | **12** |
+| Shared compounds | **5** |
+| Python lines (lib + cli) | **16.1 k** |
+| DSL lines (layouts + compounds) | **3.0 k** |
+| Pytest test files | **94** |
 
 ![Feinschliff slides cycling animation](docs/images/showcase.gif)
 

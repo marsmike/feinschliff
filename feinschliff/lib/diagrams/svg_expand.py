@@ -119,6 +119,8 @@ def expand(dsl: str, brand_dir: Path, canvas_override: tuple[int, int] | None = 
             body.append(_emit_legend(line, brand_dir, scale=scale))
         elif head == "circle":
             body.append(_emit_circle(line, brand_dir, scale=scale))
+        elif head == "ellipse":
+            body.append(_emit_ellipse(line, brand_dir, scale=scale))
         elif head == "line":
             body.append(_emit_line(line, brand_dir, scale=scale))
         elif head == "group":
@@ -188,9 +190,18 @@ def _emit_text(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     sizes = {"title": 22, "subtitle": 16, "body": 14, "detail": 12, "value": 13}
     size = _sz(sizes.get(level, 14), scale)
     fill = resolve("ink", brand_dir)
+    # Optional flags: align:start|middle|end (CSS text-anchor) and
+    # color:<token> (override ink default for tonal hierarchy).
+    anchor = "start"
+    for p in parts[5:]:
+        if p.startswith("align:"):
+            v = p.split(":", 1)[1]
+            anchor = {"left": "start", "center": "middle", "right": "end"}.get(v, v)
+        elif p.startswith("color:"):
+            fill = resolve(p.split(":", 1)[1], brand_dir)
     return (
         f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" '
-        f'font-family="sans-serif">{_escape(content)}</text>'
+        f'text-anchor="{anchor}" font-family="sans-serif">{_escape(content)}</text>'
     )
 
 
@@ -268,6 +279,30 @@ def _emit_circle(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     cx, cy = _parse_xy(cxy)
     fill = resolve(color, brand_dir)
     out = [f'<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}"/>']
+    label = _extract_label(parts[5:])
+    if label:
+        ink = _label_color_for(fill, brand_dir)
+        out.append(
+            f'<text x="{cx}" y="{cy + 4}" font-size="{_sz(13, scale)}" '
+            f'text-anchor="middle" fill="{ink}" '
+            f'font-family="sans-serif">{_escape(label)}</text>'
+        )
+    return "".join(out)
+
+
+def _emit_ellipse(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
+    """ellipse <id> <cx>,<cy> <rx>x<ry> <color> [label:"..."]
+
+    Useful for cloud / blob shapes where a circle's 1:1 aspect ratio is
+    too rigid. Width/height are RADII (not full extents): an ellipse with
+    `200x100` spans 400 wide × 200 tall.
+    """
+    parts = shlex.split(line)
+    _, _id, cxy, rxy, color = parts[:5]
+    cx, cy = _parse_xy(cxy)
+    rx, ry = _parse_wh(rxy)
+    fill = resolve(color, brand_dir)
+    out = [f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="{fill}"/>']
     label = _extract_label(parts[5:])
     if label:
         ink = _label_color_for(fill, brand_dir)

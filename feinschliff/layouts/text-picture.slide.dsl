@@ -26,12 +26,14 @@ text 100,260 style:eyebrow maxwidth:820 maxheight:30                  "{{ eyebro
 text 100,300 style:huge    maxwidth:820 maxheight:380                 "{{ title }}"
 text 100,720 style:body    maxwidth:780 maxheight:140                 "{{ body }}"
 
-# Buttons — canonical case is primary + ghost. Hardcoded as rect + text;
-# layouts that need different styles can override.
-rect 100,888  290x68 fill:accent stroke:accent stroke-width:2
-text 132,907  style:btn color:ink   maxwidth:260 maxheight:44         "{{ buttons[0].label }}"
+# Buttons — canonical case is primary + ghost. Both button shapes AND
+# their labels are `if:`-guarded on the corresponding button's `label`
+# slot, so an empty `buttons: []` (or a single-button caller) won't
+# emit unlabeled boxes that read as broken UI in the rendered slide.
+rect 100,888  290x68 fill:accent stroke:accent stroke-width:2                  if:"{{ buttons[0].label }}"
+text 132,907  style:btn color:ink   maxwidth:260 maxheight:44                   if:"{{ buttons[0].label }}" "{{ buttons[0].label }}"
 
-rect 410,888  240x68 fill:paper stroke:ink stroke-width:2
-text 442,907  style:btn color:ink   maxwidth:200 maxheight:44         "{{ buttons[1].label }}"
+rect 410,888  240x68 fill:paper stroke:ink stroke-width:2                       if:"{{ buttons[1].label }}"
+text 442,907  style:btn color:ink   maxwidth:200 maxheight:44                   if:"{{ buttons[1].label }}" "{{ buttons[1].label }}"
 
 footer left:"{{ footer_left }}" right:"{{ footer_right }}"

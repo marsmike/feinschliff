@@ -307,7 +307,13 @@ def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
             f'text-anchor="middle">{tspans}</text>'
         )
 
-    # Free-floating text — top-left anchor.
+    # Free-floating text (typically arrow labels / annotations). Top-left
+    # anchor. Rendered semibold so the typographically-small labels survive
+    # the 4–8× downscale into the slide's diagram slot — at the natural
+    # 16-px Excalidraw text size with no weight, the canonical Helvetica
+    # glyphs anti-alias to a faint stem that disappears against busy
+    # backgrounds. Semibold (font-weight=600) restores enough optical
+    # density to read clearly post-downscale.
     x = e.get("x", 0) + tx
     y0 = e.get("y", 0) + ty + fs
     tspans = "".join(
@@ -315,8 +321,8 @@ def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
         for i, ln in enumerate(lines)
     )
     return (
-        f'<text font-size="{fs}" fill="{fill}" font-family="{font}">'
-        f'{tspans}</text>'
+        f'<text font-size="{fs}" fill="{fill}" font-family="{font}" '
+        f'font-weight="600">{tspans}</text>'
     )
 
 
