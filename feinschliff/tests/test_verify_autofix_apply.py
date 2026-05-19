@@ -15,7 +15,6 @@ Also covers:
 """
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 import pytest
@@ -437,8 +436,7 @@ class TestSwapLayoutSmaller:
 
     def test_apply_fixes_updates_layout_field(self):
         """If a swap_layout_smaller patch is returned, applying it updates the layout field."""
-        from lib.verify.autofix import plan_fixes, apply_fixes, FixPatch
-        from lib.defects import DefectKind
+        from lib.verify.autofix import plan_fixes, apply_fixes
 
         plan = {
             "brand": "feinschliff",

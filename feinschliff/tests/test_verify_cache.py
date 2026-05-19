@@ -1,11 +1,9 @@
 """Unit tests for lib/verify/cache — per-slide content-hash cache."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
-import pytest
 
 from lib.verify.cache import CachedVerdict, VerifyCache, slide_hash
 
@@ -268,15 +266,15 @@ def test_run_squint_no_cache_arg_unchanged_behavior(tmp_path: Path):
     judge_return = {"status": "pass", "reason": "ok"}
 
     with patch.object(rubric_mod, "_judge", return_value=judge_return) as mock_judge:
-        r1 = rubric_mod.run_squint(tmp_path / "deck.pptx", pngs, offline=False)
-        r2 = rubric_mod.run_squint(tmp_path / "deck.pptx", pngs, offline=False)
+        rubric_mod.run_squint(tmp_path / "deck.pptx", pngs, offline=False)
+        rubric_mod.run_squint(tmp_path / "deck.pptx", pngs, offline=False)
         # No cache → _judge called each time for each slide
         assert mock_judge.call_count == 4  # 2 slides × 2 runs
 
 
 def test_no_cache_flag_in_verify_quality_cli(tmp_path: Path):
     """--no-cache flag is accepted without error (offline mode for simplicity)."""
-    import subprocess, sys
+    import subprocess
     from pathlib import Path as _P
     from pptx import Presentation
 
@@ -305,8 +303,7 @@ def test_no_cache_flag_in_verify_quality_cli(tmp_path: Path):
 def test_no_plan_arg_does_not_overwrite_existing_cache(tmp_path: Path):
     """I1 fix: when --plan is absent, an existing .verify_cache.json is never touched."""
     import json as _json
-    from unittest.mock import patch, MagicMock
-    from pathlib import Path as _P
+    from unittest.mock import patch
     from pptx import Presentation
 
     # Pre-populate a cache file with real content

@@ -47,7 +47,7 @@ from pathlib import Path
 import yaml
 
 from lib.dsl.parser import parse_file
-from lib.dsl.tokens import load_tokens
+from lib.dsl.tokens import Tokens, load_tokens
 from lib.dsl.expander import (
     interpolate_nodes,
     expand_compounds,
@@ -1518,7 +1518,7 @@ def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
 def _slot_budgets_for_layout(
     layout_name: str,
     brand_root: Path,
-    tokens: "Tokens",
+    tokens: Tokens,
 ) -> dict[str, dict[str, int]]:
     """Compute slot budgets for *layout_name* and return a plain serialisable
     dict mapping slot names to ``{chars_per_line, max_lines, max_chars}``.
@@ -2129,7 +2129,6 @@ def cmd_apply_fixes(args) -> int:
       2 — plumbing error
     """
     import json as _json
-    from lib.verify.static import static_verify
     from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
     from lib.defects import Defect, DefectKind, Severity
 
@@ -2167,7 +2166,7 @@ def cmd_apply_fixes(args) -> int:
             if isinstance(_slide_defects, list):
                 defect_dicts.extend(_slide_defects)
     else:
-        print(f"deck apply-fixes: unrecognised defects JSON shape", file=sys.stderr)
+        print("deck apply-fixes: unrecognised defects JSON shape", file=sys.stderr)
         return 2
 
     defects: list[Defect] = []
@@ -2200,7 +2199,7 @@ def cmd_apply_fixes(args) -> int:
     patches = plan_fixes(defects, plan, brand_obj.root)
     if not patches:
         print("deck apply-fixes: no mechanical fixes available for these defects")
-        print(f"Auto-fix passes: 0")
+        print("Auto-fix passes: 0")
         return 1
 
     fixed_plan = apply_fixes(plan, patches)

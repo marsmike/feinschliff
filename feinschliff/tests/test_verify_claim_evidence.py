@@ -10,7 +10,6 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 REPO = Path(__file__).resolve().parents[2]
 FEINSCHLIFF = REPO / "feinschliff"

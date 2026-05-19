@@ -35,7 +35,6 @@ Test inventory
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -363,7 +362,6 @@ class TestAutofixOscillationHalt:
         detection the loop would run all 3 cycles; with it, it must halt at
         cycle 2 after detecting the repeated hash.
         """
-        import io
         from lib.defects import Defect, DefectKind, Severity
         from lib.verify.autofix import FixPatch
 
@@ -399,15 +397,12 @@ class TestAutofixOscillationHalt:
         def _fake_diff_summary(before, after):
             return ""
 
-        stderr_buf = io.StringIO()
-
         with (
             patch("lib.verify.static.static_verify", _fake_sv),
             patch("lib.verify.autofix.plan_fixes", _fake_plan_fixes),
             patch("lib.verify.autofix.apply_fixes", _fake_apply_fixes),
             patch("lib.verify.autofix.diff_summary", _fake_diff_summary),
         ):
-            from cli import deck as deck_mod
 
             # Exercise _patch_set_hash + the detection logic directly.
             from cli.deck import _patch_set_hash
@@ -494,7 +489,7 @@ class TestSwapLayoutVariance:
                 slide_index=i + 1,
                 kind=DefectKind.EMPTY_PLACEHOLDER,
                 severity=Severity.WARN,
-                message=f"slot 'summary' is empty (layout: executive-summary.slide.dsl)",
+                message="slot 'summary' is empty (layout: executive-summary.slide.dsl)",
                 meta={"slot": "summary", "layout": "executive-summary.slide.dsl"},
             )
             for i in range(4)
