@@ -399,6 +399,37 @@ slides 6–9 thinks slide 7 should be `excalidraw-diagram` not the picked
 `text-picture`), it can override by adding `layout: layouts/<name>.slide.dsl`
 to its chunk entry. `deck plan-merge` honors per-slide layout overrides.
 
+## Step 2c — Static verify gate (optional, recommended)
+
+Before burning render budget, run the pre-render static geometry verifier.
+This catches slot-overflow and empty-placeholder defects from the DSL +
+populated content in ~10-50 ms/slide — far cheaper than re-rendering.
+
+```bash
+uv run feinschliff deck verify-static out/<deck>/plan.yaml
+```
+
+Exit 0 = clean; exit 1 = defects found (printed to stdout); exit 2 = plumbing
+error. Use `--json` for machine-readable output (array of defect dicts).
+
+Two defect classes are detected at this stage:
+
+- **slot-overflow** — content exceeds the pixel budget of the DSL slot
+  (`maxwidth` × `maxheight`). Prediction uses the same `textfit.fits()`
+  helper as the autoshrink emitter, so the prediction matches what the
+  renderer would do.
+- **empty-placeholder** — a slot interpolated by `{{ slot }}` in the layout
+  is absent from the plan's `content` dict or is an empty/whitespace string.
+  Severity is WARN — the orchestrator decides whether to abort.
+
+Both defects are WARN (not fatal). The `deck build --strict-static` flag
+enforces them as build-blockers: when set and defects exist, the build aborts
+before `compile_slide()` is called.
+
+**When to use:** always for large decks (≥ 5 slides) where an overflow costs
+one full iteration to fix. Skip only when you're iterating on DSL changes
+and have already reviewed the content manually.
+
 ## Step 3 — Build
 
 The build is one CLI invocation. The orchestrator hands `feinschliff deck build`

@@ -98,6 +98,14 @@ def register(parser: argparse.ArgumentParser) -> None:
              "unset. Default: fatal. Mark intentionally-empty slots with "
              "`optional:true` to skip the abort without this flag.",
     )
+    p_build.add_argument(
+        "--strict-static",
+        action="store_true",
+        help="Run the pre-render static geometry verifier (lib.verify.static) "
+             "before compile. Aborts with exit 1 and prints defects when any "
+             "slot-overflow or empty-placeholder issues are detected. Off by "
+             "default — opting in avoids surprising existing automation.",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -340,6 +348,26 @@ def register(parser: argparse.ArgumentParser) -> None:
                           help="Output path for verify-<aspect>.json.")
     p_aspect.set_defaults(func=cmd_verify_aspect)
 
+    p_vs = sub.add_parser(
+        "verify-static",
+        help="Pre-render static geometry verify: detect slot-overflow and "
+             "empty-placeholder defects from a plan.yaml without rendering. "
+             "Exit 0 = clean, 1 = defects found, 2 = plumbing error.",
+    )
+    p_vs.add_argument("plan", help="Path to the deck plan YAML")
+    p_vs.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit defects as a JSON array to stdout instead of the human "
+             "readable format. Shape: [{slide_index, kind, severity, "
+             "message, meta}, ...]",
+    )
+    p_vs.add_argument(
+        "--brand", default=None,
+        help="Override brand. Default: from plan.brand or 'feinschliff'.",
+    )
+    p_vs.set_defaults(func=cmd_verify_static)
+
     p_collate = sub.add_parser(
         "verify-collate",
         help="Merge per-aspect verify outputs into a single verify_report.md.",
@@ -394,6 +422,24 @@ def cmd_build(args) -> int:
     if default_brand_obj.image_provider_config:
         cfg = default_brand_obj.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
+
+    # ── Pre-render static geometry verify (--strict-static) ──────────────
+    if getattr(args, "strict_static", False):
+        from lib.verify.static import static_verify
+        from lib.defects import format_defect as _fmt_defect
+        _static_defects = static_verify(
+            plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+        )
+        if _static_defects:
+            for _d in _static_defects:
+                print(f"deck build: static: {_fmt_defect(_d)}", file=sys.stderr)
+            print(
+                f"deck build: --strict-static: {len(_static_defects)} static "
+                f"defect(s) found. Fix them or remove --strict-static to skip "
+                f"this gate.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Compute the output deck path up front so it can serve as `deck_dir`
     # for `asset_lock.json` + `.cache/` during the build.
@@ -1779,3 +1825,58 @@ def cmd_verify_collate(args) -> int:
     print(f"wrote {out_path} — verdict: {verdict}, "
           f"{total_findings} finding(s) across {len(by_slide)} slide(s)")
     return 0
+
+
+def cmd_verify_static(args) -> int:
+    """`feinschliff deck verify-static <plan.yaml>` — pre-render static check.
+
+    Inspects a plan.yaml for geometry defects that can be detected from the
+    DSL + populated content without rendering (slot-overflow,
+    empty-placeholder). Cheaper than a full build: catches class of defect
+    in ~10-50 ms vs ~3 s/slide for a render-based check.
+
+    Exit codes:
+      0 — clean (no defects)
+      1 — one or more defects found
+      2 — plumbing error (plan not found, brand resolution failure, etc.)
+    """
+    import json as _json
+    from lib.verify.static import static_verify
+    from lib.defects import format_defect
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.is_file():
+        print(f"deck verify-static: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+
+    try:
+        plan = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"deck verify-static: could not load plan: {exc}", file=sys.stderr)
+        return 2
+
+    brand_name = getattr(args, "brand", None) or plan.get("brand") or "feinschliff"
+    try:
+        brand_obj = find_brand(brand_name)
+    except ValueError as exc:
+        print(f"deck verify-static: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        defects = static_verify(plan, brand_dir=brand_obj.root,
+                                plan_dir=plan_path.parent)
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck verify-static: unexpected error: {exc}", file=sys.stderr)
+        return 2
+
+    if getattr(args, "json", False):
+        print(_json.dumps([d.to_dict() for d in defects], indent=2,
+                          ensure_ascii=False))
+    else:
+        if defects:
+            for d in defects:
+                print(format_defect(d))
+        else:
+            print("verify-static: clean — no defects found")
+
+    return 1 if defects else 0

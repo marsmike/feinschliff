@@ -25,6 +25,7 @@ class DefectKind(str, Enum):
     TEXT_OVERLAP = "text-overlap"
     OUT_OF_BOUNDS = "out-of-bounds"
     SLOT_OVERFLOW = "slot-overflow"
+    EMPTY_PLACEHOLDER = "empty-placeholder"
     # Diagram (validate_diagrams* / structural_validator)
     DIAGRAM_OVERFLOW = "diagram-overflow"
     DIAGRAM_TEXT_TOO_SMALL = "diagram-text-too-small"
