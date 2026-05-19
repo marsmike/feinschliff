@@ -106,6 +106,16 @@ def register(parser: argparse.ArgumentParser) -> None:
              "slot-overflow or empty-placeholder issues are detected. Off by "
              "default — opting in avoids surprising existing automation.",
     )
+    p_build.add_argument(
+        "--autofix",
+        action="store_true",
+        help="Run the static verifier before compile and automatically apply "
+             "mechanical fixes (shorten_slot, delete_word, drop_bullet, "
+             "swap_layout_*) for known defect classes.  Up to 3 inner fix "
+             "cycles are attempted; residual defects are printed but do NOT "
+             "block the compile.  The fixed plan is written back to disk "
+             "before compile.",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -368,6 +378,31 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     p_vs.set_defaults(func=cmd_verify_static)
 
+    p_af = sub.add_parser(
+        "apply-fixes",
+        help="Apply mechanical fixes to a plan.yaml from a verify-static "
+             "defects JSON.  Mutates plan in place (or writes -o out.yaml). "
+             "Exit 0 = patches applied, 1 = no patches applied.",
+    )
+    p_af.add_argument("plan", help="Path to the deck plan YAML to fix.")
+    p_af.add_argument(
+        "--defects", required=True,
+        help="Path to a defects JSON file: either a flat list of Defect "
+             "dicts [{slide_index, kind, severity, message, meta}, ...] "
+             "as emitted by `deck verify-static --json`, or a "
+             '{"defects": {slide_idx: [...]}, ...} collated shape.',
+    )
+    p_af.add_argument(
+        "-o", "--output",
+        help="Output path for the fixed plan YAML.  When omitted the plan "
+             "is updated in place.",
+    )
+    p_af.add_argument(
+        "--brand", default=None,
+        help="Override brand. Default: from plan.brand or 'feinschliff'.",
+    )
+    p_af.set_defaults(func=cmd_apply_fixes)
+
     p_collate = sub.add_parser(
         "verify-collate",
         help="Merge per-aspect verify outputs into a single verify_report.md.",
@@ -440,6 +475,60 @@ def cmd_build(args) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    # ── Auto-fix loop (--autofix) ─────────────────────────────────────────
+    if getattr(args, "autofix", False):
+        from lib.verify.static import static_verify as _sv
+        from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
+
+        _MAX_AUTOFIX_CYCLES = 3
+        _total_patches = 0
+        for _cycle in range(_MAX_AUTOFIX_CYCLES):
+            _static_defects = _sv(
+                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            )
+            if not _static_defects:
+                break
+            _patches = plan_fixes(_static_defects, plan, default_brand_obj.root)
+            if not _patches:
+                # No mechanical fix available; leave residuals for compile.
+                break
+            _before = plan
+            plan = apply_fixes(plan, _patches)
+            _total_patches += len(_patches)
+            _summary = diff_summary(_before, plan)
+            print(
+                f"deck build: autofix cycle {_cycle + 1}: "
+                f"{len(_patches)} patch(es) applied",
+            )
+            if _summary:
+                for _line in _summary.splitlines():
+                    print(f"  {_line}")
+        else:
+            # Exhausted cycles — check if residuals remain.
+            _residuals = _sv(
+                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            )
+            if _residuals:
+                print(
+                    f"deck build: --autofix: {len(_residuals)} residual static "
+                    f"defect(s) after {_MAX_AUTOFIX_CYCLES} cycle(s) — proceeding "
+                    f"to compile (orchestrator may revise).",
+                    file=sys.stderr,
+                )
+        if _total_patches > 0:
+            # Write the auto-fixed plan back to disk before compile.
+            plan_path.write_text(
+                yaml.safe_dump(plan, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+            print(
+                f"deck build: auto-fix passes: {_total_patches} total patch(es); "
+                f"plan written back to {plan_path}"
+            )
+        # Re-capture slides_spec from the (potentially mutated) plan so the
+        # compile loop below uses the fixed content, not the pre-fix snapshot.
+        slides_spec = plan.get("slides") or []
 
     # Compute the output deck path up front so it can serve as `deck_dir`
     # for `asset_lock.json` + `.cache/` during the build.
@@ -1880,3 +1969,115 @@ def cmd_verify_static(args) -> int:
             print("verify-static: clean — no defects found")
 
     return 1 if defects else 0
+
+
+def cmd_apply_fixes(args) -> int:
+    """`feinschliff deck apply-fixes <plan.yaml> --defects <defects.json> [-o out.yaml]`
+
+    Read the defects JSON (flat list OR collated shape), translate to
+    deterministic FixPatch objects, apply them to the plan, and write the
+    result.  Prints a markdown diff summary to stdout.
+
+    Defects JSON shapes supported:
+      - Flat list:  [{slide_index, kind, severity, message, meta}, ...]
+        (output of `deck verify-static --json`)
+      - Collated:   {"defects": {"1": [...], "2": [...]}, ...}
+        (output shape used by cli/verify.py)
+
+    Exit codes:
+      0 — at least one patch was applied
+      1 — no patches applied (defects present but none mechanically fixable,
+          OR no defects at all)
+      2 — plumbing error
+    """
+    import json as _json
+    from lib.verify.static import static_verify
+    from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
+    from lib.defects import Defect, DefectKind, Severity
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.is_file():
+        print(f"deck apply-fixes: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+
+    try:
+        plan = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"deck apply-fixes: could not load plan: {exc}", file=sys.stderr)
+        return 2
+
+    defects_path = Path(args.defects).resolve()
+    if not defects_path.is_file():
+        print(f"deck apply-fixes: defects file not found: {defects_path}", file=sys.stderr)
+        return 2
+
+    try:
+        raw = _json.loads(defects_path.read_text(encoding="utf-8"))
+    except (_json.JSONDecodeError, OSError) as exc:
+        print(f"deck apply-fixes: could not load defects: {exc}", file=sys.stderr)
+        return 2
+
+    # Normalise both JSON shapes to a flat list of Defect objects.
+    defect_dicts: list[dict] = []
+    if isinstance(raw, list):
+        # Flat list shape: [{slide_index, kind, severity, message, meta}, ...]
+        defect_dicts = raw
+    elif isinstance(raw, dict):
+        # Collated shape: {"defects": {slide_idx: [...]}, ...}
+        nested = raw.get("defects") or {}
+        for _slide_defects in nested.values():
+            if isinstance(_slide_defects, list):
+                defect_dicts.extend(_slide_defects)
+    else:
+        print(f"deck apply-fixes: unrecognised defects JSON shape", file=sys.stderr)
+        return 2
+
+    defects: list[Defect] = []
+    for dd in defect_dicts:
+        try:
+            defects.append(Defect(
+                slide_index=int(dd["slide_index"]),
+                kind=DefectKind(dd["kind"]),
+                severity=Severity(dd["severity"]),
+                message=str(dd.get("message", "")),
+                meta=dict(dd.get("meta") or {}),
+            ))
+        except (KeyError, ValueError) as exc:
+            print(
+                f"deck apply-fixes: skipping malformed defect entry {dd!r}: {exc}",
+                file=sys.stderr,
+            )
+
+    if not defects:
+        print("deck apply-fixes: no defects to process — nothing to do")
+        return 1
+
+    brand_name = getattr(args, "brand", None) or plan.get("brand") or "feinschliff"
+    try:
+        brand_obj = find_brand(brand_name)
+    except ValueError as exc:
+        print(f"deck apply-fixes: {exc}", file=sys.stderr)
+        return 2
+
+    patches = plan_fixes(defects, plan, brand_obj.root)
+    if not patches:
+        print("deck apply-fixes: no mechanical fixes available for these defects")
+        print(f"Auto-fix passes: 0")
+        return 1
+
+    fixed_plan = apply_fixes(plan, patches)
+    summary = diff_summary(plan, fixed_plan)
+
+    out_path = Path(args.output).resolve() if args.output else plan_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        yaml.safe_dump(fixed_plan, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    # Print diff summary to stdout.
+    if summary:
+        print(summary)
+    print(f"Auto-fix passes: {len(patches)}")
+    print(f"wrote {out_path} ({len(patches)} patch(es) applied)")
+    return 0

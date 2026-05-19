@@ -27,6 +27,10 @@ Default to 3 if the user doesn't respond or says "normal". **The budget is a cei
 ```
  build    ─┐
            ▼
+     [autofix inner loop — up to 3 cycles, no LLM, no render]
+     deck verify-static --json > defects.json
+     deck apply-fixes plan.yaml --defects defects.json   ← resolves ~30-40% dirty verdicts
+           ▼
      render (soffice → PDF → pdftoppm → PNGs)
            ▼
      verify (LLM eyeballs each slide for defects)
@@ -45,6 +49,43 @@ Default to 3 if the user doesn't respond or says "normal". **The budget is a cei
 Max N iterations total (N = 3 or 6 per the budget ask).
 After iter N, emit RESIDUAL_ISSUES.md.
 ```
+
+### `deck apply-fixes` — mechanical defect resolution
+
+Before the render pass, `deck apply-fixes` (or `deck build --autofix`) runs the
+static verifier and applies deterministic patches for known defect classes.  This
+resolves ~30-40% of dirty verdicts inside the same iteration without an LLM
+revise turn.
+
+**Supported patch actions (v1):**
+
+| Defect class | Patch action | What it does |
+|---|---|---|
+| `slot-overflow` | `shorten_slot` | Trim `plan.slides[i].content[slot]` to `budget_chars`. Cuts at sentence boundary first, then word boundary, then hard-cut. |
+| `text-overlap` | `shorten_slot` | Shorten the offending slot by 75% of current length (or to explicit budget if present). |
+| `filler-word` | `delete_word` | Remove the filler token from the slot with word-boundary regex; case-insensitive; all occurrences. |
+| `bullet-dump` (>5 peers) | `drop_bullet` | Parse bullet lines; score by length (shortest = weakest); drop weakest until ≤5 remain; preserve order of survivors. |
+| `empty-placeholder` (count mismatch) | `swap_layout_smaller` | Use `pick_layout()` to find a layout with fewer required slots; update `slide["layout"]`. |
+| `slot-overflow` (>20% over after shorten) | `swap_layout_larger` | Optional v1 — find a layout with the same role but more body/bullet room; skip if picker returns nothing. |
+
+**Defects skipped (LLM revise only):** `claim-title`, `title-body-coherence`,
+`layout-concept-mismatch`, `out-of-bounds`, all chrome defects, etc.
+
+**Usage:**
+
+```bash
+# Standalone fix pass:
+uv run feinschliff deck verify-static plan.yaml --json > defects.json
+uv run feinschliff deck apply-fixes plan.yaml --defects defects.json
+# Exit 0 = patches applied; exit 1 = nothing to fix
+
+# Integrated into build (up to 3 inner cycles, writes plan back to disk):
+uv run feinschliff deck build plan.yaml --autofix
+```
+
+The `--autofix` flag runs up to **3 inner cycles** of verify → fix → verify.
+After 3 cycles any residual static defects are printed but do **not** block the
+compile — the outer orchestrator iteration handles them.
 
 ## What "verify" checks — 29 defect classes (14 legacy + 4 Layer 1 + 11 Phase 2-5)
 
