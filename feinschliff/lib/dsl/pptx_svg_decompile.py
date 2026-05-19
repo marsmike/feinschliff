@@ -101,6 +101,13 @@ class Shape:
     # placeholder (genericised brand-template behaviour).
     media_path: str | None = None
     media_rid: str | None = None  # rId of the <a:blip r:embed=...>, for extraction
+    # For custGeom shapes: the full pathLst converted to an SVG-`d` string
+    # in *canvas pixels* (already scaled from the path's path-local space).
+    # When set, emit_dsl emits the shape as an `svg { path … }` block
+    # instead of the lossy bbox-rect fallback. Lets the renderer reproduce
+    # rings, arrows, callouts, and other vector decoration that the PDF
+    # pipeline would otherwise rasterise.
+    svg_path_d: str | None = None
 
 
 @dataclass
@@ -399,6 +406,158 @@ def _resolve_solid(sf: etree._Element, theme: dict[str, str], palette: dict[str,
     return None
 
 
+# Map brand-pack tokens (the full feinschliff vocabulary) onto the SVG
+# DSL's 17-name semantic vocabulary (defined in skills/svg/references/
+# dsl-reference.md, resolved through lib.diagrams.brand_bridge). Tokens
+# that have no direct counterpart fall back to the nearest neutral so
+# the SVG block builds — at worst we lose a shade of grey, never the
+# shape itself.
+_BRAND_TO_SVG_COLOR: dict[str, str] = {
+    "accent":         "accent",
+    "accent-hover":   "accent",
+    "highlight":      "accent",
+    "ink":            "ink",
+    "graphite":       "neutral-strong",
+    "steel":          "neutral",
+    "silver":         "neutral-soft",
+    "fog":            "surface-2",
+    "paper":          "paper",
+    "paper-2":        "surface-2",
+    "off-white":      "paper",
+    "off-white-2":    "surface-2",
+    "rule-dark":      "neutral-strong",
+    "accent-2":       "primary",
+    "accent-3":       "secondary",
+    "severity-low":   "success",
+    "severity-medium":"warning",
+    "severity-high":  "danger",
+    "status-done":    "status-on",
+    "status-current": "status-pending",
+    "status-next":    "status-off",
+}
+
+
+def _svg_color_token(brand_token: str | None, *, default: str = "neutral") -> str:
+    """Best-effort map of brand-pack color token → SVG DSL semantic name."""
+    if not brand_token:
+        return default
+    return _BRAND_TO_SVG_COLOR.get(brand_token, default)
+
+
+def _pptx_path_to_svg_d(
+    path_el: etree._Element,
+    path_w: float, path_h: float,
+    target_w: float, target_h: float,
+) -> str:
+    """Convert one `<a:path>` element to an SVG `d` string in target coords.
+
+    PPTX path commands map onto SVG as follows:
+      <a:moveTo>     → M x,y
+      <a:lnTo>       → L x,y
+      <a:cubicBezTo> → C x1,y1 x2,y2 x,y   (3 pts)
+      <a:quadBezTo>  → Q x1,y1 x,y         (2 pts)
+      <a:arcTo>      → A rx,ry 0 large,sweep x,y  (computed from wR/hR/stAng/swAng)
+      <a:close/>     → Z
+
+    PPTX path-local coordinates are integers in the path's own
+    (w, h) box. We scale linearly to (target_w, target_h) in px so the
+    resulting SVG `d` lives in the same coordinate space as the
+    surrounding `svg <id> X,Y WxH { … }` block (which already places
+    the origin at the shape's bbox top-left).
+
+    PPTX arcs are documented angle-based (start angle, sweep angle, both
+    in 60000ths of a degree, measured from the +x axis going clockwise).
+    We compute the arc endpoint manually and emit SVG's endpoint-form
+    arc command. PPTX `sweep > 0` is clockwise; SVG sweep flag `1` is
+    clockwise — they line up.
+    """
+    sx = target_w / path_w if path_w else 1.0
+    sy = target_h / path_h if path_h else 1.0
+    out: list[str] = []
+    cx_cur = cy_cur = 0.0
+
+    def _xy(pt: etree._Element) -> tuple[float, float]:
+        return float(pt.get("x")) * sx, float(pt.get("y")) * sy
+
+    for cmd in path_el:
+        tag = etree.QName(cmd).localname
+        if tag == "moveTo":
+            pt = cmd.find("a:pt", NS)
+            x, y = _xy(pt)
+            out.append(f"M {x:.2f},{y:.2f}")
+            cx_cur, cy_cur = x, y
+        elif tag == "lnTo":
+            pt = cmd.find("a:pt", NS)
+            x, y = _xy(pt)
+            out.append(f"L {x:.2f},{y:.2f}")
+            cx_cur, cy_cur = x, y
+        elif tag == "cubicBezTo":
+            pts = cmd.findall("a:pt", NS)
+            if len(pts) == 3:
+                (x1, y1), (x2, y2), (x, y) = _xy(pts[0]), _xy(pts[1]), _xy(pts[2])
+                out.append(f"C {x1:.2f},{y1:.2f} {x2:.2f},{y2:.2f} {x:.2f},{y:.2f}")
+                cx_cur, cy_cur = x, y
+        elif tag == "quadBezTo":
+            pts = cmd.findall("a:pt", NS)
+            if len(pts) == 2:
+                (x1, y1), (x, y) = _xy(pts[0]), _xy(pts[1])
+                out.append(f"Q {x1:.2f},{y1:.2f} {x:.2f},{y:.2f}")
+                cx_cur, cy_cur = x, y
+        elif tag == "arcTo":
+            wR = float(cmd.get("wR")) * sx
+            hR = float(cmd.get("hR")) * sy
+            stAng = float(cmd.get("stAng")) / 60000.0     # degrees
+            swAng = float(cmd.get("swAng")) / 60000.0
+            # PPTX arc convention: the arc is on an ellipse whose CENTER
+            # is at (cx_cur - wR*cos(stAng), cy_cur - hR*sin(stAng))
+            # — i.e. the current point IS the arc's start; the angle
+            # tells us where the start lives on the ellipse. Compute the
+            # endpoint by adding the sweep.
+            import math
+            st_rad = math.radians(stAng)
+            end_rad = math.radians(stAng + swAng)
+            centre_x = cx_cur - wR * math.cos(st_rad)
+            centre_y = cy_cur - hR * math.sin(st_rad)
+            end_x = centre_x + wR * math.cos(end_rad)
+            end_y = centre_y + hR * math.sin(end_rad)
+            large_arc = 1 if abs(swAng) > 180 else 0
+            sweep_flag = 1 if swAng > 0 else 0
+            out.append(
+                f"A {wR:.2f},{hR:.2f} 0 {large_arc} {sweep_flag} {end_x:.2f},{end_y:.2f}"
+            )
+            cx_cur, cy_cur = end_x, end_y
+        elif tag == "close":
+            out.append("Z")
+    return " ".join(out)
+
+
+def _custgeom_svg_d(spPr: etree._Element, target_w: float, target_h: float) -> str | None:
+    """Walk a custGeom's pathLst and concatenate the SVG `d` strings.
+
+    Multiple `<a:path>` siblings inside `<a:pathLst>` become subpaths in
+    a single `d` — each starts with its own `M`. Returns None when the
+    spPr is not a custGeom or there's no usable path.
+    """
+    if spPr is None:
+        return None
+    cg = spPr.find("a:custGeom", NS)
+    if cg is None:
+        return None
+    pathLst = cg.find("a:pathLst", NS)
+    if pathLst is None:
+        return None
+    parts: list[str] = []
+    for path_el in pathLst.findall("a:path", NS):
+        pw = float(path_el.get("w") or 0)
+        ph = float(path_el.get("h") or 0)
+        if pw <= 0 or ph <= 0:
+            continue
+        d = _pptx_path_to_svg_d(path_el, pw, ph, target_w, target_h)
+        if d:
+            parts.append(d)
+    return " ".join(parts) if parts else None
+
+
 def _shape_geometry_kind(spPr: etree._Element) -> str:
     """Classify a sp by its geometry: rect, oval, line, or 'shape' (custGeom)."""
     if spPr is None:
@@ -504,11 +663,18 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         ))
         return
 
+    # custGeom paths convert directly to SVG path `d`. Build it in
+    # canvas-pixel space so the surrounding svg-block can simply
+    # `path "<d>"` without further transforms.
+    svg_d = None
+    if kind == "shape":
+        svg_d = _custgeom_svg_d(spPr, cmap.w(w), cmap.h(h))
+
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         fill=fill, stroke=stroke, text_runs=runs,
-        ph_type=ph_type, ph_idx=ph_idx,
+        ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
     ))
 
 
@@ -870,13 +1036,34 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
         out.append(f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}")
 
-    # Custom shapes (puzzle pieces, parallelograms, border paths, etc.) —
-    # bbox-fitted as `kind:rect` for now; users can refine post-derivation.
-    # Stroke-only custGeom (e.g. a frame/border path with `<a:noFill/>` +
-    # `<a:ln solidFill>`) emits stroke without fill; otherwise emits fill
-    # (or `fog` as a last-resort fallback) so the DSL always builds.
-    for s in custs:
-        if s.fill is None and s.stroke:
+    # Custom shapes (puzzle pieces, parallelograms, border paths, ring
+    # sectors, etc.). When we recovered an SVG `d` string from the source
+    # `<a:custGeom>`, emit an `svg { path "<d>" … }` block so the
+    # renderer reproduces the actual vector geometry — this is the
+    # difference between "blue donut with the right arc" and "grey bbox
+    # rect where the donut should be." Stroke-only paths emit
+    # `stroke:<token>` with no fill; otherwise fill (or fog fallback).
+    # When no path data is available we keep the lossy bbox-rect fallback
+    # so the DSL still builds.
+    for i, s in enumerate(custs, 1):
+        if s.svg_path_d:
+            # `none` is not in the SVG DSL's 17-name semantic colour
+            # vocabulary, so we omit `fill:` entirely when the source has
+            # no solid fill — the path primitive defaults to stroke-only
+            # rendering. With a fill, map the brand token onto an SVG
+            # vocabulary name.
+            attrs = []
+            if s.fill:
+                attrs.append(f"fill:{_svg_color_token(s.fill)}")
+            if s.stroke:
+                attrs.append(f"stroke:{_svg_color_token(s.stroke)}")
+            attr_str = (" " + " ".join(attrs)) if attrs else ""
+            out.append(f"svg shape{i} {s.x},{s.y} {s.w}x{s.h} {{")
+            # Path coordinates are already in svg-block-local pixels (the
+            # converter scales from path-local space to the shape's bbox).
+            out.append(f"  path p \"{s.svg_path_d}\"{attr_str}")
+            out.append("}")
+        elif s.fill is None and s.stroke:
             out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
         else:
             out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")

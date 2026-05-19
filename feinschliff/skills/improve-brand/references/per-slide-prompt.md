@@ -47,6 +47,29 @@ YOUR JOB
    adding a new one. Diff iteration is cheaper when each round changes
    3–5 primitives, not 30.
 
+SVG ESCAPE HATCH for complex geometry
+When the source has shapes the basic DSL primitives can't express cleanly
+— annular sectors / donut rings, arrows with curved tails, custom
+callout bubbles, organic flow shapes — embed an SVG block instead:
+
+```
+svg my-shape <x>,<y> <w>x<h> {
+  path p "M ... A ... Z" fill:<svg-token> stroke:<svg-token>
+  # plus polygon, polyline, circle, rect, text, callout, label_box, ...
+}
+```
+
+The SVG DSL grammar lives at `skills/svg/references/dsl-reference.md`
+(in the toolkit plugin). It uses a 17-name semantic colour vocabulary
+(primary, secondary, tertiary, accent, paper, ink, surface, surface-2,
+success, warning, danger, neutral, neutral-soft, neutral-strong,
+status-on, status-off, status-pending) — distinct from the brand pack's
+larger vocab. The hybrid decompiler now auto-converts `<a:custGeom>`
+shapes from the source PPTX into `svg { path }` blocks (look for them
+near the top of the DSL), so you may not need to author SVG from
+scratch — often it's enough to tweak fill/stroke or adjust positions
+on the already-emitted blocks.
+
 CONSTRAINTS
 - **NO CHEATING WITH PICTURE STATEMENTS.** Every visual element in
   the source slide that is *drawn* (rects, shapes, lines, text,

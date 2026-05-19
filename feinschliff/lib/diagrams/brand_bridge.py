@@ -138,7 +138,24 @@ def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = N
 
     parent = _read_extends(brand_dir)
     if parent:
-        parent_dir = brand_dir.parent / parent
+        # Try the brand's own parent dir first (in-tree brands' default).
+        # Then fall back to FEINSCHLIFF_BRAND_PATH entries (out-of-tree
+        # packs whose parent lives elsewhere — e.g. an external pack that
+        # extends the toolkit's bundled `feinschliff` default).
+        candidates: list[Path] = [brand_dir.parent / parent]
+        env = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+        for root in env.split(os.pathsep):
+            if root:
+                candidates.append(Path(root) / parent)
+        # Toolkit-bundled brands directory — the last-resort fallback so a
+        # CI run without FEINSCHLIFF_BRAND_PATH still finds `feinschliff`.
+        candidates.append(Path(__file__).resolve().parents[2] / "brands" / parent)
+        parent_dir = next((p for p in candidates if (p / "tokens.json").exists()), None)
+        if parent_dir is None:
+            raise BrandBridgeError(
+                f"brand '{brand_dir.name}' extends '{parent}' but no "
+                f"tokens.json found in any of: {[str(p) for p in candidates]}"
+            )
         if parent_dir.resolve() in _seen:
             raise BrandBridgeError(
                 f"brand '{brand_dir.name}': circular extends chain detected"
