@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from lib.verify.autofix import suggest_fix
+from lib.verify.cache import VerifyCache
 from lib.verify.llm.rubric import (
     RubricResult, result_to_defects,
     run_bullet_dump, run_claim_title, run_squint, run_title_body,
@@ -20,6 +21,12 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("deck", type=Path)
     parser.add_argument("--offline", action="store_true",
                         help="Skip LLM calls; emit status='skipped' per slide.")
+    parser.add_argument("--no-cache", dest="no_cache", action="store_true",
+                        help="Disable per-slide verify cache; re-judge every slide.")
+    parser.add_argument("--plan", type=Path, default=None,
+                        help="Path to deck_plan.json / plan YAML used to compute slide hashes.")
+    parser.add_argument("--brand", default=None,
+                        help="Brand name used for cache key (e.g. 'feinschliff').")
     parser.add_argument("--rubric", default=",".join(ALL_RUBRICS),
                         help=f"Comma-separated rubrics to run (default: all). "
                              f"Choices: {','.join(ALL_RUBRICS)}.")
@@ -42,17 +49,44 @@ def cmd_verify_quality(args) -> int:
         print(f"verify-quality: unknown rubric(s): {sorted(unknown)}", file=sys.stderr)
         return 2
 
+    # Cache setup — disabled by --no-cache, or when no --plan is given.
+    # VerifyCache is only constructed when caching is actually functional: both
+    # flags must be clear AND a resolvable --plan was supplied.  Constructing it
+    # when plan is None would cause cache.save() to write an empty dict to disk,
+    # silently destroying a previously-populated cache file.
+    cache: VerifyCache | None = None
+    plan: dict | None = None
+    brand: str | None = getattr(args, "brand", None)
+    if not getattr(args, "no_cache", False):
+        plan_path: Path | None = getattr(args, "plan", None)
+        if plan_path is not None and plan_path.is_file():
+            plan = _load_plan(plan_path)
+    if not getattr(args, "no_cache", False) and plan is not None:
+        cache = VerifyCache(deck_dir=deck.parent)
+
     pngs = _render_slide_pngs(deck) if "squint" in rubrics else {}
 
     results: dict[str, dict] = {}
     if "squint" in rubrics:
-        results["squint"] = run_squint(deck, pngs, offline=args.offline).__dict__
+        results["squint"] = run_squint(
+            deck, pngs, offline=args.offline,
+            cache=cache, plan=plan, brand=brand,
+        ).__dict__
     if "title-body" in rubrics:
-        results["title-body"] = run_title_body(deck, offline=args.offline).__dict__
+        results["title-body"] = run_title_body(
+            deck, offline=args.offline,
+            cache=cache, plan=plan, brand=brand,
+        ).__dict__
     if "claim-title" in rubrics:
-        results["claim-title"] = run_claim_title(deck, offline=args.offline).__dict__
+        results["claim-title"] = run_claim_title(
+            deck, offline=args.offline,
+            cache=cache, plan=plan, brand=brand,
+        ).__dict__
     if "bullet-dump" in rubrics:
-        results["bullet-dump"] = run_bullet_dump(deck, offline=args.offline).__dict__
+        results["bullet-dump"] = run_bullet_dump(
+            deck, offline=args.offline,
+            cache=cache, plan=plan, brand=brand,
+        ).__dict__
 
     suggestions: list[dict] = []
     for rubric_name, payload in results.items():
@@ -93,6 +127,19 @@ def _render_slide_pngs(deck: Path) -> dict[int, Path]:
     out_dir = deck.parent / (deck.stem + ".pngs")
     out_dir.mkdir(exist_ok=True)
     return render_slides_to_png(deck, out_dir)
+
+
+def _load_plan(plan_path: Path) -> dict:
+    """Load a plan file (JSON or YAML) and return it as a dict."""
+    text = plan_path.read_text(encoding="utf-8")
+    if plan_path.suffix in {".json"}:
+        return json.loads(text)
+    try:
+        import yaml
+        return yaml.safe_load(text) or {}
+    except ImportError:
+        # Fallback: try JSON anyway
+        return json.loads(text)
 
 
 def _jsonable(o):

@@ -28,9 +28,12 @@ import warnings
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from lib.pipeline_log import log_event
+
+if TYPE_CHECKING:
+    from lib.defects import Defect
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,39 @@ class ImageProvider(ABC):
         dominant_color, slot_role). Implementations may ignore it.
         Returns ``[]`` on no match — never raises for misses.
         """
+
+    def preflight(
+        self,
+        image_path: Path,
+        brand_palette_hex: list[str],
+        slot_aspect: float,
+        *,
+        slide_index: int,
+    ) -> list["Defect"]:
+        """Run image preflight checks before insertion.
+
+        Default no-op implementation: returns an empty list so providers
+        that do not override this method never emit preflight defects.
+        Subclasses may override to call :func:`lib.image_preflight.preflight_image`
+        and return any emitted :class:`~lib.defects.Defect` records.
+
+        Parameters
+        ----------
+        image_path:
+            Local path to the downloaded / resolved image file.
+        brand_palette_hex:
+            Brand colour tokens as ``#rrggbb`` hex strings.
+        slot_aspect:
+            Target slot aspect ratio (width / height).
+        slide_index:
+            Slide index, forwarded into any emitted defect records.
+
+        Returns
+        -------
+        list[Defect]
+            Zero or more WARN-level defects. Never raises.
+        """
+        return []
 
 
 # Global registry. Populated by :func:`register_provider` (via the

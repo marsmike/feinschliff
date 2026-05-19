@@ -1,12 +1,10 @@
 """Tests for `feinschliff verify` CLI."""
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-import pytest
 from pptx import Presentation
-from pptx.util import Emu, Inches
+from pptx.util import Inches
 
 from cli.main import main
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.defects import Defect, DefectKind, Severity
+from lib.defects import DefectKind
 from lib.pipeline import CompileResult, compile_slide
 
 

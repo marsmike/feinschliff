@@ -46,7 +46,7 @@ def main() -> int:
     if not trace.is_file():
         print(f"no trace at {trace}")
         return 1
-    runs = [json.loads(l) for l in trace.read_text().splitlines() if l.strip()]
+    runs = [json.loads(ln) for ln in trace.read_text().splitlines() if ln.strip()]
     if len(runs) < 2:
         print(f"need ≥2 runs in trace; have {len(runs)}")
         return 0

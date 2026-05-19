@@ -17,9 +17,12 @@ from __future__ import annotations
 
 import json
 from html import escape
+from itertools import pairwise
 from pathlib import Path
 
 import rough
+
+from ._text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
 
 def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
@@ -76,9 +79,9 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
                 lh = float(e.get("lineHeight", 1.25))
                 lines = max(1, e.get("text", "").count("\n") + 1)
                 h = fs * lh * lines
-                # rough estimate of text width — 0.55em per char is a
-                # reasonable upper bound for the proportional fonts used
-                w = fs * 0.55 * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
+                # rough estimate of text width — 0.62em per char (shared with
+                # the overflow validator via _text_metrics.CHAR_WIDTH_EM)
+                w = fs * _CHAR_WIDTH_EM * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
             mn_x, mn_y = min(mn_x, x), min(mn_y, y)
             mx_x, mx_y = max(mx_x, x + abs(w)), max(mx_y, y + abs(h))
     if mn_x == float("inf"):
@@ -244,7 +247,7 @@ def _emit_line(g, e, tx, ty, style: str = "clean") -> str:
     )
     stroke_style = e.get("strokeStyle", "solid")
     out = []
-    for (px1, py1), (px2, py2) in zip(points, points[1:]):
+    for (px1, py1), (px2, py2) in pairwise(points):
         drawable = g.line(x + px1, y + py1, x + px2, y + py2, options=opts)
         out.append(_drawable_to_svg(g, drawable, opts, stroke_style))
     return "".join(out)

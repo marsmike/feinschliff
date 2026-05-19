@@ -27,6 +27,10 @@ Default to 3 if the user doesn't respond or says "normal". **The budget is a cei
 ```
  build    ─┐
            ▼
+     [autofix inner loop — up to 3 cycles, no LLM, no render]
+     deck verify-static --json > defects.json
+     deck apply-fixes plan.yaml --defects defects.json   ← resolves ~30-40% dirty verdicts
+           ▼
      render (soffice → PDF → pdftoppm → PNGs)
            ▼
      verify (LLM eyeballs each slide for defects)
@@ -45,6 +49,43 @@ Default to 3 if the user doesn't respond or says "normal". **The budget is a cei
 Max N iterations total (N = 3 or 6 per the budget ask).
 After iter N, emit RESIDUAL_ISSUES.md.
 ```
+
+### `deck apply-fixes` — mechanical defect resolution
+
+Before the render pass, `deck apply-fixes` (or `deck build --autofix`) runs the
+static verifier and applies deterministic patches for known defect classes.  This
+resolves ~30-40% of dirty verdicts inside the same iteration without an LLM
+revise turn.
+
+**Supported patch actions (v1):**
+
+| Defect class | Patch action | What it does |
+|---|---|---|
+| `slot-overflow` | `shorten_slot` | Trim `plan.slides[i].content[slot]` to `budget_chars`. Cuts at sentence boundary first, then word boundary, then hard-cut. |
+| `text-overlap` | `shorten_slot` | Shorten the offending slot by 75% of current length (or to explicit budget if present). |
+| `filler-word` | `delete_word` | Remove the filler token from the slot with word-boundary regex; case-insensitive; all occurrences. |
+| `bullet-dump` (>5 peers) | `drop_bullet` | Parse bullet lines; score by length (shortest = weakest); drop weakest until ≤5 remain; preserve order of survivors. |
+| `empty-placeholder` (count mismatch) | `swap_layout_smaller` | Use `pick_layout()` to find a layout with fewer required slots; update `slide["layout"]`. |
+| `slot-overflow` (>20% over after shorten) | `swap_layout_larger` | Optional v1 — find a layout with the same role but more body/bullet room; skip if picker returns nothing. |
+
+**Defects skipped (LLM revise only):** `claim-title`, `title-body-coherence`,
+`layout-concept-mismatch`, `out-of-bounds`, all chrome defects, etc.
+
+**Usage:**
+
+```bash
+# Standalone fix pass:
+uv run feinschliff deck verify-static plan.yaml --json > defects.json
+uv run feinschliff deck apply-fixes plan.yaml --defects defects.json
+# Exit 0 = patches applied; exit 1 = nothing to fix
+
+# Integrated into build (up to 3 inner cycles, writes plan back to disk):
+uv run feinschliff deck build plan.yaml --autofix
+```
+
+The `--autofix` flag runs up to **3 inner cycles** of verify → fix → verify.
+After 3 cycles any residual static defects are printed but do **not** block the
+compile — the outer orchestrator iteration handles them.
 
 ## What "verify" checks — 29 defect classes (14 legacy + 4 Layer 1 + 11 Phase 2-5)
 
@@ -159,6 +200,36 @@ Skipping this checklist is the failure mode the iteration loop exists to prevent
 ## Why a cap at all
 
 One-shot agents produce garbage. 15-shot agents spiral and burn budget. A hard stop keeps iteration a discipline, not a compulsion. **3 is the sweet spot for everyday work** — enough to catch obvious defects, not enough to dither. **6 is for first-impression decks** where the extra passes are worth the cost: cover-slide polish, typography tuning, overflow edge cases that only show up on 3rd-render eyeball.
+
+## Per-slide verify cache
+
+`lib/verify/cache.py` provides a content-hash cache that skips LLM calls for slides whose content has not changed since the last run.
+
+**How it works:**
+
+Each slide's hash is `sha256(brand + layout + json.dumps(content, sort_keys=True))`. The hash intentionally excludes `_meta` (informational) and `slot_budgets` (derived) — only the inputs that affect rendering are hashed. If the hash already has a cached verdict for the rubric being run, the LLM call is skipped and `"cached": True` appears on that slide's result.
+
+**Cost impact on a 15-slide deck with 2 dirty slides per iteration:**
+
+| Run | LLM calls (without cache) | LLM calls (with cache) |
+|---|---|---|
+| Iteration 1 | 15 | 15 (cold) |
+| Iteration 2 | 15 | 2 (~87% saving) |
+| Iteration 3 | 15 | 2 (~87% saving) |
+
+**Cache file:** `.verify_cache.json`, stored alongside the deck. It is gitignored.
+
+**CLI usage:**
+
+```bash
+# Standard — cache is active when --plan is supplied
+uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff
+
+# Force full re-verify (ignore cache)
+uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
+```
+
+The cache is keyed by `(slide_hash, rubric_name)`. Changing brand, layout, or any content slot produces a new key, invalidating that slide's entry automatically (old entries are not pruned in v1 — acceptable given small cache size).
 
 ## Implementation notes
 

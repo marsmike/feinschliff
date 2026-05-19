@@ -223,7 +223,7 @@ def main() -> int:
     if not Path(SOFFICE).is_file():
         return print(f"render_brand_atlas: soffice not found at {SOFFICE}", file=sys.stderr) or 2
     if not shutil.which(PDFTOPPM):
-        return print(f"render_brand_atlas: pdftoppm not found (brew install poppler)", file=sys.stderr) or 2
+        return print("render_brand_atlas: pdftoppm not found (brew install poppler)", file=sys.stderr) or 2
 
     if args.brands:
         brands = args.brands

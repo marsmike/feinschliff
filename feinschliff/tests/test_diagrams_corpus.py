@@ -30,13 +30,8 @@ def _corpus(kind: str, suffix: str) -> list[Path]:
 @pytest.mark.parametrize("path", _corpus("excalidraw", ".exc.dsl"),
                          ids=lambda p: p.name)
 def test_excalidraw_example_expands(path: Path):
-    body = "\n".join(
-        line for line in path.read_text().splitlines()
-        if not line.strip().startswith("canvas ")
-    )
-    # Each corpus file declares its own virtual canvas at the top; we strip
-    # `canvas` since expand() accepts an override directly.
-    # Use the canvas declared in the file via override probe.
+    # Each corpus file declares its own virtual canvas at the top; expand()
+    # accepts an override directly, so we probe the canvas line and pass `raw`.
     raw = path.read_text()
     canvas_w = canvas_h = None
     for line in raw.splitlines():

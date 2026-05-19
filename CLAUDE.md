@@ -88,8 +88,11 @@ without hunting across `/tmp` or `~/Downloads`.
   the rough path is unavailable or the document contains elements it
   doesn't model (freedraw / image / frame).
 - `expand_diagram_blocks` (`feinschliff/lib/dsl/expander.py`) cache key
-  includes `{slide_index, kind, w, h, brand_dir.name, body}` — do not
-  regress to hashing only `body`.
+  includes `{slide_index, kind, w, h, virtual_w, virtual_h, brand_dir.name,
+  tokens_hash, from_path, layout_dir.name, body}` where `tokens_hash` is a
+  12-char SHA-1 of `brand_dir/tokens.json` (empty string when absent) — do
+  not regress to hashing only `body`, and do not drop `tokens_hash`,
+  `from_path`, or `layout_dir.name`.
 - Diagram validators (`validate_diagrams`, `_color`, `_text_size`) run in
   both `feinschliff build` and `feinschliff deck build`. Keep parity if
   you add another build entry point.

@@ -2,7 +2,7 @@
 """Generate hero grid + animated GIF from the Feinschliff showcase HTML.
 
 Run via:
-    cd scripts/
+    cd feinschliff/scripts/
     uv venv && source .venv/bin/activate
     uv pip install playwright pillow
     playwright install chromium
@@ -19,7 +19,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[2]
 HTML_PATH = (
     REPO_ROOT
     / "feinschliff"

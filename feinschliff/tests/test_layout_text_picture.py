@@ -42,8 +42,8 @@ def test_text_picture_fixture_references_an_image():
     data = yaml.safe_load(FIXTURE.read_text())
     image = data.get("image", "")
     assert image, (
-        f"text-picture fixture has empty `image:` — the layout's whole "
-        f"purpose is the picture frame, so a blank slot defeats the showcase"
+        "text-picture fixture has empty `image:` — the layout's whole "
+        "purpose is the picture frame, so a blank slot defeats the showcase"
     )
 
 

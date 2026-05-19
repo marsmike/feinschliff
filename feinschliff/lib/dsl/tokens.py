@@ -1,4 +1,4 @@
-"""Token loader + resolver.
+"""Token loader + resolver, including brief-defaults helper.
 
 A brand pack ships a `tokens.json` (the existing v1 schema is fine for PoC).
 Optional `DESIGN.md` frontmatter may declare `extends: <parent-brand>` to
@@ -14,14 +14,14 @@ font-family + size + weight + color, looked up by name in tokens.json or
 inherited from a parent brand. The bundle is built lazily from the role
 name following the existing convention:
 
-  style:title       → font-family.display, font-size.slide-title,  weight.semibold, color.ink
-  style:body        → font-family.body,    font-size.body,         weight.regular,  color.graphite
-  style:eyebrow     → font-family.mono,    font-size.eyebrow,      weight.medium,   color.steel
-  style:kpi-value   → font-family.display, font-size.kpi-value,    weight.bold,     color.ink
+  style:title       -> font-family.display, font-size.slide-title,  weight.semibold, color.ink
+  style:body        -> font-family.body,    font-size.body,         weight.regular,  color.graphite
+  style:eyebrow     -> font-family.mono,    font-size.eyebrow,      weight.medium,   color.steel
+  style:kpi-value   -> font-family.display, font-size.kpi-value,    weight.bold,     color.ink
   ...
 
 The bundle defaults live in `STYLE_BUNDLES`; brands can override any field
-via `tokens.json` ➜ `style: { <name>: {...} }` (forward-compatible — not
+via `tokens.json` -> `style: { <name>: {...} }` (forward-compatible -- not
 required for PoC).
 
 Fill refs (`fill:accent`, `stroke:fog`) resolve directly to the color
@@ -30,6 +30,7 @@ token of that name.
 from __future__ import annotations
 
 import json
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -396,3 +397,35 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
             merged = deep_merge(merged, data)
     validate_tokens(merged, brand_root.name)
     return Tokens(raw=merged, brand_name=brand_root.name)
+
+
+# Allowed keys in brief_defaults — mirrors the schema enum constraints.
+_BRIEF_DEFAULTS_KNOWN_KEYS: frozenset[str] = frozenset(
+    {"verbosity", "image_style", "frame", "audience"}
+)
+
+
+def load_brief_defaults(brand_dir: Path) -> dict[str, str]:
+    """Read brief_defaults from <brand_dir>/tokens.json.
+
+    Returns {} if the brand has no brief_defaults block (back-compat for brands
+    that haven't set any priors). If the file is missing, also returns {}.
+
+    Unknown keys in brief_defaults emit a stderr warning but are included in
+    the returned dict so callers can inspect them without a hard failure.
+    """
+    tokens_file = brand_dir / "tokens.json"
+    if not tokens_file.is_file():
+        return {}
+    raw = json.loads(tokens_file.read_text(encoding="utf-8"))
+    defaults: dict[str, Any] = raw.get("brief_defaults") or {}
+    if not isinstance(defaults, dict):
+        return {}
+    unknown = set(defaults.keys()) - _BRIEF_DEFAULTS_KNOWN_KEYS
+    if unknown:
+        print(
+            f"WARNING: brand '{brand_dir.name}' brief_defaults contains unknown "
+            f"key(s): {sorted(unknown)}. Known: {sorted(_BRIEF_DEFAULTS_KNOWN_KEYS)}",
+            file=sys.stderr,
+        )
+    return dict(defaults)

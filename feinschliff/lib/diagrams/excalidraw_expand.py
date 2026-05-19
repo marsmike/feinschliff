@@ -54,6 +54,7 @@ import json
 import re
 import shlex
 import uuid
+from itertools import pairwise
 from pathlib import Path
 
 from ._dsl_common import (
@@ -62,6 +63,7 @@ from ._dsl_common import (
     parse_xy as _parse_xy,
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
+from ._text_metrics import EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
 _VALID_PORTS = frozenset({"left", "right", "top", "bottom"})
@@ -206,7 +208,9 @@ def _emit_box(line: str, kind: str, brand_dir: Path, theme: str = "light", *, sc
         "ellipse": "ellipse",
         "diamond": "diamond",
     }[kind]
-    stroke_color = resolve("off-white" if theme == "dark" else "ink", brand_dir)
+    # Stroke derived from fill luminance — see postmortem above.
+    # Theme-based check caused dark-on-dark when fill was also a dark token.
+    stroke_color = _label_color_for(fill_hex, brand_dir)
     stroke_width = max(1, int(round(2 * scale)))
     shape = {
         "id": shape_id,
@@ -606,7 +610,7 @@ def _arrow_crosses_other_boxes(waypoints: list[tuple[float, float]],
                                src_id: str, dst_id: str,
                                nodes: dict[str, dict]) -> bool:
     """True if any segment of the polyline enters a non-endpoint node."""
-    for seg_a, seg_b in zip(waypoints, waypoints[1:]):
+    for seg_a, seg_b in pairwise(waypoints):
         for nid, node in nodes.items():
             if nid == src_id or nid == dst_id:
                 continue
@@ -654,7 +658,7 @@ def _clear_label_anchor(waypoints: list[tuple[float, float]],
     or when no boxes obstruct (most diagrams)."""
     obstructions = [n for nid, n in nodes.items() if nid not in (src_id, dst_id)]
     best: tuple[float, float, float, float, float] | None = None  # (length, x, y, ux, uy)
-    for (x1, y1), (x2, y2) in zip(waypoints, waypoints[1:]):
+    for (x1, y1), (x2, y2) in pairwise(waypoints):
         seg_len = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         if seg_len == 0:
             continue
@@ -687,7 +691,7 @@ def _midpoint_with_direction(points: list[tuple[float, float]]) -> tuple[tuple[f
         return ((0.0, 0.0), (1.0, 0.0))
     segs: list[tuple[float, float, float, float, float]] = []
     total = 0.0
-    for (x1, y1), (x2, y2) in zip(points, points[1:]):
+    for (x1, y1), (x2, y2) in pairwise(points):
         L = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
         segs.append((x1, y1, x2, y2, L))
         total += L
@@ -896,10 +900,7 @@ def _emit_text(line: str, brand_dir: Path, theme: str = "light", *, scale: float
       mono     13  monospace code
     """
     parts = shlex.split(line)
-    size_map = {
-        "title": 28, "subtitle": 20, "eyebrow": 12,
-        "body": 14, "detail": 12, "mono": 13,
-    }
+    size_map = _EXCALIDRAW_TEXT_SIZES
     _, _dsl_id, xy = parts[:3]
     rest = parts[3:]
     level = "body"

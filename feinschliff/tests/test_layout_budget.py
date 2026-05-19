@@ -7,7 +7,6 @@ that contract.
 """
 from __future__ import annotations
 
-import pytest
 
 from lib.layout_budget import (
     _MAX_BUDGET_BONUS,

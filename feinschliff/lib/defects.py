@@ -25,6 +25,7 @@ class DefectKind(str, Enum):
     TEXT_OVERLAP = "text-overlap"
     OUT_OF_BOUNDS = "out-of-bounds"
     SLOT_OVERFLOW = "slot-overflow"
+    EMPTY_PLACEHOLDER = "empty-placeholder"
     # Diagram (validate_diagrams* / structural_validator)
     DIAGRAM_OVERFLOW = "diagram-overflow"
     DIAGRAM_TEXT_TOO_SMALL = "diagram-text-too-small"
@@ -53,6 +54,9 @@ class DefectKind(str, Enum):
     # Asset policy (pptx_emit)
     MISSING_ASSET = "missing-asset"
     PLACEHOLDER_RECTANGLE = "placeholder-rectangle"
+    # Image quality (image_preflight)
+    IMAGE_PALETTE_CLASH = "image-palette-clash"
+    IMAGE_CROP_RISK = "image-crop-risk"
 
 
 _FATAL: frozenset[str] = frozenset({

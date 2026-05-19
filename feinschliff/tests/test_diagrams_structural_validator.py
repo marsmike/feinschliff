@@ -6,7 +6,6 @@ structural-rule behaviour that previously had no test coverage at all."""
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 from lib.defects import DefectKind, Severity
 from lib.diagrams.structural_validator import (

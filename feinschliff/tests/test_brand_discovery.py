@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.brand_discovery import discover_brands, find_brand, Brand
+from lib.brand_discovery import discover_brands, find_brand
 
 
 def _write_brand(root: Path, name: str) -> Path:

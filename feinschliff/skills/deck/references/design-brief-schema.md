@@ -62,7 +62,13 @@ One sentence capturing the deck's spine as a sequence. Step 4 uses this to check
 
 ### `verbosity` *(optional)*
 
-Inferred at Step 1. One of `concise | standard | text-heavy`. Controls per-slide word budget when filling content slots at step 2:
+Inferred at Step 1. One of `concise | standard | text-heavy`. Controls per-slide word budget when filling content slots at step 2.
+
+**Inference order (highest wins):**
+1. Explicit CLI/API flag passed to `/deck`.
+2. User text in the brief prompt (e.g. "detailed leave-behind", "exec one-pager").
+3. Brand-pack default — `brief_defaults.verbosity` in the active brand's `tokens.json`, read via `load_brief_defaults(brand_dir)` (see `brand-system.md` → Brief defaults).
+4. Heuristic (below).
 
 | Value | Budget | When |
 |---|---|---|

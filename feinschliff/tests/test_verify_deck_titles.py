@@ -58,7 +58,6 @@ def test_extract_titles_from_plan_invalid_shape(tmp_path: Path):
 def test_extract_titles_from_pptx(tmp_path: Path):
     """Build a 2-slide .pptx with python-pptx, extract titles via the helper."""
     from pptx import Presentation
-    from pptx.util import Inches
     prs = Presentation()
     blank_layout = prs.slide_layouts[5]  # title-only
     for title_text in ["First slide claim", "Second slide claim"]:

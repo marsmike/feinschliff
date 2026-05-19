@@ -261,6 +261,43 @@ and will fail if a dark-canvas brand leaves these at dark values.
   `brands/<brand>/compounds/`. Dark-bg layouts also need
   `header-dark` and `footer-dark`.
 
+## Brief defaults
+
+A brand pack can ship a `brief_defaults` block in its `tokens.json` to
+seed deck inference with brand-appropriate priors. The deck orchestrator
+reads these via `load_brief_defaults(brand_dir)` at step 1 before
+applying any user overrides.
+
+```json
+"brief_defaults": {
+  "verbosity": "concise",
+  "image_style": "minimal",
+  "frame": "scqa",
+  "audience": "developer"
+}
+```
+
+All four keys are optional. Precedence:
+
+```
+explicit CLI/API flag > user text in prompt > brand_defaults > heuristic
+```
+
+Permitted values:
+
+| Key | Allowed values |
+|---|---|
+| `verbosity` | `concise` · `standard` · `text-heavy` |
+| `image_style` | `data-viz` · `photorealistic` · `illustration` · `minimal` · `abstract` · `none` |
+| `frame` | `scqa` · `pssr` · `sparkline` · `man-in-a-hole` · `abt` · `ppf` · `pse` · `kea` |
+| `audience` | `exec` · `manager` · `developer` · `peer` |
+
+The schema (`lib/schemas/tokens.schema.json`) enforces these enums via
+`additionalProperties: false` — unknown keys or out-of-enum values will
+fail `validate_tokens`. The `brief_defaults` block is **optional**; omitting
+it is the norm for brands that have no strong stylistic opinion on deck
+structure (all existing brands continue to validate without changes).
+
 ## Why DESIGN.md alongside `tokens.json`
 
 DTCG `tokens.json` is JSON — great for tools, awkward for humans and
@@ -279,12 +316,11 @@ LLMs to author. DESIGN.md adds:
 
 ## Legacy notes
 
-`scripts/bake_palette.py` (the v1 derive-everything-from-DESIGN.md
-script that produced `catalog.json`, `templates/pptx/*.pptx`, and
-`claude-design/<brand>-2026.html` per brand) is **not part of the v2
-build**. If it still sits in the tree, treat it as legacy — v2 brands
-hand-author both `tokens.json` and `DESIGN.md` and let toolkit-shared
-layouts do the rest.
+`bake_palette.py` (the v1 derive-everything-from-DESIGN.md script that
+produced `catalog.json`, `templates/pptx/*.pptx`, and
+`claude-design/<brand>-2026.html` per brand) has been removed from the
+tree. v2 brands hand-author both `tokens.json` and `DESIGN.md` and let
+toolkit-shared layouts do the rest.
 
 ## References
 
