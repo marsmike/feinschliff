@@ -27,13 +27,22 @@ package = true
 [dependency-groups]
 dev = [
     "imagehash>=4.3.2",
+    "img2pdf>=0.4",
+    "numpy>=1.26",
     "pillow>=12.2.0",
     "pytest>=9.0.3",
     "ruff>=0.15.13",
+    "scikit-image>=0.22",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests use `pytest.importorskip` + then real imports; scripts must inject
+# repo root onto sys.path before importing `lib.*`. Both are legitimate E402.
+"tests/**" = ["E402"]
+"scripts/**" = ["E402"]
 
 [tool.setuptools.packages.find]
 where = ["."]

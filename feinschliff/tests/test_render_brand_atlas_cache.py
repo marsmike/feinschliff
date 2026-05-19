@@ -14,7 +14,6 @@ import sys
 import time
 from pathlib import Path
 
-import pytest
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "scripts" / "render_brand_atlas.py"

@@ -76,7 +76,8 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
-    return args.func(args) or 0
+    rc = args.func(args)
+    return 0 if rc is None else int(rc)
 
 
 if __name__ == "__main__":

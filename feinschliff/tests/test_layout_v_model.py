@@ -93,8 +93,8 @@ def test_v_model_has_two_diagonal_lines_converging():
     lines = _diagonal_lines()
     assert len(lines) >= 2, f"expected ≥2 diagonal lines, got {len(lines)}"
     # Find the left-descending one (x1 < x2) and right-descending (x1 > x2).
-    left_down = [l for l in lines if l[0] < l[2] and l[1] < l[3]]
-    right_down = [l for l in lines if l[0] > l[2] and l[1] < l[3]]
+    left_down = [ln for ln in lines if ln[0] < ln[2] and ln[1] < ln[3]]
+    right_down = [ln for ln in lines if ln[0] > ln[2] and ln[1] < ln[3]]
     assert left_down, "no left-side diagonal descending right"
     assert right_down, "no right-side diagonal descending left"
     # Their bottom ends should converge near the slide center (x ≈ 960).

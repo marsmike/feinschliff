@@ -170,7 +170,6 @@ def test_compute_margin_shrinks_effective_dimensions():
     """margin=0.10 reduces effective width and height by 10%."""
     tokens = _tokens()
     nodes = [_text_node("{{ title }}", style="body", maxwidth="760", maxheight="80")]
-    b_no_margin = compute_slot_budgets(nodes, tokens, margin=0.0)
     b_margin = compute_slot_budgets(nodes, tokens, margin=0.10)
     assert b_margin["title"].width_px == pytest.approx(760.0 * 0.90)
     assert b_margin["title"].height_px == pytest.approx(80.0 * 0.90)

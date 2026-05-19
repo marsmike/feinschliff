@@ -1,10 +1,6 @@
 """Prompt templates for LLM defect classes."""
 from __future__ import annotations
 
-from pathlib import Path
-
-REFS = Path(__file__).resolve().parents[3] / "skills" / "deck" / "references"
-
 
 def squint_prompt(thumbnail_b64: str) -> str:
     return (

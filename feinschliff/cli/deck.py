@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 import tempfile
 from pathlib import Path
 
@@ -1310,7 +1311,7 @@ def cmd_plan_merge(args) -> int:
     plan = yaml.safe_load(skel_path.read_text(encoding="utf-8")) or {}
     slides = plan.get("slides") or []
     if not slides:
-        print(f"deck plan-merge: skeleton has no slides", file=sys.stderr)
+        print("deck plan-merge: skeleton has no slides", file=sys.stderr)
         return 2
 
     merged_count = 0
@@ -1400,7 +1401,7 @@ def cmd_verify_aspect(args) -> int:
         "needs_llm": False,
     }
 
-    _t0 = _time.perf_counter() if (_time := __import__("time")) else None
+    _t0 = time.perf_counter()
 
     if aspect == "bbox":
         # Deterministic: re-run feinschliff verify on the plan, surface
@@ -1590,7 +1591,7 @@ def cmd_verify_aspect(args) -> int:
         out["contact_sheet"] = _render_notes_sheet(red_line, coherence_slides)
 
     out["iteration_check_ms"] = int(
-        (__import__("time").perf_counter() - (_t0 or 0)) * 1000
+        (time.perf_counter() - _t0) * 1000
     )
     out["summary"] = (
         f"{len(out['findings'])} finding(s) "

@@ -53,16 +53,12 @@ import argparse
 import json
 import math
 import re
-import shutil
-import subprocess
 import sys
-import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from lxml import etree
 from pptx import Presentation
-from pptx.util import Emu
 
 NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -161,12 +157,7 @@ def load_theme_scheme(pres: Presentation) -> dict[str, str]:
     Falls back to empty dict if theme can't be reached.
     """
     out: dict[str, str] = {}
-    try:
-        master = pres.slide_masters[0]
-        theme = master.element.getparent().getparent()  # walk to package; not reliable
-    except Exception:
-        pass
-    # Direct XML approach is more reliable: locate ppt/theme/theme1.xml inside the zip.
+    # Direct XML approach: locate ppt/theme/theme1.xml inside the zip.
     try:
         import zipfile
         with zipfile.ZipFile(pres.part.package._path_to_part_for_uri) as _:
@@ -514,7 +505,8 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
         return
     x, y, w, h = xfrm
     ox, oy = offset
-    x += ox; y += oy
+    x += ox
+    y += oy
     # Stroke color from line/solidFill.
     ln = spPr.find("a:ln", NS)
     stroke = None

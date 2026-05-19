@@ -1466,10 +1466,10 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
             continue
         emit = _EMITTERS.get(n.kind)
         if emit is None:
-            import sys
-            print(f"WARN: no emitter for primitive '{n.kind}' "
-                  f"(line {n.line_no}) — skipping", file=sys.stderr)
-            continue
+            raise DSLError(
+                f"no emitter for primitive '{n.kind}' (line {n.line_no}) — "
+                f"add it to _EMITTERS or remove it from the DSL"
+            )
         emit(slide, n, ctx)
     if notes is not None:
         _write_speaker_notes(slide, notes)

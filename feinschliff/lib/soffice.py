@@ -25,12 +25,16 @@ def pptx_to_pdf(pptx_path: Path, out_dir: Path) -> Path:
     """Convert .pptx → .pdf via soffice; return the PDF path."""
     out_dir.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="soffice-profile-") as profile:
-        subprocess.run(
-            [SOFFICE, f"-env:UserInstallation=file://{profile}",
-             "--headless", "--convert-to", "pdf",
-             "--outdir", str(out_dir), str(pptx_path)],
-            check=True, capture_output=True,
-        )
+        try:
+            subprocess.run(
+                [SOFFICE, f"-env:UserInstallation=file://{profile}",
+                 "--headless", "--convert-to", "pdf",
+                 "--outdir", str(out_dir), str(pptx_path)],
+                check=True, capture_output=True,
+            )
+        except subprocess.CalledProcessError as e:
+            stderr_text = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+            raise RuntimeError(f"soffice failed: {stderr_text[:500]}") from e
     pdf = out_dir / pptx_path.with_suffix(".pdf").name
     if not pdf.is_file():
         raise RuntimeError(f"soffice produced no PDF for {pptx_path}")
@@ -54,7 +58,11 @@ def pptx_to_png(pptx_path: Path, out_dir: Path,
     if slide_index is not None:
         cmd += ["-f", str(slide_index), "-l", str(slide_index)]
     cmd += [str(pdf), str(out_dir / prefix)]
-    subprocess.run(cmd, check=True, capture_output=True)
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        stderr_text = e.stderr.decode() if isinstance(e.stderr, bytes) else (e.stderr or "")
+        raise RuntimeError(f"soffice failed: {stderr_text[:500]}") from e
     pngs = sorted(out_dir.glob(f"{prefix}-*.png"))
     if not pngs:
         raise RuntimeError(f"pdftoppm produced no PNG for {pptx_path}")

@@ -478,9 +478,6 @@ def _emit_path(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     if not parts[2:]:
         raise ValueError(f"svg_expand: path needs a `d` attribute: {line!r}")
     d_raw = parts[2]
-    if not (d_raw.startswith('"') or d_raw.startswith("'") or not d_raw.startswith("<")):
-        # shlex strips the quotes so d_raw is the path string
-        pass
     d = d_raw
     if not _PATH_D_ALLOWED.match(d):
         raise ValueError(

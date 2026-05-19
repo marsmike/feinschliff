@@ -483,10 +483,14 @@ def validate_svg_structure(svg_text: str) -> list[Defect]:
         off_bottom = box.bottom > canvas.bottom + SLACK
         if off_left or off_top or off_right or off_bottom:
             sides = []
-            if off_left:   sides.append("left")
-            if off_top:    sides.append("top")
-            if off_right:  sides.append("right")
-            if off_bottom: sides.append("bottom")
+            if off_left:
+                sides.append("left")
+            if off_top:
+                sides.append("top")
+            if off_right:
+                sides.append("right")
+            if off_bottom:
+                sides.append("bottom")
             out.append(Defect(
                 slide_index=0,
                 kind=DefectKind.DIAGRAM_OVERFLOW,
