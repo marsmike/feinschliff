@@ -175,7 +175,7 @@ def judge_plan(
 
         if offline:
             results.append(ClaimEvidenceResult(
-                slide_index=idx,
+                slide_index=idx + 1,
                 verdict="clean",
                 rationale="skipped: offline",
                 suggested_title=None,
@@ -193,7 +193,7 @@ def judge_plan(
 
         if "verdict" not in raw and raw.get("status") == "fail":
             results.append(ClaimEvidenceResult(
-                slide_index=idx,
+                slide_index=idx + 1,
                 verdict="dirty",
                 rationale=f"[judgment error] {raw.get('reason', 'unparseable response')}",
                 suggested_title=None,
@@ -205,7 +205,7 @@ def judge_plan(
             "dirty" if str(raw.get("verdict", "")).lower() == "dirty" else "clean"
         )
         results.append(ClaimEvidenceResult(
-            slide_index=idx,
+            slide_index=idx + 1,
             verdict=verdict,
             rationale=str(raw.get("rationale", raw.get("reason", ""))),
             suggested_title=raw.get("suggested_title") or None,
@@ -254,7 +254,7 @@ def write_report(
         parts.append("")
         for r in results:
             status_icon = "clean" if r.verdict == "clean" else "DIRTY"
-            parts.append(f"**Slide {r.slide_index + 1}** — {status_icon}")
+            parts.append(f"**Slide {r.slide_index}** — {status_icon}")
             parts.append(f"- Rationale: {r.rationale}")
             if r.suggested_title:
                 parts.append(f"- Suggested title: {r.suggested_title}")
@@ -267,7 +267,7 @@ def write_report(
         parts.append("")
         for r in results:
             if r.verdict == "dirty":
-                parts.append(f"- Slide {r.slide_index + 1}: {r.rationale}")
+                parts.append(f"- Slide {r.slide_index}: {r.rationale}")
         parts.append("")
 
     path.parent.mkdir(parents=True, exist_ok=True)

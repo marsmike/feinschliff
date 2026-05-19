@@ -205,7 +205,7 @@
         "frame": {
           "type": "string",
           "description": "Default narrative frame for decks built with this brand. Matches the narrative frame list in pipeline.md step 1.",
-          "enum": ["scqa", "pssr", "sparkline", "man-in-a-hole", "abt", "ppf", "pse", "kea"]
+          "enum": ["scqa", "pssr", "sparkline", "man-in-hole", "abt", "ppf", "pse", "kea"]
         },
         "audience": {
           "type": "string",

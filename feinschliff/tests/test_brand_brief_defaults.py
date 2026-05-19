@@ -109,6 +109,20 @@ def test_schema_rejects_invalid_frame():
     assert "frame" in str(exc.value)
 
 
+def test_schema_accepts_man_in_hole_frame():
+    """The canonical frame name is 'man-in-hole' (no '-a-'). It must be accepted."""
+    tokens = _with_brief_defaults(frame="man-in-hole")
+    validate_tokens(tokens, "man-in-hole-brand")  # must not raise
+
+
+def test_schema_rejects_man_in_a_hole_frame():
+    """'man-in-a-hole' (with '-a-') is the wrong spelling and must be rejected."""
+    tokens = _with_brief_defaults(frame="man-in-a-hole")
+    with pytest.raises(ValueError) as exc:
+        validate_tokens(tokens, "man-in-a-hole-brand")
+    assert "frame" in str(exc.value)
+
+
 def test_schema_rejects_invalid_audience():
     """brief_defaults.audience='board' must be rejected (enum constraint)."""
     tokens = _with_brief_defaults(audience="board")

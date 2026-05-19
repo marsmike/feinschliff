@@ -195,8 +195,8 @@ def test_judge_plan_result_slide_indices_correct():
     )
     results = judge_plan(plan, offline=True)
     assert len(results) == 2
-    assert results[0].slide_index == 1   # 0-based index
-    assert results[1].slide_index == 3
+    assert results[0].slide_index == 2   # 1-based: slide at position 1 → index 2
+    assert results[1].slide_index == 4
 
 
 def test_judge_plan_with_design_brief_skips_by_brief_role():
@@ -289,8 +289,8 @@ def test_write_report_clean(tmp_path: Path):
     from lib.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
 
     results = [
-        ClaimEvidenceResult(0, "clean", "body supports claim", None, None),
-        ClaimEvidenceResult(2, "clean", "evidence present", None, None),
+        ClaimEvidenceResult(1, "clean", "body supports claim", None, None),
+        ClaimEvidenceResult(3, "clean", "evidence present", None, None),
     ]
     out = tmp_path / "claim_evidence_report.md"
     verdict = write_report(out, results, slide_count=4)
@@ -306,8 +306,8 @@ def test_write_report_dirty(tmp_path: Path):
     from lib.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
 
     results = [
-        ClaimEvidenceResult(0, "clean", "fine", None, None),
-        ClaimEvidenceResult(1, "dirty", "body off-topic", "Better title", "Add evidence"),
+        ClaimEvidenceResult(1, "clean", "fine", None, None),
+        ClaimEvidenceResult(2, "dirty", "body off-topic", "Better title", "Add evidence"),
     ]
     out = tmp_path / "claim_evidence_report.md"
     verdict = write_report(out, results, slide_count=3)
@@ -404,7 +404,7 @@ def test_cmd_claim_evidence_dirty_exits_1(tmp_path: Path, monkeypatch):
 
     def fake_judge_plan(*a, **kw):
         return [ClaimEvidenceResult(
-            slide_index=0,
+            slide_index=1,
             verdict="dirty",
             rationale="body does not support the claim",
             suggested_title=None,
