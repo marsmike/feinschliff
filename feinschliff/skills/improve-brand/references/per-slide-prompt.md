@@ -47,12 +47,50 @@ YOUR JOB
    adding a new one. Diff iteration is cheaper when each round changes
    3–5 primitives, not 30.
 
+SVG ESCAPE HATCH for complex geometry
+When the source has shapes the basic DSL primitives can't express cleanly
+— annular sectors / donut rings, arrows with curved tails, custom
+callout bubbles, organic flow shapes — embed an SVG block instead:
+
+```
+svg my-shape <x>,<y> <w>x<h> {
+  path p "M ... A ... Z" fill:<svg-token> stroke:<svg-token>
+  # plus polygon, polyline, circle, rect, text, callout, label_box, ...
+}
+```
+
+The SVG DSL grammar lives at `skills/svg/references/dsl-reference.md`
+(in the toolkit plugin). It uses a 17-name semantic colour vocabulary
+(primary, secondary, tertiary, accent, paper, ink, surface, surface-2,
+success, warning, danger, neutral, neutral-soft, neutral-strong,
+status-on, status-off, status-pending) — distinct from the brand pack's
+larger vocab. The hybrid decompiler now auto-converts `<a:custGeom>`
+shapes from the source PPTX into `svg { path }` blocks (look for them
+near the top of the DSL), so you may not need to author SVG from
+scratch — often it's enough to tweak fill/stroke or adjust positions
+on the already-emitted blocks.
+
 CONSTRAINTS
-- Picture regions are masked when scoring, so do not try to alter
-  picture placeholders to match the source illustration.
+- **NO CHEATING WITH PICTURE STATEMENTS.** Every visual element in
+  the source slide that is *drawn* (rects, shapes, lines, text,
+  arrows, icons, callout boxes, ring/pie sectors, simple chart bars,
+  flag rosettes, etc.) MUST be reproduced as native DSL primitives —
+  `rect`, `shape`, `line`, `text`, etc. You may NOT screenshot the
+  source slide, save it as PNG, and emit a single `picture` statement
+  that covers the same region. You may NOT extend the picture bbox
+  of an existing slot to absorb adjacent decoration. The `picture`
+  primitive is reserved for genuine `<p:pic>` elements in the source
+  XML (real raster art, photographs, the brand logo). Cheating here
+  invalidates the whole point of the verify loop, which is to prove
+  the DSL pipeline can reproduce the slide. If you find yourself
+  thinking "easier to make this a picture", STOP — that is the
+  cheat. Decompose the element into primitives instead.
+- Picture regions are masked when scoring (or pixel-equal when
+  --carry-images is on), so do not try to alter picture placeholders
+  to match the source illustration.
 - Use only style tokens that exist in tokens.json. Look up unknown
   tokens before guessing.
-- Preserve all `{{ slot | default:'…' }}` slot expressions.
+- Preserve all `{{ slot | default("…") }}` slot expressions.
 - Do not modify the source PPTX, the verify-map.yaml, or any script.
 
 OUTPUT

@@ -102,9 +102,11 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
     # Make the brand pack's enclosing root discoverable for the build
     # subprocess. `feinschliff build --brand <name>` resolves the pack via
     # brand_discovery, which honours FEINSCHLIFF_BRAND_PATH (colon-separated
-    # list of directories containing a `brands/` subdir). For out-of-tree
-    # packs this is the only way --brand-pack is honoured end-to-end.
-    enclosing = brand_pack.parent.parent
+    # list of brand-root directories — each path is iterated for brand
+    # subdirs, so it must point at the dir CONTAINING the pack, not its
+    # grandparent). For out-of-tree packs this is the only way
+    # --brand-pack is honoured end-to-end.
+    enclosing = brand_pack.parent
     existing = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
     brand_env_path = (
         f"{enclosing}{os.pathsep}{existing}" if existing else str(enclosing)
@@ -184,6 +186,11 @@ def main() -> int:
                     help="Reuse cached source PNGs as-is")
     ap.add_argument("--skip-render", action="store_true",
                     help="Reuse cached render PNGs as-is")
+    ap.add_argument("--snapshot-baseline", action="store_true",
+                    help="Copy the post-render PNGs into render-png.before/ "
+                         "before scoring. Use on the first run of an "
+                         "improve-brand loop so brand_before_after_pdf.py "
+                         "can compose source ↔ baseline ↔ final overlays.")
     args = ap.parse_args()
 
     brand_pack: Path = args.brand_pack.resolve()
@@ -224,6 +231,16 @@ def main() -> int:
             print(f"\n{len(failures)} render failure(s); aborting before diff.",
                   file=sys.stderr)
             return 1
+
+    if args.snapshot_baseline:
+        baseline_dir = out_root / "render-png.before"
+        baseline_dir.mkdir(parents=True, exist_ok=True)
+        for layout in mapping:
+            src = render_png_dir / f"{layout}.png"
+            if src.is_file():
+                shutil.copy2(src, baseline_dir / src.name)
+        print(f"[baseline] snapshotted {len(mapping)} renders → "
+              f"{baseline_dir.name}/")
 
     only = list(mapping) if args.only else None
     run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir, only=only)

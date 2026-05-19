@@ -70,9 +70,12 @@ digraph improve {
 
 You MUST create a task for each of these items and complete them in order:
 
-1. **Run the verify loop** —
-   `uv run python scripts/brand_verify_loop.py --brand-pack <path> --source-pptx <path>`.
-   This builds, renders, and diffs every layout in `verify-map.yaml`.
+1. **Run the verify loop with `--snapshot-baseline`** —
+   `uv run python scripts/brand_verify_loop.py --brand-pack <path>
+   --source-pptx <path> --snapshot-baseline`.
+   This builds, renders, and diffs every layout in `verify-map.yaml`,
+   AND copies the first-iteration renders into `render-png.before/`
+   so step 10 can compose a before/after PDF.
 2. **Read `<output-dir>/diff/report.json`** to get per-layout
    `struct_diff_ratio`, `picture_coverage`, and overlay paths.
 3. **Filter to the work set** — layouts whose `struct_diff_ratio`
@@ -83,13 +86,42 @@ You MUST create a task for each of these items and complete them in order:
    prompt template in `references/per-slide-prompt.md`).
 5. **Wait for every sub-agent to return.** Treat any sub-agent that
    says "no change made" as that-layout-plateaued for this round.
-6. **Re-run the verify loop** to score the new edits.
+6. **Re-run the verify loop** to score the new edits (no
+   `--snapshot-baseline` — the baseline is already locked in).
 7. **Plateau check** — if no layout's score improved by ≥ 0.5%
    absolute since last iteration, stop early.
 8. **Iterate** until all layouts ≤ threshold OR
    `--max-iterations` exhausted OR plateau detected.
 9. **Final report** — print one line per layout: starting score →
    ending score → verdict (green / improved / plateau / regressed).
+10. **Produce the before/after PDF** —
+    `uv run python scripts/brand_before_after_pdf.py --brand-pack <path>`.
+    Writes `<output-dir>/before-after.pdf` — one page per layout with
+    the source, baseline render, and final render side-by-side, plus
+    the score delta in the header. This is the artifact a reviewer
+    opens to judge whether the iteration was worth running.
+
+### Image carry-over for pipeline-optimization runs
+
+When iterating to evaluate **the pipeline itself** (e.g. driving the
+hybrid decompiler / verify loop's structural fidelity), pass
+`--carry-images` to the **initial** `brand_decompile_all.py` call:
+
+```bash
+uv run python scripts/brand_decompile_all.py \
+    --brand-pack <path> --source-pptx <path> --carry-images
+```
+
+This extracts every `<p:pic>` binary from the source slide into
+`<brand-pack>/assets/decompile/<layout>/imageN.<ext>` and rewires the
+DSL's `default:` slot to point at it. The render then uses the *real*
+source picture, so `total_diff_ratio` becomes meaningful (no
+picture_coverage masking needed) and the visual diff measures shape +
+text fidelity alone.
+
+Use carry-images for self-test runs. Don't use it when authoring a
+brand-neutral template — the genericised brand pack should default to
+the brand's own placeholder.
 
 ## Sub-agent dispatch rules
 
@@ -106,6 +138,18 @@ You MUST create a task for each of these items and complete them in order:
   NOT touch other layouts, the source PPTX, or pipeline scripts.
 - **No git side effects.** Sub-agents edit files only; the user controls
   commits.
+- **No cheating with pictures.** Every drawn visual element in the
+  source — text, rects, shapes, lines, callout boxes, ring/pie sectors,
+  flag rosettes, simple chart bars, icons — MUST be reproduced as
+  native DSL primitives. Sub-agents may NOT save the source slide as
+  a PNG and emit a `picture` statement covering it, NOR extend an
+  existing picture bbox to absorb adjacent decoration. The `picture`
+  primitive is reserved for genuine `<p:pic>` elements in the source
+  XML (real raster art, photographs, the brand logo). The whole
+  point of the verify loop is to prove the DSL pipeline can
+  reproduce the slide; substituting bitmaps invalidates the test.
+  Sub-agents that catch themselves thinking "easier to just make
+  this a picture" must STOP and decompose into primitives instead.
 
 See [`references/per-slide-prompt.md`](references/per-slide-prompt.md)
 for the prompt template that goes into each `Agent` tool call.
@@ -113,5 +157,29 @@ for the prompt template that goes into each `Agent` tool call.
 ## Detailed workflow
 
 See [`references/workflow.md`](references/workflow.md) for the full
-loop with example invocations, plateau-handling, and how to extend the
-sub-agent prompt with brand-specific style guidance.
+loop with example invocations and how to extend the sub-agent prompt
+with brand-specific style guidance.
+
+## Plateau handling (read before iteration 2)
+
+Once a layout's score stops moving — or worse, regresses — same-
+direction nudging makes it worse. See
+[`references/plateau-handling.md`](references/plateau-handling.md)
+for the distilled rules (from the autoresearch redirection directive
++ vault's Graduation Pattern) and
+[`references/redirection-prompt.md`](references/redirection-prompt.md)
+for the sub-agent prompt to dispatch when a layout plateaus or
+regresses. Core ideas:
+
+- Log every iteration's outcome to
+  `<output-dir>/attempts/<layout>.jsonl` so the next sub-agent has
+  failure-context (the missing invariant in most "iterate" loops).
+- On plateau/regression, switch the prompt — don't re-dispatch the
+  standard one. The redirection prompt explicitly steers the agent
+  toward a category of change that has NOT been tried (deletion,
+  restructuring, different style token, different theory).
+- **Deletion is a legitimate redirection move.** Plateau often
+  comes from accumulated bloat. Don't add length.
+- Stop the layout after 2 consecutive plateau rounds OR a
+  regression that repeats after revert + retry — the agent is out
+  of hypotheses.
