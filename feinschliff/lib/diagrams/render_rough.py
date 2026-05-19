@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 from html import escape
+from itertools import pairwise
 from pathlib import Path
 
 import rough
@@ -246,7 +247,7 @@ def _emit_line(g, e, tx, ty, style: str = "clean") -> str:
     )
     stroke_style = e.get("strokeStyle", "solid")
     out = []
-    for (px1, py1), (px2, py2) in zip(points, points[1:]):
+    for (px1, py1), (px2, py2) in pairwise(points):
         drawable = g.line(x + px1, y + py1, x + px2, y + py2, options=opts)
         out.append(_drawable_to_svg(g, drawable, opts, stroke_style))
     return "".join(out)

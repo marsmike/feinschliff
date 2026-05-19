@@ -992,6 +992,26 @@ def _materialise(
     return (p, None) if p.is_file() else (None, None)
 
 
+def _emit_picture_placeholder(
+    slide,
+    *,
+    pos_xy: str,
+    pos_wh: str,
+    node: DSLNode,
+    ctx: EmitContext,
+) -> None:
+    """Emit a brand-tonal placeholder rectangle when a picture asset can't be
+    loaded (missing file, unresolvable query, failed fetch, or unset slot).
+
+    Used exclusively by ``_emit_picture`` for all four fallback branches.
+    """
+    _emit_rect(slide, DSLNode(
+        kind="rect", pos_args=[pos_xy, pos_wh],
+        kw_args={"fill": "paper-2", "stroke": "fog"},
+        label=None, line_no=node.line_no, source=node.source,
+    ), ctx)
+
+
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     """picture X,Y WxH path:PATH cover:true
 
@@ -1062,11 +1082,7 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
             if isinstance(hit, _SearchError):
                 entry["exc_type"] = hit.exc_type.__name__
             ctx.missing_assets.append(entry)
-            _emit_rect(slide, DSLNode(
-                kind="rect", pos_args=[_pos_xy, _pos_wh],
-                kw_args={"fill": "paper-2", "stroke": "fog"},
-                label=None, line_no=node.line_no, source=node.source,
-            ), ctx)
+            _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
             return
         cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
         if cache_dir is None:
@@ -1105,11 +1121,7 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
             if fetch_err is not None:
                 fail_entry["error"] = f"{type(fetch_err).__name__}: {fetch_err}"
             ctx.missing_assets.append(fail_entry)
-            _emit_rect(slide, DSLNode(
-                kind="rect", pos_args=[_pos_xy, _pos_wh],
-                kw_args={"fill": "paper-2", "stroke": "fog"},
-                label=None, line_no=node.line_no, source=node.source,
-            ), ctx)
+            _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
             return
         path = str(materialised)
 
@@ -1126,11 +1138,7 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 "line_no": node.line_no,
                 "source": node.source,
             })
-        _emit_rect(slide, DSLNode(
-            kind="rect", pos_args=[_pos_xy, _pos_wh],
-            kw_args={"fill": "paper-2", "stroke": "fog"},
-            label=None, line_no=node.line_no, source=node.source,
-        ), ctx)
+        _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
         return
     p = Path(path)
     from_fallback = False
@@ -1155,11 +1163,7 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 "line_no": node.line_no,
                 "source": node.source,
             })
-        _emit_rect(slide, DSLNode(
-            kind="rect", pos_args=[_pos_xy, _pos_wh],
-            kw_args={"fill": "paper-2", "stroke": "fog"},
-            label=None, line_no=node.line_no, source=node.source,
-        ), ctx)
+        _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
         return
 
     cover = node.kw_args.get("cover", "false").lower() == "true"

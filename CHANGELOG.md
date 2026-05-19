@@ -4,6 +4,10 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+_(no changes yet)_
+
+## [0.3.0] - 2026-05-19
+
 ### Added
 - **Deck-wide layout budget planning** (`feinschliff/lib/layout_budget.py`) — `feinschliff deck plan-skeleton` now runs a second pass on top of `lib.layout_picker` that re-ranks per-slide candidates with a usage-budget bonus (+1.5 for a never-used layout, +0.75 after one use, +0.5 after two, etc.). Eligible-but-overlooked layouts (`vertical-bullets`, `pyramid`, `funnel`, `four-column-cards`, …) now surface across long decks instead of the same two or three winners repeating. The bonus is calibrated below the role-match weight (+3), so a strong affinity match still wins on the first use; coverage only kicks in among co-eligible candidates. Singleton layouts (`agenda`, `end`, `full-bleed-cover`) are exempt. Each skeleton slide records the picker + budget rationale under `_meta.layout_rationale` for debugging. Smoke test on a 17-slide mixed deck went from ~7 distinct layouts (baseline) to 15. Covered by `tests/test_layout_budget.py` (14 tests pinning both halves of the contract: spreads usage across co-eligible layouts; never overrides a strong affinity match like a `risk-matrix` fingerprint).
 
@@ -69,5 +73,6 @@ All notable changes to this project will be documented here. Format follows [Kee
 - Marketplace skeleton: LICENSE (MIT), NOTICE, CONTRIBUTING (DCO), CODE_OF_CONDUCT, SECURITY.
 - GitHub: 12 topics, branch protection, issue/PR templates, DCO check, CI workflow.
 
-[Unreleased]: https://github.com/marsmike/feinschliff/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/marsmike/feinschliff/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/marsmike/feinschliff/compare/v0.1.0...v0.3.0
 [0.1.0]: https://github.com/marsmike/feinschliff/releases/tag/v0.1.0
