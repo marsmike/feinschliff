@@ -62,6 +62,7 @@ from lib.brand_discovery import find_brand
 from lib.image_provider import discover_providers, get_provider
 from lib.verify.deck.titles import extract_titles_from_plan
 from lib.verify.deck.storyline import render_contact_sheet, write_storyline_report
+from lib.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report
 from lib.pipeline_log import (
     log_event, read_events, render_text_report, summarize,
 )
@@ -139,6 +140,32 @@ def register(parser: argparse.ArgumentParser) -> None:
         help="Optional one-line summary shown above the contact sheet.",
     )
     p_storyline.set_defaults(func=cmd_storyline)
+
+    p_ce = sub.add_parser(
+        "claim-evidence",
+        help="Mid-plan claim-evidence text gate (step 2b). "
+             "Judges each claim-carrying slide for title-body coherence "
+             "before render. Cheap Haiku pass, no PPTX round-trip.",
+    )
+    p_ce.add_argument("plan", help="Path to plan.yaml or plan.json")
+    p_ce.add_argument(
+        "--design-brief",
+        default=None,
+        help="Path to design_brief.json (optional — enables per-slide claim hints).",
+    )
+    p_ce.add_argument(
+        "-o", "--output", required=True,
+        help="Output path for claim_evidence_report.md",
+    )
+    p_ce.add_argument(
+        "--offline", action="store_true",
+        help="Skip all LLM calls; return clean verdicts (for testing).",
+    )
+    p_ce.add_argument(
+        "--model", default="claude-haiku-4-5-20251001",
+        help="Model to use for judgment (default: claude-haiku-4-5-20251001).",
+    )
+    p_ce.set_defaults(func=cmd_claim_evidence)
 
     p_wf = sub.add_parser(
         "wireframe",
@@ -1282,6 +1309,89 @@ def cmd_storyline(args) -> int:
     print(f"wrote {out_path} ({len([t for t in titles if t])} non-empty title(s) "
           f"across {len(titles)} slide(s))")
     return 0
+
+
+def cmd_claim_evidence(args) -> int:
+    """``feinschliff deck claim-evidence`` — mid-plan claim-evidence gate.
+
+    Exit codes:
+    - 0: clean (all judged slides pass)
+    - 1: dirty (at least one slide has a claim-evidence defect)
+    - 2: plumbing error (plan not found, parse failure, etc.)
+    """
+    plan_path = Path(args.plan).resolve()
+    out_path = Path(args.output).resolve()
+
+    # Load plan
+    try:
+        plan_text = plan_path.read_text()
+    except FileNotFoundError as exc:
+        print(f"deck claim-evidence: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        plan: dict = yaml.safe_load(plan_text) or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck claim-evidence: failed to parse plan: {exc}", file=sys.stderr)
+        return 2
+
+    # Load optional design brief
+    design_brief: dict | None = None
+    if args.design_brief:
+        brief_path = Path(args.design_brief).resolve()
+        try:
+            import json as _json
+            brief_text = brief_path.read_text()
+            # Accept both JSON and YAML
+            try:
+                design_brief = _json.loads(brief_text)
+            except _json.JSONDecodeError:
+                design_brief = yaml.safe_load(brief_text) or {}
+        except FileNotFoundError as exc:
+            print(f"deck claim-evidence: {exc}", file=sys.stderr)
+            return 2
+        except Exception as exc:  # noqa: BLE001
+            print(f"deck claim-evidence: failed to parse design brief: {exc}", file=sys.stderr)
+            return 2
+
+    slide_count = len(plan.get("slides") or [])
+
+    try:
+        results = judge_plan(
+            plan,
+            design_brief=design_brief,
+            offline=args.offline,
+            model=args.model,
+        )
+    except SystemExit:
+        raise  # propagate ANTHROPIC_API_KEY error
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck claim-evidence: judgment failed: {exc}", file=sys.stderr)
+        return 2
+
+    # Token-cost estimate (AC6)
+    judged_count = len(results)
+    if not args.offline and results:
+        from lib.verify.llm.prompts import claim_evidence_prompt
+        # Rough estimate: average prompt length × slides judged / 4 chars/token
+        sample_prompt = claim_evidence_prompt("Sample title", "Sample body text.")
+        avg_tokens_per_slide = len(sample_prompt) // 4
+        total_k = (avg_tokens_per_slide * judged_count) // 1000
+        print(
+            f"claim-evidence: {judged_count} slides judged, "
+            f"~{max(total_k, 1)}k input tokens via {args.model}",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"claim-evidence: {judged_count} slides judged (--offline, 0 tokens)",
+            file=sys.stderr,
+        )
+
+    overall = write_claim_evidence_report(out_path, results, slide_count=slide_count)
+    print(f"wrote {out_path} (verdict: {overall}, {judged_count} judged / {slide_count} total)")
+
+    return 0 if overall == "clean" else 1
 
 
 # ──────────────────────────────────────────────────────────────────────────────

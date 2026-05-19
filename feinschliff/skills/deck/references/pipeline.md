@@ -399,6 +399,53 @@ slides 6–9 thinks slide 7 should be `excalidraw-diagram` not the picked
 `text-picture`), it can override by adding `layout: layouts/<name>.slide.dsl`
 to its chunk entry. `deck plan-merge` honors per-slide layout overrides.
 
+## Step 2b — Claim-evidence text gate (optional, recommended)
+
+After content slots are filled (either serial Step 2 or fan-out Step 2a
+merge), run the claim-evidence gate. This catches `title-body-coherence`
+and weak-evidence defects *before* render — cheap text-only Haiku judgment
+(~5 s for a 10-slide deck) replaces a full render+verify cycle for this
+class.
+
+```bash
+uv run feinschliff deck claim-evidence out/<deck>/plan.yaml \
+  --design-brief out/<deck>/design_brief.json \
+  -o out/<deck>/claim_evidence_report.md
+```
+
+Exit 0 = clean; exit 1 = at least one slide has a claim-evidence defect;
+exit 2 = plumbing error. Use `--offline` to skip all LLM calls (testing /
+CI without an API key).
+
+The gate checks each slide whose role implies a claim (`evidence`,
+`recommendation`, `resolution`, `complication`, `result`, `claim`,
+`data-quantity`, `data-comparison`, `content-columns`,
+`content-with-visual`). Non-claim slides (`chapter`, `agenda`, `closer`,
+`title`, `cover`, `divider`, `quote`) are automatically skipped.
+
+For each judged slide, Haiku answers two questions:
+1. Does the body provide direct evidence for the title's claim?
+2. Is there body content unrelated to the title's claim?
+
+If `design_brief.json` is supplied, per-slide `claim` fields are passed as
+additional context so the model can flag title drift from the intended claim.
+
+The report at `claim_evidence_report.md` carries:
+- Overall verdict (`clean` / `dirty`)
+- Per-slide rationale
+- Optional `suggested_title` / `suggested_body` rewrites for dirty slides
+
+**When to use:** always for decks ≥ 5 slides before spending render budget.
+Skip only when iterating on layout/DSL changes with unchanged content.
+
+**Timing:** log this phase as `step:2b-claim-evidence`:
+
+```bash
+uv run feinschliff deck log-event step:2b-claim-evidence start --dir out/<deck>/
+uv run feinschliff deck claim-evidence ...
+uv run feinschliff deck log-event step:2b-claim-evidence end --dir out/<deck>/ --elapsed-ms <ms>
+```
+
 ## Step 2c — Static verify gate (optional, recommended)
 
 Before burning render budget, run the pre-render static geometry verifier.
