@@ -41,6 +41,7 @@ each layout exists at `<brand>/layouts/<layout-name>.slide.dsl`.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -98,6 +99,17 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
     """Build each layout's .slide.dsl → PPTX → PDF → PNG. Returns failures."""
     render_png_dir.mkdir(parents=True, exist_ok=True)
     layouts_dir = brand_pack / "layouts"
+    # Make the brand pack's enclosing root discoverable for the build
+    # subprocess. `feinschliff build --brand <name>` resolves the pack via
+    # brand_discovery, which honours FEINSCHLIFF_BRAND_PATH (colon-separated
+    # list of directories containing a `brands/` subdir). For out-of-tree
+    # packs this is the only way --brand-pack is honoured end-to-end.
+    enclosing = brand_pack.parent.parent
+    existing = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+    brand_env_path = (
+        f"{enclosing}{os.pathsep}{existing}" if existing else str(enclosing)
+    )
+    build_env = {**os.environ, "FEINSCHLIFF_BRAND_PATH": brand_env_path}
     failures: list[str] = []
     for layout in layouts:
         dsl = layouts_dir / f"{layout}.slide.dsl"
@@ -117,7 +129,7 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
                   "--brand", brand_name, "-o", str(pptx),
                   "--allow-missing-assets", "--skip-content-lint",
                   "--allow-diagram-warnings", str(dsl)],
-                 cwd=REPO, capture_output=True)
+                 cwd=REPO, capture_output=True, env=build_env)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode() if e.stderr else ""
             failures.append(f"{layout}: build failed — {stderr[-200:]}")
@@ -144,14 +156,17 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
 
 
 def run_diff(brand_pack: Path, source_png_dir: Path,
-             render_png_dir: Path, diff_dir: Path) -> None:
+             render_png_dir: Path, diff_dir: Path,
+             only: list[str] | None = None) -> None:
     diff_dir.mkdir(parents=True, exist_ok=True)
-    _run(["uv", "run", "python", str(SCRIPT_DIR / "brand_visual_diff.py"),
-          "--brand-pack", str(brand_pack),
-          "--source-dir", str(source_png_dir),
-          "--render-dir", str(render_png_dir),
-          "--output-dir", str(diff_dir)],
-         cwd=REPO)
+    cmd = ["uv", "run", "python", str(SCRIPT_DIR / "brand_visual_diff.py"),
+           "--brand-pack", str(brand_pack),
+           "--source-dir", str(source_png_dir),
+           "--render-dir", str(render_png_dir),
+           "--output-dir", str(diff_dir)]
+    if only:
+        cmd += ["--only", *only]
+    _run(cmd, cwd=REPO)
 
 
 def main() -> int:
@@ -203,10 +218,15 @@ def main() -> int:
     if not args.skip_render:
         failures = render_derived_pngs(brand_pack, brand_name, work_root,
                                        render_png_dir, list(mapping))
-        for f in failures:
-            print(f"  ✗ {f}", file=sys.stderr)
+        if failures:
+            for f in failures:
+                print(f"  ✗ {f}", file=sys.stderr)
+            print(f"\n{len(failures)} render failure(s); aborting before diff.",
+                  file=sys.stderr)
+            return 1
 
-    run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir)
+    only = list(mapping) if args.only else None
+    run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir, only=only)
     print(f"\n→ overlays: {diff_dir}")
     return 0
 

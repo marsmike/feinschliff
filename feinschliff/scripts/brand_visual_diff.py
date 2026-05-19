@@ -158,6 +158,10 @@ def main() -> int:
                    help="Directory with <layout>.png renders of the brand pack")
     p.add_argument("--output-dir", type=Path, required=True,
                    help="Where to write overlay/mask images + report.json + score trace")
+    p.add_argument("--only", nargs="*",
+                   help="Restrict to a subset of layouts (by name). Keeps the "
+                        "report and score-trace consistent when an orchestrator "
+                        "is iterating on a subset of verify-map.yaml.")
     args = p.parse_args()
 
     map_path = args.brand_pack / "verify-map.yaml"
@@ -166,6 +170,12 @@ def main() -> int:
         return 1
     verify_map = yaml.safe_load(map_path.read_text())
     layouts_map = verify_map.get("layouts", {})
+    if args.only:
+        wanted = set(args.only)
+        layouts_map = {k: v for k, v in layouts_map.items() if k in wanted}
+        if not layouts_map:
+            print(f"--only matched no layouts in {map_path}", flush=True)
+            return 1
 
     layouts_dir = args.brand_pack / "layouts"
     args.output_dir.mkdir(parents=True, exist_ok=True)

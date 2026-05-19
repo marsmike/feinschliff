@@ -140,8 +140,11 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
 
 
 def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, int]]) -> str:
+    # No palette → emit the raw hex literal so the DSL preserves the source
+    # color verbatim. `derive()` documents this fallback for callers that
+    # don't pass a tokens.json.
     if not palette:
-        return "fog"
+        return "#{:02x}{:02x}{:02x}".format(*rgb)
     best = None
     best_d = math.inf
     for name, prgb in palette.items():
@@ -149,7 +152,7 @@ def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, 
         if d < best_d:
             best_d = d
             best = name
-    return best or "fog"
+    return best or "#{:02x}{:02x}{:02x}".format(*rgb)
 
 
 def load_theme_scheme(pres: Presentation) -> dict[str, str]:
@@ -339,6 +342,7 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
             bold = False
             italic = False
             color = None
+            text = t.text
             if rPr is not None:
                 if rPr.get("sz"):
                     sz = int(rPr.get("sz"))
@@ -347,7 +351,13 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
                 sf = rPr.find("a:solidFill", NS)
                 if sf is not None:
                     color = _resolve_fill(rPr, theme, palette) or _resolve_solid(sf, theme, palette)
-            para_runs.append(TextRun(text=t.text, pt=sz / 100, bold=bold, italic=italic, color=color))
+                # PPTX `cap="all"` is a render-time text-transform: the run's
+                # stored text stays mixed-case but draws uppercase. Bake the
+                # transform into the emitted DSL since downstream layouts
+                # carry the literal text, not a `text-transform` directive.
+                if rPr.get("cap") == "all":
+                    text = text.upper()
+            para_runs.append(TextRun(text=text, pt=sz / 100, bold=bold, italic=italic, color=color))
         if para_runs:
             # Insert a newline marker between paragraphs so emit_dsl can preserve
             # line breaks. Without this, "Headline" + "Lorem ipsum…" paragraphs
@@ -721,12 +731,21 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     legend_x = plot_x + int(fw * 0.02)
     swatch_w = int(fw * 0.012)
     swatch_h = int(fh * 0.025)
-    shapes.append(Shape(
-        kind="text",
-        x=cmap.x(legend_x), y=cmap.y(legend_y),
-        w=cmap.w(int(fw * 0.22)), h=cmap.h(int(fh * 0.04)),
-        text_runs=[TextRun(text="Chart Title", pt=14)],
-    ))
+    # Read chart title from c:title//c:tx//c:rich//a:p//a:r//a:t (or cached
+    # strRef). Omit the title primitive entirely when the chart has no title.
+    title_el = root.find(f".//{{{CHART_NS}}}title")
+    title_text = ""
+    if title_el is not None:
+        for t_el in title_el.iterfind(f".//{{{NS['a']}}}t"):
+            if t_el.text:
+                title_text += t_el.text
+    if title_text:
+        shapes.append(Shape(
+            kind="text",
+            x=cmap.x(legend_x), y=cmap.y(legend_y),
+            w=cmap.w(int(fw * 0.22)), h=cmap.h(int(fh * 0.04)),
+            text_runs=[TextRun(text=title_text, pt=14)],
+        ))
     lx = legend_x + int(fw * 0.18)
     for si, (name, _, _) in enumerate(series):
         color = series_colors[si % len(series_colors)]
