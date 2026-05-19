@@ -38,6 +38,7 @@ Plan schema (build):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 import time
 import tempfile
@@ -46,7 +47,7 @@ from pathlib import Path
 import yaml
 
 from lib.dsl.parser import parse_file
-from lib.dsl.tokens import load_tokens
+from lib.dsl.tokens import Tokens, load_tokens
 from lib.dsl.expander import (
     interpolate_nodes,
     expand_compounds,
@@ -64,6 +65,7 @@ from lib.brand_discovery import find_brand
 from lib.image_provider import discover_providers, get_provider
 from lib.verify.deck.titles import extract_titles_from_plan
 from lib.verify.deck.storyline import render_contact_sheet, write_storyline_report
+from lib.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report
 from lib.pipeline_log import (
     log_event, read_events, render_text_report, summarize,
 )
@@ -100,6 +102,24 @@ def register(parser: argparse.ArgumentParser) -> None:
              "unset. Default: fatal. Mark intentionally-empty slots with "
              "`optional:true` to skip the abort without this flag.",
     )
+    p_build.add_argument(
+        "--strict-static",
+        action="store_true",
+        help="Run the pre-render static geometry verifier (lib.verify.static) "
+             "before compile. Aborts with exit 1 and prints defects when any "
+             "slot-overflow or empty-placeholder issues are detected. Off by "
+             "default — opting in avoids surprising existing automation.",
+    )
+    p_build.add_argument(
+        "--autofix",
+        action="store_true",
+        help="Run the static verifier before compile and automatically apply "
+             "mechanical fixes (shorten_slot, delete_word, drop_bullet, "
+             "swap_layout_*) for known defect classes.  Up to 3 inner fix "
+             "cycles are attempted; residual defects are printed but do NOT "
+             "block the compile.  The fixed plan is written back to disk "
+             "before compile.",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -123,6 +143,32 @@ def register(parser: argparse.ArgumentParser) -> None:
         help="Optional one-line summary shown above the contact sheet.",
     )
     p_storyline.set_defaults(func=cmd_storyline)
+
+    p_ce = sub.add_parser(
+        "claim-evidence",
+        help="Mid-plan claim-evidence text gate (step 2b). "
+             "Judges each claim-carrying slide for title-body coherence "
+             "before render. Cheap Haiku pass, no PPTX round-trip.",
+    )
+    p_ce.add_argument("plan", help="Path to plan.yaml or plan.json")
+    p_ce.add_argument(
+        "--design-brief",
+        default=None,
+        help="Path to design_brief.json (optional — enables per-slide claim hints).",
+    )
+    p_ce.add_argument(
+        "-o", "--output", required=True,
+        help="Output path for claim_evidence_report.md",
+    )
+    p_ce.add_argument(
+        "--offline", action="store_true",
+        help="Skip all LLM calls; return clean verdicts (for testing).",
+    )
+    p_ce.add_argument(
+        "--model", default="claude-haiku-4-5-20251001",
+        help="Model to use for judgment (default: claude-haiku-4-5-20251001).",
+    )
+    p_ce.set_defaults(func=cmd_claim_evidence)
 
     p_wf = sub.add_parser(
         "wireframe",
@@ -342,6 +388,51 @@ def register(parser: argparse.ArgumentParser) -> None:
                           help="Output path for verify-<aspect>.json.")
     p_aspect.set_defaults(func=cmd_verify_aspect)
 
+    p_vs = sub.add_parser(
+        "verify-static",
+        help="Pre-render static geometry verify: detect slot-overflow and "
+             "empty-placeholder defects from a plan.yaml without rendering. "
+             "Exit 0 = clean, 1 = defects found, 2 = plumbing error.",
+    )
+    p_vs.add_argument("plan", help="Path to the deck plan YAML")
+    p_vs.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit defects as a JSON array to stdout instead of the human "
+             "readable format. Shape: [{slide_index, kind, severity, "
+             "message, meta}, ...]",
+    )
+    p_vs.add_argument(
+        "--brand", default=None,
+        help="Override brand. Default: from plan.brand or 'feinschliff'.",
+    )
+    p_vs.set_defaults(func=cmd_verify_static)
+
+    p_af = sub.add_parser(
+        "apply-fixes",
+        help="Apply mechanical fixes to a plan.yaml from a verify-static "
+             "defects JSON.  Mutates plan in place (or writes -o out.yaml). "
+             "Exit 0 = patches applied, 1 = no patches applied.",
+    )
+    p_af.add_argument("plan", help="Path to the deck plan YAML to fix.")
+    p_af.add_argument(
+        "--defects", required=True,
+        help="Path to a defects JSON file: either a flat list of Defect "
+             "dicts [{slide_index, kind, severity, message, meta}, ...] "
+             "as emitted by `deck verify-static --json`, or a "
+             '{"defects": {slide_idx: [...]}, ...} collated shape.',
+    )
+    p_af.add_argument(
+        "-o", "--output",
+        help="Output path for the fixed plan YAML.  When omitted the plan "
+             "is updated in place.",
+    )
+    p_af.add_argument(
+        "--brand", default=None,
+        help="Override brand. Default: from plan.brand or 'feinschliff'.",
+    )
+    p_af.set_defaults(func=cmd_apply_fixes)
+
     p_collate = sub.add_parser(
         "verify-collate",
         help="Merge per-aspect verify outputs into a single verify_report.md.",
@@ -361,6 +452,19 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_collate.add_argument("-o", "--output", required=True,
                            help="Output path for verify_report.md.")
     p_collate.set_defaults(func=cmd_verify_collate)
+
+
+def _patch_set_hash(patches: list) -> str:
+    """Stable hash of a patch set — used for autofix cycle detection.
+
+    Two cycles that would apply identical changes produce the same hash so the
+    loop can detect oscillation and halt before wasting further iterations.
+    """
+    items = sorted(
+        (p.slide_index, p.action, str(sorted((p.payload or {}).items())))
+        for p in patches
+    )
+    return hashlib.sha256(repr(items).encode()).hexdigest()
 
 
 def cmd_build(args) -> int:
@@ -396,6 +500,90 @@ def cmd_build(args) -> int:
     if default_brand_obj.image_provider_config:
         cfg = default_brand_obj.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
+
+    # ── Pre-render static geometry verify (--strict-static) ──────────────
+    if getattr(args, "strict_static", False):
+        from lib.verify.static import static_verify
+        from lib.defects import format_defect as _fmt_defect
+        _static_defects = static_verify(
+            plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+        )
+        if _static_defects:
+            for _d in _static_defects:
+                print(f"deck build: static: {_fmt_defect(_d)}", file=sys.stderr)
+            print(
+                f"deck build: --strict-static: {len(_static_defects)} static "
+                f"defect(s) found. Fix them or remove --strict-static to skip "
+                f"this gate.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # ── Auto-fix loop (--autofix) ─────────────────────────────────────────
+    if getattr(args, "autofix", False):
+        from lib.verify.static import static_verify as _sv
+        from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
+
+        _MAX_AUTOFIX_CYCLES = 3
+        _total_patches = 0
+        _seen_hashes: set[str] = set()
+        _oscillation_detected = False
+        for _cycle in range(_MAX_AUTOFIX_CYCLES):
+            _static_defects = _sv(
+                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            )
+            if not _static_defects:
+                break
+            _patches = plan_fixes(_static_defects, plan, default_brand_obj.root)
+            if not _patches:
+                # No mechanical fix available; leave residuals for compile.
+                break
+            _h = _patch_set_hash(_patches)
+            if _h in _seen_hashes:
+                print(
+                    f"deck build: autofix cycle {_cycle + 1}: identical patch set "
+                    f"seen before; halting to avoid oscillation",
+                    file=sys.stderr,
+                )
+                _oscillation_detected = True
+                break
+            _seen_hashes.add(_h)
+            _before = plan
+            plan = apply_fixes(plan, _patches)
+            _total_patches += len(_patches)
+            _summary = diff_summary(_before, plan)
+            print(
+                f"deck build: autofix cycle {_cycle + 1}: "
+                f"{len(_patches)} patch(es) applied",
+            )
+            if _summary:
+                for _line in _summary.splitlines():
+                    print(f"  {_line}")
+        else:
+            # Exhausted cycles — check if residuals remain.
+            _residuals = _sv(
+                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            )
+            if _residuals:
+                print(
+                    f"deck build: --autofix: {len(_residuals)} residual static "
+                    f"defect(s) after {_MAX_AUTOFIX_CYCLES} cycle(s) — proceeding "
+                    f"to compile (orchestrator may revise).",
+                    file=sys.stderr,
+                )
+        if _total_patches > 0:
+            # Write the auto-fixed plan back to disk before compile.
+            plan_path.write_text(
+                yaml.safe_dump(plan, sort_keys=False, allow_unicode=True),
+                encoding="utf-8",
+            )
+            print(
+                f"deck build: auto-fix passes: {_total_patches} total patch(es); "
+                f"plan written back to {plan_path}"
+            )
+        # Re-capture slides_spec from the (potentially mutated) plan so the
+        # compile loop below uses the fixed content, not the pre-fix snapshot.
+        slides_spec = plan.get("slides") or []
 
     # Compute the output deck path up front so it can serve as `deck_dir`
     # for `asset_lock.json` + `.cache/` during the build.
@@ -1151,6 +1339,89 @@ def cmd_storyline(args) -> int:
     return 0
 
 
+def cmd_claim_evidence(args) -> int:
+    """``feinschliff deck claim-evidence`` — mid-plan claim-evidence gate.
+
+    Exit codes:
+    - 0: clean (all judged slides pass)
+    - 1: dirty (at least one slide has a claim-evidence defect)
+    - 2: plumbing error (plan not found, parse failure, etc.)
+    """
+    plan_path = Path(args.plan).resolve()
+    out_path = Path(args.output).resolve()
+
+    # Load plan
+    try:
+        plan_text = plan_path.read_text()
+    except FileNotFoundError as exc:
+        print(f"deck claim-evidence: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        plan: dict = yaml.safe_load(plan_text) or {}
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck claim-evidence: failed to parse plan: {exc}", file=sys.stderr)
+        return 2
+
+    # Load optional design brief
+    design_brief: dict | None = None
+    if args.design_brief:
+        brief_path = Path(args.design_brief).resolve()
+        try:
+            import json as _json
+            brief_text = brief_path.read_text()
+            # Accept both JSON and YAML
+            try:
+                design_brief = _json.loads(brief_text)
+            except _json.JSONDecodeError:
+                design_brief = yaml.safe_load(brief_text) or {}
+        except FileNotFoundError as exc:
+            print(f"deck claim-evidence: {exc}", file=sys.stderr)
+            return 2
+        except Exception as exc:  # noqa: BLE001
+            print(f"deck claim-evidence: failed to parse design brief: {exc}", file=sys.stderr)
+            return 2
+
+    slide_count = len(plan.get("slides") or [])
+
+    try:
+        results = judge_plan(
+            plan,
+            design_brief=design_brief,
+            offline=args.offline,
+            model=args.model,
+        )
+    except SystemExit:
+        raise  # propagate ANTHROPIC_API_KEY error
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck claim-evidence: judgment failed: {exc}", file=sys.stderr)
+        return 2
+
+    # Token-cost estimate (AC6)
+    judged_count = len(results)
+    if not args.offline and results:
+        from lib.verify.llm.prompts import claim_evidence_prompt
+        # Rough estimate: average prompt length × slides judged / 4 chars/token
+        sample_prompt = claim_evidence_prompt("Sample title", "Sample body text.")
+        avg_tokens_per_slide = len(sample_prompt) // 4
+        total_k = (avg_tokens_per_slide * judged_count) // 1000
+        print(
+            f"claim-evidence: {judged_count} slides judged, "
+            f"~{max(total_k, 1)}k input tokens via {args.model}",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"claim-evidence: {judged_count} slides judged (--offline, 0 tokens)",
+            file=sys.stderr,
+        )
+
+    overall = write_claim_evidence_report(out_path, results, slide_count=slide_count)
+    print(f"wrote {out_path} (verdict: {overall}, {judged_count} judged / {slide_count} total)")
+
+    return 0 if overall == "clean" else 1
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Timing log + statistics
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1230,6 +1501,59 @@ def _signals_from_slide(slide: dict) -> dict:
     }
 
 
+def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
+    """Return the DSL path for *layout_name*, checking brand-local first then
+    the toolkit pool.  Returns None if the layout can't be found anywhere."""
+    # 1. Brand-local override.
+    brand_local = brand_root / "layouts" / f"{layout_name}.slide.dsl"
+    if brand_local.is_file():
+        return brand_local
+    # 2. Toolkit pool (sibling of the brands/ directory).
+    toolkit = Path(__file__).resolve().parents[1] / "layouts" / f"{layout_name}.slide.dsl"
+    if toolkit.is_file():
+        return toolkit
+    return None
+
+
+def _slot_budgets_for_layout(
+    layout_name: str,
+    brand_root: Path,
+    tokens: Tokens,
+) -> dict[str, dict[str, int]]:
+    """Compute slot budgets for *layout_name* and return a plain serialisable
+    dict mapping slot names to ``{chars_per_line, max_lines, max_chars}``.
+
+    Returns an empty dict and logs a warning on any error so the caller
+    never crashes.
+    """
+    layout_path = _resolve_layout_path(brand_root, layout_name)
+    if layout_path is None:
+        print(
+            f"deck plan-skeleton: layout {layout_name!r} not found in brand "
+            f"or toolkit; slot_budgets will be empty",
+            file=sys.stderr,
+        )
+        return {}
+    try:
+        nodes, _ = parse_file(layout_path)
+        budgets = compute_slot_budgets(nodes, tokens)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"deck plan-skeleton: could not compute slot budgets for "
+            f"{layout_name!r}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+    return {
+        slot: {
+            "chars_per_line": b.chars_per_line,
+            "max_lines": b.max_lines,
+            "max_chars": b.max_chars,
+        }
+        for slot, b in budgets.items()
+    }
+
+
 def cmd_plan_skeleton(args) -> int:
     """`feinschliff deck plan-skeleton <content_plan>` — centralized layout
     pick. Reads a content_plan (JSON or YAML) and writes a skeleton
@@ -1240,9 +1564,16 @@ def cmd_plan_skeleton(args) -> int:
     re-ranks per-slide picker output with a deck-wide usage budget, so
     eligible-but-overlooked layouts (e.g. `vertical-bullets`,
     `funnel`, `pyramid`) surface instead of the same 2-3 winners
-    repeating across the deck."""
+    repeating across the deck.
+
+    Each slide's ``_meta`` block carries a ``slot_budgets`` mapping derived
+    from the picked layout DSL + brand tokens.  Authoring subagents should
+    honour these limits when filling ``content`` slots to avoid
+    ``slot-overflow`` defects at pre-render content-lint time."""
     import json as _json
     from lib.layout_budget import plan_deck_layouts
+    from lib.brand_discovery import find_brand
+    from lib.dsl.tokens import load_tokens
 
     cp_path = Path(args.content_plan).resolve()
     if not cp_path.is_file():
@@ -1259,12 +1590,30 @@ def cmd_plan_skeleton(args) -> int:
     brand = args.brand or plan.get("brand") or "feinschliff"
     out_pptx = args.out_pptx or "out/deck.pptx"
 
+    # Resolve brand root + tokens once; reused for every slide's budget calc.
+    try:
+        brand_obj = find_brand(brand)
+        brand_root = brand_obj.root
+        tokens = load_tokens(brand_root)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"deck plan-skeleton: could not load brand {brand!r}: {exc}; "
+            "slot_budgets will be empty for all slides",
+            file=sys.stderr,
+        )
+        brand_root = None
+        tokens = None
+
     signals = [_signals_from_slide(s) for s in plan["slides"]]
     assignments = plan_deck_layouts(signals)
 
     skeleton_slides: list[dict] = []
     for slide, assignment in zip(plan["slides"], assignments):
         layout = assignment["layout"]
+        if brand_root is not None and tokens is not None:
+            slot_budgets = _slot_budgets_for_layout(layout, brand_root, tokens)
+        else:
+            slot_budgets = {}
         skeleton_slides.append({
             "layout": f"layouts/{layout}.slide.dsl",
             "content": {},  # left empty for the authoring subagent to fill
@@ -1276,6 +1625,7 @@ def cmd_plan_skeleton(args) -> int:
                 "role": slide.get("role") or slide.get("purpose"),
                 "diagram_kind": slide.get("diagram_kind"),
                 "layout_rationale": assignment["rationale"],
+                "slot_budgets": slot_budgets,
             },
         })
 
@@ -1701,4 +2051,170 @@ def cmd_verify_collate(args) -> int:
               verdict=verdict, iteration=args.iteration)
     print(f"wrote {out_path} — verdict: {verdict}, "
           f"{total_findings} finding(s) across {len(by_slide)} slide(s)")
+    return 0
+
+
+def cmd_verify_static(args) -> int:
+    """`feinschliff deck verify-static <plan.yaml>` — pre-render static check.
+
+    Inspects a plan.yaml for geometry defects that can be detected from the
+    DSL + populated content without rendering (slot-overflow,
+    empty-placeholder). Cheaper than a full build: catches class of defect
+    in ~10-50 ms vs ~3 s/slide for a render-based check.
+
+    Exit codes:
+      0 — clean (no defects)
+      1 — one or more defects found
+      2 — plumbing error (plan not found, brand resolution failure, etc.)
+    """
+    import json as _json
+    from lib.verify.static import static_verify
+    from lib.defects import format_defect
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.is_file():
+        print(f"deck verify-static: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+
+    try:
+        plan = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"deck verify-static: could not load plan: {exc}", file=sys.stderr)
+        return 2
+
+    brand_name = getattr(args, "brand", None) or plan.get("brand") or "feinschliff"
+    try:
+        brand_obj = find_brand(brand_name)
+    except ValueError as exc:
+        print(f"deck verify-static: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        defects = static_verify(plan, brand_dir=brand_obj.root,
+                                plan_dir=plan_path.parent)
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck verify-static: unexpected error: {exc}", file=sys.stderr)
+        return 2
+
+    if getattr(args, "json", False):
+        print(_json.dumps([d.to_dict() for d in defects], indent=2,
+                          ensure_ascii=False))
+    else:
+        if defects:
+            for d in defects:
+                print(format_defect(d))
+        else:
+            print("verify-static: clean — no defects found")
+
+    return 1 if defects else 0
+
+
+def cmd_apply_fixes(args) -> int:
+    """`feinschliff deck apply-fixes <plan.yaml> --defects <defects.json> [-o out.yaml]`
+
+    Read the defects JSON (flat list OR collated shape), translate to
+    deterministic FixPatch objects, apply them to the plan, and write the
+    result.  Prints a markdown diff summary to stdout.
+
+    Defects JSON shapes supported:
+      - Flat list:  [{slide_index, kind, severity, message, meta}, ...]
+        (output of `deck verify-static --json`)
+      - Collated:   {"defects": {"1": [...], "2": [...]}, ...}
+        (output shape used by cli/verify.py)
+
+    Exit codes:
+      0 — at least one patch was applied
+      1 — no patches applied (defects present but none mechanically fixable,
+          OR no defects at all)
+      2 — plumbing error
+    """
+    import json as _json
+    from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
+    from lib.defects import Defect, DefectKind, Severity
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.is_file():
+        print(f"deck apply-fixes: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+
+    try:
+        plan = yaml.safe_load(plan_path.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        print(f"deck apply-fixes: could not load plan: {exc}", file=sys.stderr)
+        return 2
+
+    defects_path = Path(args.defects).resolve()
+    if not defects_path.is_file():
+        print(f"deck apply-fixes: defects file not found: {defects_path}", file=sys.stderr)
+        return 2
+
+    try:
+        raw = _json.loads(defects_path.read_text(encoding="utf-8"))
+    except (_json.JSONDecodeError, OSError) as exc:
+        print(f"deck apply-fixes: could not load defects: {exc}", file=sys.stderr)
+        return 2
+
+    # Normalise both JSON shapes to a flat list of Defect objects.
+    defect_dicts: list[dict] = []
+    if isinstance(raw, list):
+        # Flat list shape: [{slide_index, kind, severity, message, meta}, ...]
+        defect_dicts = raw
+    elif isinstance(raw, dict):
+        # Collated shape: {"defects": {slide_idx: [...]}, ...}
+        nested = raw.get("defects") or {}
+        for _slide_defects in nested.values():
+            if isinstance(_slide_defects, list):
+                defect_dicts.extend(_slide_defects)
+    else:
+        print("deck apply-fixes: unrecognised defects JSON shape", file=sys.stderr)
+        return 2
+
+    defects: list[Defect] = []
+    for dd in defect_dicts:
+        try:
+            defects.append(Defect(
+                slide_index=int(dd["slide_index"]),
+                kind=DefectKind(dd["kind"]),
+                severity=Severity(dd["severity"]),
+                message=str(dd.get("message", "")),
+                meta=dict(dd.get("meta") or {}),
+            ))
+        except (KeyError, ValueError) as exc:
+            print(
+                f"deck apply-fixes: skipping malformed defect entry {dd!r}: {exc}",
+                file=sys.stderr,
+            )
+
+    if not defects:
+        print("deck apply-fixes: no defects to process — nothing to do")
+        return 1
+
+    brand_name = getattr(args, "brand", None) or plan.get("brand") or "feinschliff"
+    try:
+        brand_obj = find_brand(brand_name)
+    except ValueError as exc:
+        print(f"deck apply-fixes: {exc}", file=sys.stderr)
+        return 2
+
+    patches = plan_fixes(defects, plan, brand_obj.root)
+    if not patches:
+        print("deck apply-fixes: no mechanical fixes available for these defects")
+        print("Auto-fix passes: 0")
+        return 1
+
+    fixed_plan = apply_fixes(plan, patches)
+    summary = diff_summary(plan, fixed_plan)
+
+    out_path = Path(args.output).resolve() if args.output else plan_path
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(
+        yaml.safe_dump(fixed_plan, sort_keys=False, allow_unicode=True),
+        encoding="utf-8",
+    )
+
+    # Print diff summary to stdout.
+    if summary:
+        print(summary)
+    print(f"Auto-fix passes: {len(patches)}")
+    print(f"wrote {out_path} ({len(patches)} patch(es) applied)")
     return 0

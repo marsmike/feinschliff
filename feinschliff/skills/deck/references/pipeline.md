@@ -85,6 +85,14 @@ If image style is ambiguous from the brief, also ask here (bundle it into the sa
 
 ## Step 1 — Ingest
 
+**Load brand-pack brief defaults (optional).** Before inferring anything from the user's brief, check whether the active brand ships priors via `brief_defaults` in its `tokens.json`. Use `load_brief_defaults(brand_dir)` (from `lib.dsl.tokens`) to read these. They provide a baseline only — apply the following precedence chain when setting each brief field:
+
+```
+explicit CLI/API flag > user text in prompt > brand_defaults > heuristic
+```
+
+Example: if `tokens.json` declares `"brief_defaults": {"verbosity": "concise"}` but the user says "detailed leave-behind", the user wins and `verbosity` is set to `text-heavy`. If the user says nothing and there is no flag, the brand default (`concise`) takes effect — otherwise fall through to the heuristic below.
+
 **Infer verbosity tier.** Before generating slide content, decide how much text each slide should carry. Three tiers:
 
 | Tier | Slide text budget | When to use |
@@ -294,6 +302,12 @@ budgets = compute_slot_budgets(nodes, tokens)
 print(format_budget_hint(budgets))
 ```
 
+In the fan-out (Step 2a) path, `deck plan-skeleton` computes and embeds
+these budgets automatically — each slide's `_meta.slot_budgets` dict
+carries `{chars_per_line, max_lines, max_chars}` per slot. **In serial
+mode, compute the budgets yourself** using the snippet above and apply the
+same constraints when filling `content` slots.
+
 **Diagram and tech-radar layouts are first-class v2 layouts.** When
 the brief mentions diagram / flowchart / architecture / system overview
 / layers / concept map / block diagram, pick a diagram layout based on
@@ -363,7 +377,13 @@ Required to be opted into — short decks should skip.
    - Instruction: "Author the `content:` block for each assigned slide. Write the
      result as one YAML file per slide at `<deck-dir>/chunks/slide-NN.yaml` in
      the shape `{index: N, content: {...}}`. Use the color contract verbatim.
-     Do not change the `layout:` unless you have a strong reason."
+     Do not change the `layout:` unless you have a strong reason.
+     **Honor the slot budgets.** Each skeleton entry carries
+     `_meta.slot_budgets` — a mapping of slot name to
+     `{chars_per_line, max_lines, max_chars}`. Keep every slot value
+     within its `max_chars` limit and individual lines within
+     `chars_per_line`. Violations produce `slot-overflow` defects at
+     pre-render content-lint time and cost an iteration to fix."
 5. Wait for all subagents to return.
 6. Merge:
    ```bash
@@ -386,6 +406,84 @@ parent side preserves the variety guarantee.
 slides 6–9 thinks slide 7 should be `excalidraw-diagram` not the picked
 `text-picture`), it can override by adding `layout: layouts/<name>.slide.dsl`
 to its chunk entry. `deck plan-merge` honors per-slide layout overrides.
+
+## Step 2b — Claim-evidence text gate (optional, recommended)
+
+After content slots are filled (either serial Step 2 or fan-out Step 2a
+merge), run the claim-evidence gate. This catches `title-body-coherence`
+and weak-evidence defects *before* render — cheap text-only Haiku judgment
+(~5 s for a 10-slide deck) replaces a full render+verify cycle for this
+class.
+
+```bash
+uv run feinschliff deck claim-evidence out/<deck>/plan.yaml \
+  --design-brief out/<deck>/design_brief.json \
+  -o out/<deck>/claim_evidence_report.md
+```
+
+Exit 0 = clean; exit 1 = at least one slide has a claim-evidence defect;
+exit 2 = plumbing error. Use `--offline` to skip all LLM calls (testing /
+CI without an API key).
+
+The gate checks each slide whose role implies a claim (`evidence`,
+`recommendation`, `resolution`, `complication`, `result`, `claim`,
+`data-quantity`, `data-comparison`, `content-columns`,
+`content-with-visual`). Non-claim slides (`chapter`, `agenda`, `closer`,
+`title`, `cover`, `divider`, `quote`) are automatically skipped.
+
+For each judged slide, Haiku answers two questions:
+1. Does the body provide direct evidence for the title's claim?
+2. Is there body content unrelated to the title's claim?
+
+If `design_brief.json` is supplied, per-slide `claim` fields are passed as
+additional context so the model can flag title drift from the intended claim.
+
+The report at `claim_evidence_report.md` carries:
+- Overall verdict (`clean` / `dirty`)
+- Per-slide rationale
+- Optional `suggested_title` / `suggested_body` rewrites for dirty slides
+
+**When to use:** always for decks ≥ 5 slides before spending render budget.
+Skip only when iterating on layout/DSL changes with unchanged content.
+
+**Timing:** log this phase as `step:2b-claim-evidence`:
+
+```bash
+uv run feinschliff deck log-event step:2b-claim-evidence start --dir out/<deck>/
+uv run feinschliff deck claim-evidence ...
+uv run feinschliff deck log-event step:2b-claim-evidence end --dir out/<deck>/ --elapsed-ms <ms>
+```
+
+## Step 2c — Static verify gate (optional, recommended)
+
+Before burning render budget, run the pre-render static geometry verifier.
+This catches slot-overflow and empty-placeholder defects from the DSL +
+populated content in ~10-50 ms/slide — far cheaper than re-rendering.
+
+```bash
+uv run feinschliff deck verify-static out/<deck>/plan.yaml
+```
+
+Exit 0 = clean; exit 1 = defects found (printed to stdout); exit 2 = plumbing
+error. Use `--json` for machine-readable output (array of defect dicts).
+
+Two defect classes are detected at this stage:
+
+- **slot-overflow** — content exceeds the pixel budget of the DSL slot
+  (`maxwidth` × `maxheight`). Prediction uses the same `textfit.fits()`
+  helper as the autoshrink emitter, so the prediction matches what the
+  renderer would do.
+- **empty-placeholder** — a slot interpolated by `{{ slot }}` in the layout
+  is absent from the plan's `content` dict or is an empty/whitespace string.
+  Severity is WARN — the orchestrator decides whether to abort.
+
+Both defects are WARN (not fatal). The `deck build --strict-static` flag
+enforces them as build-blockers: when set and defects exist, the build aborts
+before `compile_slide()` is called.
+
+**When to use:** always for large decks (≥ 5 slides) where an overflow costs
+one full iteration to fix. Skip only when you're iterating on DSL changes
+and have already reviewed the content manually.
 
 ## Step 3 — Build
 
