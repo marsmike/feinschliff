@@ -101,6 +101,23 @@ Stop the outer loop when ANY of:
 - `--max-iterations` exhausted
 - Every remaining layout has plateaued for ≥ 2 rounds
 
+## 9. Before/after PDF
+
+After termination, produce the artifact a reviewer can open:
+
+```bash
+uv run python scripts/brand_before_after_pdf.py \
+    --brand-pack brands/<brand>
+```
+
+Writes `out/<brand>/verify-loop/before-after.pdf` — one page per layout
+with three panels (source ↔ baseline render ↔ final render), the
+per-layout `struct_diff_ratio` at each stage, and a header verdict
+chip (green / improved / plateau / regressed) computed from the score
+delta. The baseline render comes from the `render-png.before/`
+snapshot taken during step 2's first run with `--snapshot-baseline`;
+if that snapshot is missing the script aborts with a hint.
+
 ## Example sub-agent prompt (filled)
 
 ```text
