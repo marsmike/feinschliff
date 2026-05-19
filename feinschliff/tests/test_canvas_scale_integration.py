@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.diagrams import excalidraw_expand, svg_expand
+from lib.diagrams import svg_expand
 from lib.diagrams.diagram_wireframe import (
     primitives_from_excalidraw_dsl,
     primitives_from_svg_dsl,

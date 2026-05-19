@@ -415,12 +415,25 @@ def expand_diagram_blocks(
         # later render then overwrites the earlier PNG (Review #0.1).
         # Virtual canvas dimensions also participate so identical bodies
         # rendered at different scales don't collide.
+        # tokens.json hash ensures brand-token edits bust cached PNGs.
+        # from_path and layout_dir prevent collisions across layouts that
+        # embed the same external DSL file.
+        _tokens_json = brand_dir / "tokens.json"
+        _tokens_hash = (
+            hashlib.sha1(_tokens_json.read_bytes()).hexdigest()[:12]
+            if _tokens_json.exists()
+            else ""
+        )
+        _layout_dir_name = layout_dir.name if layout_dir is not None else ""
         key_blob = "|".join((
             str(slide_index),
             n.kind,
             f"{w}x{h}",
             f"v{virtual_w}x{virtual_h}",
             brand_dir.name,
+            _tokens_hash,
+            from_path or "",
+            _layout_dir_name,
             body,
         ))
         body_hash = hashlib.sha1(key_blob.encode()).hexdigest()[:10]

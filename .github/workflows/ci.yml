@@ -52,7 +52,10 @@ jobs:
           enable-cache: true
       - name: Install feinschliff lib deps
         working-directory: feinschliff
-        run: uv sync
+        run: uv sync --group dev
+      - name: Lint (ruff)
+        working-directory: feinschliff
+        run: uv run ruff check .
       - name: Run tests
         working-directory: feinschliff
         # Skip legacy test_skill_validator: pre-existing failures unrelated to

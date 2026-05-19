@@ -29,10 +29,14 @@ def register(parser: argparse.ArgumentParser) -> None:
 def cmd_list(_args) -> int:
     for b in discover_brands():
         markers = []
-        if b.tokens_path:    markers.append("tokens")
-        if b.design_path:    markers.append("design")
-        if b.layouts_path:   markers.append("+layouts")
-        if b.compounds_path: markers.append("+compounds")
+        if b.tokens_path:
+            markers.append("tokens")
+        if b.design_path:
+            markers.append("design")
+        if b.layouts_path:
+            markers.append("+layouts")
+        if b.compounds_path:
+            markers.append("+compounds")
         tag = ",".join(markers) or "?"
         print(f"{b.name}\t{tag}\t{b.root}")
     return 0
@@ -127,9 +131,9 @@ def cmd_inspect(args) -> int:
         except (OSError, json.JSONDecodeError) as e:
             print(f"tokens.json: unreadable ({e})", file=sys.stderr)
     elif brand.design_path:
-        print(f"DESIGN.md frontmatter only — no separate tokens.json")
+        print("DESIGN.md frontmatter only — no separate tokens.json")
     else:
-        print(f"(no tokens.json or DESIGN.md)")
+        print("(no tokens.json or DESIGN.md)")
 
     # Layout inventory.
     inherited = _toolkit_layouts()

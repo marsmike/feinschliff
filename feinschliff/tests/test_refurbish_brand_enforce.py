@@ -9,7 +9,6 @@ import json
 import re
 from pathlib import Path
 
-import pytest
 
 from lib.diagrams.refurbish.brand_enforce import snap_svg_to_brand_palette
 

@@ -316,12 +316,11 @@ LLMs to author. DESIGN.md adds:
 
 ## Legacy notes
 
-`scripts/bake_palette.py` (the v1 derive-everything-from-DESIGN.md
-script that produced `catalog.json`, `templates/pptx/*.pptx`, and
-`claude-design/<brand>-2026.html` per brand) is **not part of the v2
-build**. If it still sits in the tree, treat it as legacy — v2 brands
-hand-author both `tokens.json` and `DESIGN.md` and let toolkit-shared
-layouts do the rest.
+`bake_palette.py` (the v1 derive-everything-from-DESIGN.md script that
+produced `catalog.json`, `templates/pptx/*.pptx`, and
+`claude-design/<brand>-2026.html` per brand) has been removed from the
+tree. v2 brands hand-author both `tokens.json` and `DESIGN.md` and let
+toolkit-shared layouts do the rest.
 
 ## References
 

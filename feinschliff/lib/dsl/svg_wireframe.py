@@ -228,7 +228,7 @@ def _render_picture_node(node: DSLNode) -> list[str]:
 def _render_rect_node(node: DSLNode) -> list[str]:
     """Render a rect primitive as a gray outline (structural background)."""
     if len(node.pos_args) < 2:
-        _warn(f"rect node needs xy and wh args; skipping")
+        _warn("rect node needs xy and wh args; skipping")
         return []
     try:
         x, y = parse_xy(node.pos_args[0])
@@ -249,7 +249,7 @@ def _render_rect_node(node: DSLNode) -> list[str]:
 def _render_shape_node(node: DSLNode) -> list[str]:
     """Render a generic shape primitive as a gray dashed bounding box."""
     if len(node.pos_args) < 2:
-        _warn(f"shape node needs xy and wh args; skipping")
+        _warn("shape node needs xy and wh args; skipping")
         return []
     try:
         x, y = parse_xy(node.pos_args[0])
@@ -269,7 +269,7 @@ def _render_shape_node(node: DSLNode) -> list[str]:
 def _render_line_node(node: DSLNode) -> list[str]:
     """Render a line primitive."""
     if len(node.pos_args) < 2:
-        _warn(f"line node needs two endpoint args; skipping")
+        _warn("line node needs two endpoint args; skipping")
         return []
     try:
         x1, y1 = parse_xy(node.pos_args[0])
@@ -293,7 +293,7 @@ def _render_line_node(node: DSLNode) -> list[str]:
 def _render_polyline_node(node: DSLNode) -> list[str]:
     """Render a polyline primitive."""
     if len(node.pos_args) < 2:
-        _warn(f"polyline node needs at least two points; skipping")
+        _warn("polyline node needs at least two points; skipping")
         return []
     try:
         pts = [parse_xy(p) for p in node.pos_args]

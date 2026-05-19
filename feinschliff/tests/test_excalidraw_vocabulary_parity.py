@@ -4,7 +4,6 @@ render a primitive, the dispatcher falls through to Playwright — never
 silently."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest

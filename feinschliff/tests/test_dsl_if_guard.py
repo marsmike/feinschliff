@@ -15,7 +15,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 
 from lib.dsl.expander import expand_compounds, interpolate_nodes
 from lib.dsl.parser import parse_lines

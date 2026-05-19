@@ -7,9 +7,7 @@ applies on insert.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 
-import pytest
 
 from lib.layout_validator import validate_diagrams, validate_diagrams_text_size
 

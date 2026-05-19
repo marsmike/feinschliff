@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 from lib.defects import Severity, format_defect

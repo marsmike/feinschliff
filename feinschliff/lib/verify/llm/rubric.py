@@ -6,6 +6,7 @@ import dataclasses
 import functools
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -45,6 +46,8 @@ def _judge(prompt: str, model: str = "claude-haiku-4-5-20251001") -> dict[str, A
         messages=[{"role": "user", "content": prompt}],
     )
     text = "".join(b.text for b in msg.content if hasattr(b, "text")).strip()
+    text = re.sub(r"^\s*```(?:json)?\s*\n?", "", text)
+    text = re.sub(r"\n?\s*```\s*$", "", text).strip()
     try:
         return json.loads(text)
     except json.JSONDecodeError:

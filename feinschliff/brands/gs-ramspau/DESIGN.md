@@ -112,15 +112,15 @@ feinschliff brand inspect gs-ramspau
 
 ## Why bespoke (not baked from feinschliff)
 
-The Feinschliff bake pipeline (`scripts/bake_palette.py from-design-md`)
-is color-substitution only. Grundschule Ramspau differs from feinschliff
-in typography (Open Sans vs Noto Sans), component vocabulary (italic
-claim bar, hatched photo placeholders), and slide composition (no
-executive-summary, no kpi-grid, no charts). Color-swapping feinschliff
-would produce slides that don't match the school's visual identity.
-Authoring 8 bespoke templates via `build_templates.py` keeps the brand
-pack faithful to the source design while still validating against the
-DESIGN.md schema.
+The v2 pipeline derives tokens from hand-authored `tokens.json` (DTCG
+format) rather than baking them from `DESIGN.md`. Grundschule Ramspau
+differs from feinschliff in typography (Open Sans vs Noto Sans),
+component vocabulary (italic claim bar, hatched photo placeholders), and
+slide composition (no executive-summary, no kpi-grid, no charts).
+Color-swapping feinschliff would produce slides that don't match the
+school's visual identity. Authoring 8 bespoke templates via
+`build_templates.py` keeps the brand pack faithful to the source design
+while still validating against the DESIGN.md schema.
 
 ## License
 

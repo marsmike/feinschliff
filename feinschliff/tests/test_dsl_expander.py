@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from lib.dsl.parser import CompoundDef, DSLNode, parse_lines
+from lib.dsl.parser import CompoundDef, parse_lines
 from lib.dsl.expander import (
     ExpansionDiagnostic,
     PRIMITIVES,

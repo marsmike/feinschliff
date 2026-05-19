@@ -1,5 +1,107 @@
 # Changelog
 
+## Unreleased — hybrid PPTX+SVG decompiler
+
+### Added
+- **`lib/dsl/pptx_svg_decompile.py`** — hybrid PPTX+SVG decompiler,
+  brand-agnostic. Higher-fidelity alternative to the existing
+  `lib/dsl/pptx_decompile.py`: combines PPTX XML (canonical for shape
+  semantics, placeholders, text run styles, theme color resolution)
+  with an optional SVG pass (rendered from each slide's PDF via
+  `pdf2svg`) that recovers bounding boxes for custGeom shapes whose
+  PPTX xfrm is inherited from the layout. `theme_name`, `tokens_path`,
+  and `placeholder_rel` are explicit parameters; footer-region text is
+  emitted as plain `text` primitives (brands ship their own
+  `footer(...)` compound and post-process the decompile output). Chart
+  geometry extraction, pt-to-style classifier with `body-sm` for ≤12pt
+  source text, and `cap="all"` → literal-uppercase conversion are
+  preserved as generic improvements.
+- **`scripts/brand_decompile_all.py`** — bulk-decompile every layout
+  in a brand's `verify-map.yaml` from a source PPTX in one command.
+  Snapshots existing layout files into `<brand>/layouts.bak/` before
+  overwriting. Pairs with `scripts/brand_verify_loop.py` and the
+  `improve-brand` skill to close the loop: decompile → verify →
+  improve → re-verify.
+
+### Changed
+- **`cli/decompile.py`** — adds `--with-svg` flag that routes through
+  the new hybrid decompiler instead of `pptx_decompile`. Backwards
+  compatible: omitting the flag preserves the existing behaviour
+  (primitive-level reverse mapping with asset extraction). The
+  hybrid path does not yet extract pictures to disk — pictures land
+  as placeholder slots in the emitted DSL, consistent with the
+  `picture path:"{{ image | default:'…' }}"` slot convention.
+
+### Why
+Bundle 1 (verify-loop + improve-brand skill) gave a way to measure how
+close a brand pack matches a source PPTX and an LLM loop to drive the
+gap down — but brands still had to hand-write every `.slide.dsl` to
+start (or use the existing simpler decompiler, which loses chart
+geometry and footer chrome).
+
+This bundle ships the workhorse decompiler whose output is good enough
+to `feinschliff build` straight away. Combined with
+`brand_decompile_all.py`, the full bootstrap → polishing loop now runs
+end-to-end:
+
+```bash
+# 1. bootstrap layouts from a source deck
+uv run python scripts/brand_decompile_all.py \
+    --brand-pack brands/<brand> \
+    --source-pptx <source>.pptx
+
+# 2. measure how close the first pass is
+uv run python scripts/brand_verify_loop.py \
+    --brand-pack brands/<brand> \
+    --source-pptx <source>.pptx
+
+# 3. polish via the improve-brand skill (sub-agent per layout)
+#    — see skills/improve-brand/SKILL.md
+```
+
+## Unreleased — brand verify-loop orchestrator + per-slide improvement skill
+
+### Added
+- **`scripts/brand_verify_loop.py`** — end-to-end orchestrator that
+  chains source-PNG export → layout render → visual diff in one
+  command. Any brand pack with a `verify-map.yaml` and source PPTX
+  can run a single command to refresh `source-png/`, `render-png/`,
+  `diff/report.json`, and `diff/score-trace.jsonl`. Mtime-keyed
+  caching means re-runs after one DSL edit only rebuild the affected
+  layout. Brand-specific paths drop in via `--brand-pack` and
+  `--source-pptx`.
+- **`skills/improve-brand/`** — new skill that wraps the orchestrator
+  and dispatches **one sub-agent per layout** above a configurable
+  threshold. Each sub-agent receives the per-slide overlay + current
+  DSL via paths only (no inline PNG bytes), edits exactly one
+  `.slide.dsl`, and returns a one-line change summary. The parent
+  re-runs the loop, detects plateau (Δ struct_diff_ratio < 0.5%
+  across rounds), and stops when all layouts hit the threshold or
+  the iteration budget is exhausted. Includes
+  `references/per-slide-prompt.md` (the per-layout sub-agent prompt
+  template) and `references/workflow.md` (full end-to-end loop,
+  dispatch shape, plateau handling, cost notes).
+
+### Changed
+- **`scripts/brand_visual_diff.py`** — `struct_diff_ratio` now
+  ALWAYS masks picture-slot regions before scoring, even when
+  picture coverage exceeds 90%. The prior carve-out (fall back to
+  `total_diff_ratio` for picture-heavy layouts) hid meaningful
+  chrome diffs in layouts like covers and full-bleed editorials.
+  `picture_coverage` is still reported so coverage-bias remains
+  visible. Pathological all-picture canvases fall back to
+  `total_diff_ratio` to keep the metric defined.
+
+### Why
+The brand-iteration loop was already documented end-to-end in
+`skills/compile/references/verification-pipeline.md`, but every step
+ran as a separate script invocation with hand-stitched paths. For
+LLM-driven brand polishing, that's both slow (serial dispatch) and
+context-hostile (every layout's evidence shares the same window).
+The new orchestrator collapses the wiring into one command; the
+new skill turns the loop into a parallel fan-out where each layout
+gets its own focused sub-agent.
+
 ## Unreleased — image-provider framework
 
 ### Added
