@@ -110,6 +110,11 @@ STYLE_BUNDLES: dict[str, dict[str, Any]] = {
     "col-body":    {"font": "body",    "size": "col-body",    "weight": "regular",  "color": "graphite"},
     "rule":        {"font": "display", "size": "footer",      "weight": "regular",  "color": "ink"},
     "body":        {"font": "body",    "size": "body",        "weight": "regular",  "color": "graphite"},
+    # Small-body — 16px sans, the classifier in pptx_svg_decompile.py emits
+    # this for ≤12pt source text (dense table cells, source credits, fine
+    # print). Reuses the `footer` size token (16px) so brands don't need to
+    # declare an extra font-size key.
+    "body-sm":     {"font": "body",    "size": "footer",      "weight": "regular",  "color": "graphite"},
     # Chrome — canonical eyebrow, footer, pgmeta all uppercase mono. pgmeta is
     # also dimmed (CSS opacity 0.7); footer + eyebrow inherit full body color.
     "eyebrow":     {"font": "mono",    "size": "eyebrow",     "weight": "regular",  "color": "ink",      "transform": "upper"},

@@ -471,6 +471,14 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     runs = _text_runs(ch, theme, palette)
     fill = _resolve_fill(spPr, theme, palette)
     kind = _shape_geometry_kind(spPr)
+    # Stroke (line) colour, if any — captured for stroke-only geometry
+    # (e.g. a callout-circle drawn around a bullet item with no fill).
+    stroke = None
+    ln = spPr.find("a:ln", NS) if spPr is not None else None
+    if ln is not None:
+        sf = ln.find("a:solidFill", NS)
+        if sf is not None:
+            stroke = _resolve_solid(sf, theme, palette)
 
     # Picture-typed placeholder → picture shape (no actual <p:pic>).
     if ph_type == "pic":
@@ -491,7 +499,8 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-        fill=fill, text_runs=runs, ph_type=ph_type, ph_idx=ph_idx,
+        fill=fill, stroke=stroke, text_runs=runs,
+        ph_type=ph_type, ph_idx=ph_idx,
     ))
 
 
@@ -852,9 +861,15 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for s in custs:
         out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
 
-    # Ovals (circles, decorative dots).
+    # Ovals (circles, decorative dots). Stroke-only ovals (callout
+    # circles, annotation marks) emit as stroke without fill; fill-only
+    # ovals emit fill; if neither is present, fall back to a muted neutral
+    # so the DSL always builds.
     for o in ovals:
-        out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'callout'}")
+        if o.fill is None and o.stroke:
+            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval stroke:{o.stroke}")
+        else:
+            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}")
 
     # Pictures — ALL emitted as feinschliff placeholder.jpg. Clamp bbox to the
     # canvas so that picture-bleed boxes (e.g. 166,-144 2345x1319 on 1920x1080)

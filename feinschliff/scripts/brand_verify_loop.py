@@ -102,9 +102,11 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
     # Make the brand pack's enclosing root discoverable for the build
     # subprocess. `feinschliff build --brand <name>` resolves the pack via
     # brand_discovery, which honours FEINSCHLIFF_BRAND_PATH (colon-separated
-    # list of directories containing a `brands/` subdir). For out-of-tree
-    # packs this is the only way --brand-pack is honoured end-to-end.
-    enclosing = brand_pack.parent.parent
+    # list of brand-root directories — each path is iterated for brand
+    # subdirs, so it must point at the dir CONTAINING the pack, not its
+    # grandparent). For out-of-tree packs this is the only way
+    # --brand-pack is honoured end-to-end.
+    enclosing = brand_pack.parent
     existing = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
     brand_env_path = (
         f"{enclosing}{os.pathsep}{existing}" if existing else str(enclosing)
