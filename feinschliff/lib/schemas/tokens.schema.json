@@ -186,6 +186,33 @@
         "kind": { "type": "string" },
         "config": { "type": "object", "additionalProperties": true }
       }
+    },
+    "brief_defaults": {
+      "type": "object",
+      "description": "Optional brand-pack-level brief priors. When present, the deck orchestrator seeds brief inference with these defaults before applying explicit user flags or heuristics. Precedence: explicit flag > user-in-prompt > brand_defaults > heuristic. All sub-properties are optional.",
+      "additionalProperties": false,
+      "properties": {
+        "verbosity": {
+          "type": "string",
+          "description": "Default verbosity tier for decks built with this brand. Matches the Verbosity Tier table in pipeline.md step 1.",
+          "enum": ["concise", "standard", "text-heavy"]
+        },
+        "image_style": {
+          "type": "string",
+          "description": "Default image style for decks built with this brand. Matches the Image style heuristics table in pipeline.md step 1.",
+          "enum": ["data-viz", "photorealistic", "illustration", "minimal", "abstract", "none"]
+        },
+        "frame": {
+          "type": "string",
+          "description": "Default narrative frame for decks built with this brand. Matches the narrative frame list in pipeline.md step 1.",
+          "enum": ["scqa", "pssr", "sparkline", "man-in-a-hole", "abt", "ppf", "pse", "kea"]
+        },
+        "audience": {
+          "type": "string",
+          "description": "Default target audience for decks built with this brand. Matches audience-calibration.md.",
+          "enum": ["exec", "manager", "developer", "peer"]
+        }
+      }
     }
   },
   "additionalProperties": true

@@ -85,6 +85,14 @@ If image style is ambiguous from the brief, also ask here (bundle it into the sa
 
 ## Step 1 — Ingest
 
+**Load brand-pack brief defaults (optional).** Before inferring anything from the user's brief, check whether the active brand ships priors via `brief_defaults` in its `tokens.json`. Use `load_brief_defaults(brand_dir)` (from `lib.dsl.tokens`) to read these. They provide a baseline only — apply the following precedence chain when setting each brief field:
+
+```
+explicit CLI/API flag > user text in prompt > brand_defaults > heuristic
+```
+
+Example: if `tokens.json` declares `"brief_defaults": {"verbosity": "concise"}` but the user says "detailed leave-behind", the user wins and `verbosity` is set to `text-heavy`. If the user says nothing and there is no flag, the brand default (`concise`) takes effect — otherwise fall through to the heuristic below.
+
 **Infer verbosity tier.** Before generating slide content, decide how much text each slide should carry. Three tiers:
 
 | Tier | Slide text budget | When to use |
