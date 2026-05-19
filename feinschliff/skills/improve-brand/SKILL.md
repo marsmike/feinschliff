@@ -138,6 +138,18 @@ the brand's own placeholder.
   NOT touch other layouts, the source PPTX, or pipeline scripts.
 - **No git side effects.** Sub-agents edit files only; the user controls
   commits.
+- **No cheating with pictures.** Every drawn visual element in the
+  source — text, rects, shapes, lines, callout boxes, ring/pie sectors,
+  flag rosettes, simple chart bars, icons — MUST be reproduced as
+  native DSL primitives. Sub-agents may NOT save the source slide as
+  a PNG and emit a `picture` statement covering it, NOR extend an
+  existing picture bbox to absorb adjacent decoration. The `picture`
+  primitive is reserved for genuine `<p:pic>` elements in the source
+  XML (real raster art, photographs, the brand logo). The whole
+  point of the verify loop is to prove the DSL pipeline can
+  reproduce the slide; substituting bitmaps invalidates the test.
+  Sub-agents that catch themselves thinking "easier to just make
+  this a picture" must STOP and decompose into primitives instead.
 
 See [`references/per-slide-prompt.md`](references/per-slide-prompt.md)
 for the prompt template that goes into each `Agent` tool call.
@@ -145,5 +157,29 @@ for the prompt template that goes into each `Agent` tool call.
 ## Detailed workflow
 
 See [`references/workflow.md`](references/workflow.md) for the full
-loop with example invocations, plateau-handling, and how to extend the
-sub-agent prompt with brand-specific style guidance.
+loop with example invocations and how to extend the sub-agent prompt
+with brand-specific style guidance.
+
+## Plateau handling (read before iteration 2)
+
+Once a layout's score stops moving — or worse, regresses — same-
+direction nudging makes it worse. See
+[`references/plateau-handling.md`](references/plateau-handling.md)
+for the distilled rules (from the autoresearch redirection directive
++ vault's Graduation Pattern) and
+[`references/redirection-prompt.md`](references/redirection-prompt.md)
+for the sub-agent prompt to dispatch when a layout plateaus or
+regresses. Core ideas:
+
+- Log every iteration's outcome to
+  `<output-dir>/attempts/<layout>.jsonl` so the next sub-agent has
+  failure-context (the missing invariant in most "iterate" loops).
+- On plateau/regression, switch the prompt — don't re-dispatch the
+  standard one. The redirection prompt explicitly steers the agent
+  toward a category of change that has NOT been tried (deletion,
+  restructuring, different style token, different theory).
+- **Deletion is a legitimate redirection move.** Plateau often
+  comes from accumulated bloat. Don't add length.
+- Stop the layout after 2 consecutive plateau rounds OR a
+  regression that repeats after revert + retry — the agent is out
+  of hypotheses.

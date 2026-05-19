@@ -88,11 +88,24 @@ per layout. Classify:
 
 | Δ                  | Verdict      | Action                                                                                            |
 | ------------------ | ------------ | ------------------------------------------------------------------------------------------------- |
-| `Δ > +0.005`       | improved     | Keep iterating.                                                                                   |
-| `−0.005 ≤ Δ ≤ +0.005` | plateau   | Sub-agent has exhausted easy wins. Promote to user or apply a plateau-categories.md technique.   |
-| `Δ < −0.005`       | regressed    | Undo via git (user's call) or instruct sub-agent to revert its previous edit and try differently. |
+| `Δ > +0.005`       | improved     | Keep iterating with the standard `per-slide-prompt.md`. Momentum is real.                          |
+| `−0.005 ≤ Δ ≤ +0.005` | plateau   | **Switch to `references/redirection-prompt.md`** for the next round on this layout. Same-direction nudging is what put us here. |
+| `Δ < −0.005`       | regressed    | **Revert the DSL** (the parent re-decompiles just that layout via `brand_decompile_all.py --only <layout>`) AND dispatch with the redirection prompt, noting the reverted attempt in the `PRIOR ATTEMPTS` block. Do not let a wrong move accumulate. |
 
-If 2 consecutive rounds plateau for a layout, stop dispatching it.
+If 2 consecutive rounds plateau OR a regression repeats after a
+revert + retry, stop dispatching the layout — the agent has no
+better hypothesis.
+
+Each iteration's outcome is appended to
+`<output-dir>/attempts/<layout>.jsonl` (one JSON line per round) so
+the redirection prompt can thread the prior moves into the next
+sub-agent's context. This is the **failure-context feedback**
+invariant from the Graduation Pattern — without it the loop spins
+instead of graduates. See
+[`plateau-handling.md`](plateau-handling.md) for the attempt log
+schema and the menu of structurally-different redirection moves
+(deletion / restructuring / different primitive / different style
+token / different theory).
 
 ## 8. Termination
 
