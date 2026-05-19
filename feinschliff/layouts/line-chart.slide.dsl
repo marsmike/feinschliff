@@ -24,9 +24,12 @@ rect 100,460 1720x420 fill:paper stroke:fog
 rect 100,880 1720x2 fill:ink
 
 # Series A (accent) — upward trend mapped from points [10, 14, 18, 22, 24].
-polyline 270,705 610,635 950,565 1290,495 1630,460 stroke:accent stroke-width:3
+# stroke-width 6: thick enough to read clearly when the chart frame
+# (1720×420) is downscaled into thumbnails and PDF exports without
+# anti-aliasing dropping a hairline trace below visibility.
+polyline 270,705 610,635 950,565 1290,495 1630,460 stroke:accent stroke-width:6
 # Series B (graphite) — flatter trend mapped from points [12, 12, 14, 18, 20].
-polyline 270,670 610,670 950,635 1290,565 1630,530 stroke:graphite stroke-width:3
+polyline 270,670 610,670 950,635 1290,565 1630,530 stroke:graphite stroke-width:6
 
 # 5 period labels along the x-axis.
 text 100,890  style:detail maxwidth:340 align:center "{{ periods[0] }}"

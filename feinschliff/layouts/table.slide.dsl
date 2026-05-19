@@ -31,12 +31,12 @@ text 1620,460 style:h-idx maxwidth:200 maxheight:24 "{{ columns[4] }}"
 # 0-based index; each row is 80px tall starting at y=500. Hairline below
 # every row provides both inter-row separation and a closing border.
 for row in rows:
-  text 100,{{ 520+i*80 }}  style:body maxwidth:300 maxheight:36 "{{ row.label }}"
-  text 420,{{ 520+i*80 }}  style:body maxwidth:280 maxheight:36 "{{ row.cells[0] }}"
-  text 720,{{ 520+i*80 }}  style:body maxwidth:280 maxheight:36 "{{ row.cells[1] }}"
-  text 1020,{{ 520+i*80 }} style:body maxwidth:280 maxheight:36 "{{ row.cells[2] }}"
-  text 1320,{{ 520+i*80 }} style:body maxwidth:280 maxheight:36 "{{ row.cells[3] }}"
-  text 1620,{{ 520+i*80 }} style:body maxwidth:200 maxheight:36 "{{ row.cells[4] }}"
+  text 100,{{ 520+i*80 }}  style:body maxwidth:300 maxheight:36 autoshrink:true "{{ row.label }}"
+  text 420,{{ 520+i*80 }}  style:body maxwidth:280 maxheight:36 autoshrink:true "{{ row.cells[0] }}"
+  text 720,{{ 520+i*80 }}  style:body maxwidth:280 maxheight:36 autoshrink:true "{{ row.cells[1] }}"
+  text 1020,{{ 520+i*80 }} style:body maxwidth:280 maxheight:36 autoshrink:true "{{ row.cells[2] }}"
+  text 1320,{{ 520+i*80 }} style:body maxwidth:280 maxheight:36 autoshrink:true "{{ row.cells[3] }}"
+  text 1620,{{ 520+i*80 }} style:body maxwidth:200 maxheight:36 autoshrink:true "{{ row.cells[4] }}"
   rect 100,{{ 580+i*80 }}  1720x1 fill:fog
 
 footer left:"{{ footer_left }}" right:"{{ footer_right }}"

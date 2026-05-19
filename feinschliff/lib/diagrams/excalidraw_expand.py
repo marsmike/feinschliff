@@ -555,7 +555,7 @@ def _elbow_waypoints(src_anchor: tuple[float, float], dst_anchor: tuple[float, f
     return [corner]
 
 
-_STROKE_WEIGHT = {"primary": 2.5, "secondary": 2.0, "muted": 1.5}
+_STROKE_WEIGHT = {"primary": 3.5, "secondary": 2.5, "muted": 1.5}
 _STROKE_STYLES = {"solid", "dashed", "dotted"}
 _ROUTE_KINDS = {"straight", "elbow"}
 _LABEL_POSITIONS = {"above", "below", "left", "right", "mid"}
@@ -858,9 +858,9 @@ def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: fl
     labels: list[dict] = []
     if label:
         mid_x, mid_y, ux, uy = _clear_label_anchor(waypoints, src_id, dst_id, nodes)
-        label_font = max(10, int(round(12 * scale)))
-        label_w = max(40, int(round(120 * scale)))
-        label_h = max(12, int(round(16 * scale)))
+        label_font = max(12, int(round(16 * scale)))
+        label_w = max(60, int(round(180 * scale)))
+        label_h = max(16, int(round(22 * scale)))
         label_x, label_y = _label_offset(mid_x, mid_y, ux, uy, labelpos,
                                          float(label_w), float(label_h), scale)
         labels.append({

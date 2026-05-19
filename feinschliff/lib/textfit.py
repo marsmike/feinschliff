@@ -24,9 +24,12 @@ _EMU_PER_PT = 12700
 # rendering a swatch and measuring. The "default" entry is the fallback for
 # unknown fonts.
 _FONT_WIDTH_RATIO: dict[str, dict[str, float]] = {
-    "Open Sans": {"normal": 0.50, "bold": 0.54},
-    "Consolas":  {"normal": 0.55, "bold": 0.55},
-    "default":   {"normal": 0.52, "bold": 0.56},
+    "Open Sans":      {"normal": 0.50, "bold": 0.54},
+    "Noto Sans":      {"normal": 0.51, "bold": 0.55},
+    "Consolas":       {"normal": 0.55, "bold": 0.55},
+    "Noto Sans Mono": {"normal": 0.60, "bold": 0.60},
+    "JetBrains Mono": {"normal": 0.60, "bold": 0.60},
+    "default":        {"normal": 0.52, "bold": 0.56},
 }
 
 
