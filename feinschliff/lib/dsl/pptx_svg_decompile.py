@@ -64,6 +64,8 @@ from lxml import etree
 from pptx import Presentation
 from pptx.util import Emu
 
+from lib.dsl.tokens import STYLE_BUNDLES
+
 NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
@@ -957,8 +959,20 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         text = full.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
         mw = max(80, t.w)
         mh = max(24, t.h)
+        # Emit `color:` override when the source's text-run colour differs
+        # from the chosen style bundle's default. Captured in TextRun.color
+        # from `<a:rPr><a:solidFill>`; without this the title that should
+        # render in accent-blue lands in ink-grey (or whatever the style
+        # bundle's default colour is) and inflates the visual diff.
+        run_colors = [r.color for r in t.text_runs if r.color]
+        run_color = run_colors[0] if run_colors else None
+        style_default = STYLE_BUNDLES.get(style, {}).get("color")
+        color_attr = (
+            f" color:{run_color}" if run_color and run_color != style_default else ""
+        )
         out.append(
-            f'text {t.x},{t.y} style:{style} maxwidth:{mw} maxheight:{mh} "{text}"'
+            f'text {t.x},{t.y} style:{style}{color_attr} '
+            f'maxwidth:{mw} maxheight:{mh} "{text}"'
         )
 
     # Footer-region text. Anything below `footer_y_threshold` (bottom 8%)
