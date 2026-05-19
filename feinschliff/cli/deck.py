@@ -38,6 +38,7 @@ Plan schema (build):
 from __future__ import annotations
 
 import argparse
+import hashlib
 import sys
 import tempfile
 from pathlib import Path
@@ -451,6 +452,19 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_collate.set_defaults(func=cmd_verify_collate)
 
 
+def _patch_set_hash(patches: list) -> str:
+    """Stable hash of a patch set — used for autofix cycle detection.
+
+    Two cycles that would apply identical changes produce the same hash so the
+    loop can detect oscillation and halt before wasting further iterations.
+    """
+    items = sorted(
+        (p.slide_index, p.action, str(sorted((p.payload or {}).items())))
+        for p in patches
+    )
+    return hashlib.sha256(repr(items).encode()).hexdigest()
+
+
 def cmd_build(args) -> int:
     plan_path = Path(args.plan).resolve()
     if not plan_path.is_file():
@@ -510,6 +524,8 @@ def cmd_build(args) -> int:
 
         _MAX_AUTOFIX_CYCLES = 3
         _total_patches = 0
+        _seen_hashes: set[str] = set()
+        _oscillation_detected = False
         for _cycle in range(_MAX_AUTOFIX_CYCLES):
             _static_defects = _sv(
                 plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
@@ -520,6 +536,16 @@ def cmd_build(args) -> int:
             if not _patches:
                 # No mechanical fix available; leave residuals for compile.
                 break
+            _h = _patch_set_hash(_patches)
+            if _h in _seen_hashes:
+                print(
+                    f"deck build: autofix cycle {_cycle + 1}: identical patch set "
+                    f"seen before; halting to avoid oscillation",
+                    file=sys.stderr,
+                )
+                _oscillation_detected = True
+                break
+            _seen_hashes.add(_h)
             _before = plan
             plan = apply_fixes(plan, _patches)
             _total_patches += len(_patches)

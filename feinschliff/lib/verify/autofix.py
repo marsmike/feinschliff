@@ -215,10 +215,16 @@ def _find_smaller_layout(
     current_layout_rel: str,
     slide: dict,
     brand_dir: Path,
+    layout_history: list[str] | None = None,
 ) -> str | None:
     """Use pick_layout to find a layout with fewer required slots than *current_layout_rel*.
 
     Returns a layout path string (same format as ``slide["layout"]``) or None.
+
+    *layout_history* — optional list of recently-used layout IDs (most recent
+    last). When provided it is passed to ``pick_layout`` so the variety penalty
+    fires and multiple simultaneous swap patches don't all converge on the same
+    candidate.
     """
     try:
         from lib.layout_picker import pick_layout
@@ -235,6 +241,7 @@ def _find_smaller_layout(
         role=role,
         concept_count=max(1, (concept_count or 2) - 1),
         top_k=5,
+        layout_history=layout_history,
     )
     if not candidates:
         return None
@@ -257,10 +264,16 @@ def _find_larger_layout(
     current_layout_rel: str,
     slide: dict,
     brand_dir: Path,
+    layout_history: list[str] | None = None,
 ) -> str | None:
     """Use pick_layout to find a layout with more body/bullet room.
 
     Returns a layout path string or None.
+
+    *layout_history* — optional list of recently-used layout IDs (most recent
+    last). When provided it is passed to ``pick_layout`` so the variety penalty
+    fires and multiple simultaneous swap patches don't all converge on the same
+    candidate.
     """
     try:
         from lib.layout_picker import pick_layout
@@ -275,6 +288,7 @@ def _find_larger_layout(
         role=role,
         concept_count=min(8, (concept_count or 2) + 1),
         top_k=5,
+        layout_history=layout_history,
     )
     if not candidates:
         return None
@@ -320,6 +334,11 @@ def plan_fixes(
     patches: list[FixPatch] = []
     slides = plan.get("slides") or []
 
+    # Accumulate layout IDs picked for swap patches within this batch so that
+    # pick_layout's variety penalty fires for each successive swap, preventing
+    # all patches in the same cycle from converging on the same candidate.
+    swap_history: list[str] = []
+
     for d in defects:
         slide_0 = d.slide_index - 1  # 0-based index into slides[]
         if not (0 <= slide_0 < len(slides)):
@@ -344,8 +363,11 @@ def plan_fixes(
             swap_emitted = False
             if len(current_text) > budget * (1 + _SWAP_LARGER_THRESHOLD):
                 current_layout = slide.get("layout", "")
-                larger_rel = _find_larger_layout(current_layout, slide, brand_dir)
+                larger_rel = _find_larger_layout(
+                    current_layout, slide, brand_dir, layout_history=swap_history
+                )
                 if larger_rel:
+                    swap_history.append(_layout_name(larger_rel))
                     patches.append(FixPatch(
                         slide_index=d.slide_index,
                         action="swap_layout_larger",
@@ -435,8 +457,11 @@ def plan_fixes(
         # ── EMPTY_PLACEHOLDER ─────────────────────────────────────────────────
         elif d.kind is DefectKind.EMPTY_PLACEHOLDER:
             current_layout = slide.get("layout", "")
-            smaller_rel = _find_smaller_layout(current_layout, slide, brand_dir)
+            smaller_rel = _find_smaller_layout(
+                current_layout, slide, brand_dir, layout_history=swap_history
+            )
             if smaller_rel:
+                swap_history.append(_layout_name(smaller_rel))
                 patches.append(FixPatch(
                     slide_index=d.slide_index,
                     action="swap_layout_smaller",

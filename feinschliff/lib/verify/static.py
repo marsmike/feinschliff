@@ -38,6 +38,25 @@ _SLOT_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 # Normalise array indices: cells[0].heading → cells[].heading
 _IDX_RE = re.compile(r"\[\d+\]")
 
+# Well-known optional scalar slots that layouts may interpolate but authors
+# intentionally leave empty.  EMPTY_PLACEHOLDER is suppressed for these.
+_OPTIONAL_SLOT_NAMES: frozenset[str] = frozenset({
+    "eyebrow",          # small kicker/category above title
+    "kicker",           # alt name for eyebrow
+    "so_what",          # data slide takeaway, optional
+    "pgmeta",           # chrome: "Chapter · 3 / 30"
+    "footer_left",
+    "footer_right",
+    "caption",
+    "attribution",
+    "byline",
+    "subtitle",         # often optional companion to title
+    "supporting_body",  # secondary body text
+    "watermark",
+    "footnote",         # deck version tag, optional
+    "tracker",          # eyebrow tracker line, optional
+})
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 BRANDS_DIR = REPO_ROOT / "brands"
@@ -75,11 +94,22 @@ def _collect_interpolated_slots(nodes: list) -> set[str]:
         label = getattr(node, "label", None) or ""
         for m in _SLOT_RE.finditer(label):
             raw = m.group(1).strip()
+            # Skip slots that carry a Jinja2 |default(...) filter — the
+            # template will supply the fallback value, so an absent content
+            # key is intentional and never a defect.
+            if "|default(" in raw:
+                continue
             normalised = _IDX_RE.sub("[]", raw)
-            # Only track top-level simple slot names, not compound ones like
-            # `kpis[].value` — the content validator handles those via budget
-            # lookup. We track them all: WARN severity means false positives
-            # (optional slots flagged) are tolerable.
+            # Skip array-shape slots (e.g. items[].id, kpis[].unit) — an
+            # array being empty or partially-populated is a content choice,
+            # not a missing-slot defect.
+            if "[]" in normalised:
+                continue
+            # Skip known-optional scalar slots — these are deliberately left
+            # empty by many authors and render fine when empty.
+            base_name = normalised.split(".")[0]
+            if base_name in _OPTIONAL_SLOT_NAMES:
+                continue
             required.add(normalised)
         # recurse into children (e.g. compound body)
         for child in getattr(node, "children", None) or []:
