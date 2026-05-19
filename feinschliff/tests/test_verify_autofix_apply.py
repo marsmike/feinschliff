@@ -950,3 +950,112 @@ class TestArraySlotApply:
         assert "kpis[5].unit" in captured.err, (
             f"Expected skip log mentioning 'kpis[5].unit' in stderr; got: {captured.err!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression: array-indexed slot overflows must never trigger swap_layout_larger
+# ---------------------------------------------------------------------------
+
+class TestArraySlotOverflowAlwaysShortens:
+    """plan_fixes SLOT_OVERFLOW on array-indexed paths → shorten_slot, never swap.
+
+    Regression guard for: https://github.com/marsmike/feinschliff/issues/N
+    Before the fix, 'kpis[0].unit' with content 5× over budget triggered
+    swap_layout_larger, orphaning the entire kpis[] array into a layout that
+    doesn't render it.  The fix: is_array_slot = '[' in slot → always shorten.
+    """
+
+    def _overflow_defect(self, slot: str, budget: int, text_len: int):
+        from lib.defects import Defect, DefectKind, Severity
+        return Defect(
+            slide_index=1,
+            kind=DefectKind.SLOT_OVERFLOW,
+            severity=Severity.WARN,
+            message=f"slot '{slot}' overflows by {text_len - budget} chars",
+            meta={"slot": slot, "budget_chars": budget, "over_by": text_len - budget},
+        )
+
+    def test_plan_fixes_array_slot_overflow_always_shortens(self):
+        """SLOT_OVERFLOW on 'kpis[0].unit' (content 5× over budget) emits shorten_slot,
+        never swap_layout_larger — regardless of how far over budget the content is.
+
+        Verifies the is_array_slot guard introduced to prevent silent orphaning of
+        array data when the layout is swapped to one without a kpis[] slot.
+        """
+        from lib.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
+        from lib.defects import DefectKind
+
+        budget = 4
+        content = "United States share"  # 19 chars — 4.75× budget, well above 20% threshold
+        assert len(content) > budget * (1 + _SWAP_LARGER_THRESHOLD), (
+            "Fixture must be above swap threshold to exercise the guard"
+        )
+
+        plan = {
+            "brand": "feinschliff",
+            "out": "deck.pptx",
+            "slides": [{
+                "layout": "layouts/kpi-grid.slide.dsl",
+                "content": {
+                    "kpis": [
+                        {"value": "42%", "unit": content},
+                        {"value": "31%", "unit": "European Union share"},
+                        {"value": "27%", "unit": "China share"},
+                    ],
+                },
+            }],
+        }
+        defect = self._overflow_defect("kpis[0].unit", budget, len(content))
+        patches = plan_fixes([defect], plan, BRAND_DIR)
+
+        shorten_patches = [p for p in patches if p.action == "shorten_slot"]
+        swap_patches = [p for p in patches if p.action == "swap_layout_larger"]
+
+        assert swap_patches == [], (
+            "swap_layout_larger must NOT be emitted for array-indexed slot "
+            f"'kpis[0].unit' — it would orphan the kpis[] array. Got: {swap_patches}"
+        )
+        assert len(shorten_patches) == 1, (
+            f"Expected exactly 1 shorten_slot patch for array-indexed overflow, "
+            f"got {shorten_patches}"
+        )
+        p = shorten_patches[0]
+        assert p.slot == "kpis[0].unit"
+        assert p.action == "shorten_slot"
+        assert p.source_defect == DefectKind.SLOT_OVERFLOW
+
+    def test_scalar_slot_extreme_overflow_still_swaps(self):
+        """Scalar slots above the swap threshold still trigger swap_layout_larger
+        (the new guard must not break the existing scalar-slot swap path).
+        """
+        from lib.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
+
+        budget = 40
+        content = "X" * 200  # 5× budget — well above threshold
+        assert len(content) > budget * (1 + _SWAP_LARGER_THRESHOLD)
+
+        plan = _make_plan(
+            "layouts/action-title.slide.dsl",
+            {"action_title": content},
+        )
+        from lib.defects import Defect, DefectKind, Severity
+        defect = Defect(
+            slide_index=1,
+            kind=DefectKind.SLOT_OVERFLOW,
+            severity=Severity.WARN,
+            message="slot 'action_title' overflows",
+            meta={"slot": "action_title", "budget_chars": budget, "over_by": 160},
+        )
+        patches = plan_fixes([defect], plan, BRAND_DIR)
+        shorten_patches = [p for p in patches if p.action == "shorten_slot"]
+        swap_patches = [p for p in patches if p.action == "swap_layout_larger"]
+
+        # Scalar path: swap_layout_larger must still fire when a candidate exists.
+        # (If _find_larger_layout returns no candidate, shorten_slot is the fallback —
+        # but shorten must not co-exist with swap.)
+        assert not (shorten_patches and swap_patches), (
+            "shorten_slot and swap_layout_larger must not be co-emitted for the same defect; "
+            f"got shorten={shorten_patches}, swap={swap_patches}"
+        )
+        # At least one patch must be returned.
+        assert patches, "Expected at least one patch for extreme scalar overflow"

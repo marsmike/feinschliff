@@ -25,11 +25,17 @@ trimming already-trimmed text is a no-op; removing an absent word is a no-op).
 **SLOT_OVERFLOW patch-selection contract:**
 For a SLOT_OVERFLOW defect, ``plan_fixes`` emits at most ONE patch per defect:
 
-- If the original text exceeds ``budget * (1 + _SWAP_LARGER_THRESHOLD)`` AND a
-  larger layout candidate is found, emit **only** ``swap_layout_larger``.  The
-  larger layout was chosen precisely because the content cannot be shortened
-  enough; emitting a ``shorten_slot`` on top would produce a shortened slot
-  inside a layout that was selected to avoid shortening — semantically odd.
+- If the slot path is **scalar** (no ``[`` in the path) AND the original text
+  exceeds ``budget * (1 + _SWAP_LARGER_THRESHOLD)`` AND a larger layout
+  candidate is found, emit **only** ``swap_layout_larger``.  The larger layout
+  was chosen precisely because the content cannot be shortened enough; emitting
+  a ``shorten_slot`` on top would produce a shortened slot inside a layout that
+  was selected to avoid shortening — semantically odd.
+- If the slot path is **array-indexed** (contains ``[``, e.g. ``kpis[0].unit``),
+  always emit ``shorten_slot`` regardless of overflow magnitude.  Swapping the
+  layout would orphan the whole array into a layout that doesn't render it,
+  causing silent data loss.  Shortening individual array-element strings always
+  makes progress without structural loss.
 - Otherwise (below the threshold, or no larger layout available), emit
   **only** ``shorten_slot`` as the fallback.
 
@@ -480,14 +486,23 @@ def plan_fixes(
 
             current_text = _get_slot_value(slide.get("content") or {}, slot) or ""
 
+            # Array-indexed slots (e.g. 'kpis[0].unit') must never trigger a
+            # layout swap: the new layout won't have the same array structure,
+            # so the array data would be silently orphaned and never rendered.
+            # Shortening always makes progress on individual array-element
+            # strings; the layout-swap path cannot preserve them.
+            is_array_slot = "[" in slot
+
             # Decision: try swap_layout_larger first when the overflow is
-            # extreme (>20% of budget). If a candidate layout exists, emit
-            # ONLY the swap patch — the larger layout was chosen precisely
-            # because shortening alone is insufficient. If no candidate is
-            # found, fall back to shorten_slot. Below the threshold, always
-            # use shorten_slot. Never emit both for the same defect.
+            # extreme (>20% of budget) AND the slot is scalar (not
+            # array-indexed). If a candidate layout exists, emit ONLY the
+            # swap patch — the larger layout was chosen precisely because
+            # shortening alone is insufficient. If no candidate is found, or
+            # the slot is array-indexed, fall back to shorten_slot. Below the
+            # threshold, always use shorten_slot. Never emit both for the same
+            # defect.
             swap_emitted = False
-            if len(current_text) > budget * (1 + _SWAP_LARGER_THRESHOLD):
+            if not is_array_slot and len(current_text) > budget * (1 + _SWAP_LARGER_THRESHOLD):
                 current_layout = slide.get("layout", "")
                 larger_rel = _find_larger_layout(
                     current_layout, slide, brand_dir, layout_history=swap_history
