@@ -54,6 +54,9 @@ class DefectKind(str, Enum):
     # Asset policy (pptx_emit)
     MISSING_ASSET = "missing-asset"
     PLACEHOLDER_RECTANGLE = "placeholder-rectangle"
+    # Image quality (image_preflight)
+    IMAGE_PALETTE_CLASH = "image-palette-clash"
+    IMAGE_CROP_RISK = "image-crop-risk"
 
 
 _FATAL: frozenset[str] = frozenset({

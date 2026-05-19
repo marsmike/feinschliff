@@ -29,9 +29,11 @@ import time
 import urllib.error
 import urllib.parse
 import warnings
+from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
+from lib.defects import Defect
 from lib.image_provider import ImageHit, ImageProvider, register_provider
 
 # Endpoint + timing knobs.
@@ -82,6 +84,44 @@ class UnsplashProvider(ImageProvider):
         if payload is None:
             return []
         return _parse_results(payload)
+
+    def preflight(
+        self,
+        image_path: Path,
+        brand_palette_hex: list[str],
+        slot_aspect: float,
+        *,
+        slide_index: int,
+    ) -> list[Defect]:
+        """Run palette + crop-risk preflight on a resolved image.
+
+        Loads the image from ``image_path``, calls
+        :func:`lib.image_preflight.preflight_image`, and returns any
+        emitted defects. Never raises — errors are surfaced as
+        :class:`RuntimeWarning` and an empty list is returned so builds
+        are not blocked by an unexpected preflight failure.
+        """
+        try:
+            from PIL import Image
+
+            from lib.image_preflight import preflight_image
+
+            img = Image.open(image_path)
+            _, defects = preflight_image(
+                img,
+                brand_palette_hex=brand_palette_hex,
+                slot_aspect=slot_aspect,
+                slide_index=slide_index,
+            )
+            return defects
+        except Exception as exc:  # noqa: BLE001 — defensive; preflight must not block builds
+            warnings.warn(
+                f"UnsplashProvider.preflight failed for {image_path}: "
+                f"{type(exc).__name__}: {exc}",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+            return []
 
     # -- Internals -------------------------------------------------------
 
