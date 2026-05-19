@@ -1,5 +1,12 @@
 # Verification pipeline for brand-pack iteration
 
+> **Orchestrator shortcut.** `scripts/brand_verify_loop.py` chains
+> source-PNG export → render → diff in one command — see
+> [the orchestrator section](#orchestrator-brand_verify_looppy) below.
+> For an LLM-driven improvement loop that fans out one sub-agent per
+> layout, use the [`improve-brand`](../../improve-brand/SKILL.md)
+> skill.
+
 Three companion scripts in `scripts/` form a closed-loop verification
 cycle that drives brand-pack iteration:
 
@@ -126,3 +133,45 @@ python scripts/brand_compare_pdf.py \
 - [source-asset-extraction](techniques/source-asset-extraction.md)
 - [plateau-categories](techniques/plateau-categories.md)
 - [structural-metric-coverage-bias](techniques/structural-metric-coverage-bias.md)
+
+## Orchestrator: `brand_verify_loop.py`
+
+`scripts/brand_verify_loop.py` chains source-PNG export → render →
+diff into one command, with mtime-keyed caching so re-runs after a
+single DSL edit only rebuild the affected layout. Drop-in usage:
+
+```bash
+uv run python scripts/brand_verify_loop.py \
+    --brand-pack brands/<brand> \
+    --source-pptx path/to/source-deck.pptx
+
+# Restrict the set + reuse cached source PNGs
+uv run python scripts/brand_verify_loop.py \
+    --brand-pack brands/<brand> \
+    --source-pptx path/to/source-deck.pptx \
+    --only quote table cover-orange \
+    --skip-source-export
+```
+
+Defaults to `out/<brand>/verify-loop/` for `source-png/`, `render-png/`,
+`diff/`. The diff step delegates to `brand_visual_diff.py`, so the
+same `report.json` + `score-trace.jsonl` artefacts are produced — and
+`brand_plateau.py` still works downstream.
+
+**Scoring change (Unreleased):** `brand_visual_diff.py` now always
+masks picture-slot regions when computing `struct_diff_ratio`, even
+when picture coverage exceeds 90%. The previous fall-back to
+`total_diff_ratio` for picture-heavy layouts hid meaningful chrome
+diffs. `picture_coverage` is still reported so coverage-bias remains
+visible — see
+[`techniques/structural-metric-coverage-bias.md`](techniques/structural-metric-coverage-bias.md).
+
+## LLM loop: the `improve-brand` skill
+
+For a closed-loop LLM-driven polishing flow, see the
+[`improve-brand`](../../improve-brand/SKILL.md) skill. It wraps
+`brand_verify_loop.py` and fans out **one sub-agent per layout** in
+parallel — each sub-agent reads the per-slide overlay + current DSL
+and edits only its assigned layout. The skill handles plateau
+detection and iteration budgeting; the user controls all git
+operations.

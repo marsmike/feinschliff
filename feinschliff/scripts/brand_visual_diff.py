@@ -83,17 +83,25 @@ def _compute_metrics(src: np.ndarray, ren: np.ndarray,
         "total_diff_ratio": round(float((per_pixel > DIFF_THRESHOLD).mean()), 4),
     }
     if pic_mask is not None and pic_mask.any():
+        # Always mask out picture regions before scoring. Picture slots
+        # render the brand's placeholder (or a slot default) where the
+        # source has the original illustration, so any diff inside the
+        # picture bbox is by-design and tells us nothing about the DSL.
+        # Score only the non-picture pixels.
         coverage = float(pic_mask.mean())
         metrics["picture_coverage"] = round(coverage, 3)
-        if coverage > 0.90:
+        struct = per_pixel.copy()
+        struct[pic_mask] = 0
+        non_pic = int((~pic_mask).sum())
+        if non_pic == 0:
+            # Pathological: every pixel is inside a picture slot. Fall
+            # back to total so the metric remains defined.
             metrics["struct_diff_ratio"] = metrics["total_diff_ratio"]
         else:
-            struct = per_pixel.copy()
-            struct[pic_mask] = 0
             metrics["struct_diff_ratio"] = round(
-                float((struct > DIFF_THRESHOLD).sum() / (~pic_mask).sum()), 4
+                float((struct > DIFF_THRESHOLD).sum() / non_pic), 4
             )
-            per_pixel = struct
+        per_pixel = struct
     else:
         metrics["struct_diff_ratio"] = metrics["total_diff_ratio"]
         metrics["picture_coverage"] = 0.0
