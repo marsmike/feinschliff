@@ -53,6 +53,14 @@ def main() -> int:
                     help="Print the layouts that would be derived, don't write")
     ap.add_argument("--only", nargs="*",
                     help="Restrict to a subset of layout names")
+    ap.add_argument("--carry-images", action="store_true",
+                    help="Pipeline-optimization mode: extract every <p:pic> "
+                         "binary from the source slide into "
+                         "<brand-pack>/assets/decompile/<layout>/imageN.<ext> "
+                         "and emit DSL `default:` paths pointing at those, so "
+                         "the verify loop renders the real picture (not a "
+                         "placeholder) and struct_diff_ratio reflects shape/"
+                         "text mismatch only, not picture-region noise.")
     args = ap.parse_args()
 
     brand_pack: Path = args.brand_pack.resolve()
@@ -88,6 +96,15 @@ def main() -> int:
             continue
         if target.exists():
             shutil.copy2(target, backup_dir / target.name)
+        image_extract_dir = None
+        image_extract_rel = None
+        if args.carry_images:
+            # The build resolves picture paths against `<brand>/assets` as
+            # the asset root (see cli/build.py:asset_root), so the DSL
+            # `default:` carries the relative path WITHOUT the `assets/`
+            # prefix. Filesystem path includes it.
+            image_extract_dir = brand_pack / "assets" / "decompile" / layout_name
+            image_extract_rel = f"decompile/{layout_name}"
         dsl = derive(
             source_pptx,
             slide_idx=slide_no,
@@ -96,6 +113,8 @@ def main() -> int:
             tokens_path=tokens_path if tokens_path.exists() else None,
             layout_name=layout_name,
             theme_name=brand_name,
+            image_extract_dir=image_extract_dir,
+            image_extract_rel=image_extract_rel,
         )
         target.write_text(dsl, encoding="utf-8")
         size = target.stat().st_size

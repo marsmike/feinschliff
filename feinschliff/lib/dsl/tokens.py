@@ -338,6 +338,27 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
             fm = _parse_design_md_frontmatter(design.read_text())
             parent_name = fm.get("extends")
         if not parent_name:
+            # `extends:` is a DESIGN.md-frontmatter convention; it has never
+            # been read from tokens.json. But putting it in tokens.json is a
+            # natural mistake (DTCG-flavoured packs put everything there),
+            # and the resulting failure mode is misleading — the child pack
+            # is treated as standalone, parent keys never merge, and
+            # validation dies with "'font-size' is a required property" or
+            # similar. Surface the misplacement explicitly.
+            tj = cur / "tokens.json"
+            if tj.is_file():
+                try:
+                    raw = json.loads(tj.read_text())
+                except json.JSONDecodeError:
+                    raw = {}
+                if isinstance(raw, dict) and "extends" in raw:
+                    raise ValueError(
+                        f"brand '{cur.name}': tokens.json has an `extends` "
+                        f"key, but `extends` must be declared in DESIGN.md "
+                        f"frontmatter (`---\\nextends: <parent>\\n---`). "
+                        f"The tokens.json entry is silently ignored, which "
+                        f"is why required keys like font-size appear missing."
+                    )
             break
         parent = brands_dir / parent_name
         if not parent.is_dir():

@@ -93,6 +93,12 @@ class Shape:
     is_picture: bool = False      # True for <p:pic> or ph type="pic"
     ph_type: str | None = None    # 'title','body','subTitle','pic','ftr','sldNum',...
     ph_idx: str | None = None
+    # When image_extract_dir is passed to derive(), pictures are extracted
+    # from the source PPTX and this holds the brand-pack-relative path the
+    # DSL's `default:` should resolve to. None falls back to the generic
+    # placeholder (genericised brand-template behaviour).
+    media_path: str | None = None
+    media_rid: str | None = None  # rId of the <a:blip r:embed=...>, for extraction
 
 
 @dataclass
@@ -510,9 +516,15 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
         return
     x, y, w, h = bbox
     ph_type, ph_idx = _placeholder_info(ch)
+    # Capture the embedded media rId so derive() can extract the binary
+    # when image_extract_dir is set (pipeline-optimization mode).
+    rid = None
+    blip = ch.find(".//a:blip", NS)
+    if blip is not None:
+        rid = blip.get(f"{{{NS['r']}}}embed")
     shapes.append(Shape(
         kind="pic", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-        is_picture=True, ph_type=ph_type, ph_idx=ph_idx,
+        is_picture=True, ph_type=ph_type, ph_idx=ph_idx, media_rid=rid,
     ))
 
 
@@ -856,10 +868,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
         out.append(f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}")
 
-    # Custom shapes (puzzle pieces, parallelograms, etc.) — emit as 'shape kind:rect'
-    # for now; users can refine post-derivation.
+    # Custom shapes (puzzle pieces, parallelograms, border paths, etc.) —
+    # bbox-fitted as `kind:rect` for now; users can refine post-derivation.
+    # Stroke-only custGeom (e.g. a frame/border path with `<a:noFill/>` +
+    # `<a:ln solidFill>`) emits stroke without fill; otherwise emits fill
+    # (or `fog` as a last-resort fallback) so the DSL always builds.
     for s in custs:
-        out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
+        if s.fill is None and s.stroke:
+            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
+        else:
+            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
 
     # Ovals (circles, decorative dots). Stroke-only ovals (callout
     # circles, annotation marks) emit as stroke without fill; fill-only
@@ -871,11 +889,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         else:
             out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}")
 
-    # Pictures — ALL emitted as feinschliff placeholder.jpg. Clamp bbox to the
-    # canvas so that picture-bleed boxes (e.g. 166,-144 2345x1319 on 1920x1080)
-    # become canvas-fitted rectangles. PowerPoint crops bleed at slide edges
-    # anyway, and the unclamped bbox confuses the visual-diff coverage gate
-    # (>90% triggers a struct = total fallback that masks real text deficits).
+    # Pictures — default to the brand's generic placeholder (so a derived
+    # layout works as a reusable template) OR, when derive() was called
+    # with image_extract_dir, to the actual extracted-from-source asset
+    # (pipeline-optimization mode: no picture_coverage masking needed,
+    # struct_diff_ratio reflects real shape/text mismatch).
+    # Clamp bbox to the canvas so that picture-bleed boxes (e.g.
+    # 166,-144 2345x1319 on 1920x1080) become canvas-fitted rectangles.
+    # PowerPoint crops bleed at slide edges anyway, and the unclamped
+    # bbox confuses the visual-diff coverage gate (>90% triggers a
+    # struct = total fallback that masks real text deficits).
     for i, p in enumerate(pics, 1):
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
@@ -884,9 +907,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         cy1 = min(cmap.ch, p.y + p.h)
         cw = max(1, cx1 - cx0)
         ch = max(1, cy1 - cy0)
+        default_path = p.media_path or placeholder_rel
+        # The expander's default-filter grammar requires `default("...")`
+        # — parentheses + double quotes (see lib/dsl/expander.py:_DEFAULT_FILTER_RE).
+        # The earlier `default:'…'` form silently failed to match, so the
+        # slot resolved to empty string and the build fell into the
+        # "no image bound" placeholder-rect branch — exactly why pictures
+        # rendered as grey rects even when the asset path was correct.
         out.append(
             f'picture {cx0},{cy0} {cw}x{ch} '
-            f'path:"{{{{ {slot} | default:\'{placeholder_rel}\' }}}}" cover:true'
+            f'path:"{{{{ {slot} | default(\\"{default_path}\\") }}}}" cover:true'
         )
 
     # Lines.
@@ -997,6 +1027,8 @@ def derive(
     theme_name: str = "feinschliff",
     placeholder_rel: str = PLACEHOLDER_REL,
     pdf_path: Path | None = None,
+    image_extract_dir: Path | None = None,
+    image_extract_rel: str | None = None,
 ) -> str:
     """Decompile one slide of `pptx_path` (1-indexed) into a Feinschliff DSL
     string. Brand-agnostic: pass `theme_name` and `tokens_path` to point at
@@ -1006,7 +1038,34 @@ def derive(
 
     `pdf_path` is currently unused; reserved for SVG cross-check of
     custGeom bboxes (callers render the slide's PDF page on demand).
+
+    `image_extract_dir` + `image_extract_rel` enable **image carry-over**
+    for pipeline-optimization runs: each `<p:pic>` in the source slide
+    has its embedded binary written to `image_extract_dir/imageN.<ext>`,
+    and the generated DSL's `default:` for that slot points at
+    `image_extract_rel/imageN.<ext>` (a brand-pack-relative path the
+    build will resolve at render time). Without these args, picture
+    statements fall back to the generic placeholder image as before,
+    which is the right default for *templating* an out-of-tree brand
+    pack (where the source illustrations are not re-used). For *testing
+    decompile fidelity* against the source, carry the images over so
+    the visual diff measures real shape/text mismatch instead of
+    picture-region noise.
     """
+    # python-pptx rejects template content-types (.potx / .pptm-template)
+    # with a cryptic "is not a PowerPoint file, content type is
+    # '…presentationml.template.main+xml'" error. Catch the suffix up front
+    # and tell the caller exactly how to convert. (LibreOffice converts
+    # cleanly in one pass; renaming the file is NOT enough — the internal
+    # [Content_Types].xml carries the template MIME and must be rewritten.)
+    if pptx_path.suffix.lower() in (".potx", ".potm"):
+        raise ValueError(
+            f"{pptx_path.name} is a PowerPoint TEMPLATE (.potx/.potm), not a "
+            f"presentation. Convert it first with:\n"
+            f"  soffice --headless --convert-to pptx --outdir {pptx_path.parent} "
+            f"{pptx_path}\n"
+            f"then re-run with the produced .pptx."
+        )
     palette: dict[str, tuple[int, int, int]] = {}
     if tokens_path and tokens_path.exists():
         palette = load_palette(tokens_path)
@@ -1020,6 +1079,28 @@ def derive(
 
     shapes = walk_slide(slide, cmap, theme, palette)
     _ = pdf_path  # reserved for SVG cross-check, off by default
+
+    if image_extract_dir is not None:
+        if image_extract_rel is None:
+            raise ValueError(
+                "image_extract_rel is required when image_extract_dir is set "
+                "(it goes into the DSL `default:` slot — the build resolves "
+                "it relative to the brand pack root)."
+            )
+        image_extract_dir.mkdir(parents=True, exist_ok=True)
+        pics = [s for s in shapes if s.is_picture and s.media_rid]
+        for i, p in enumerate(pics, 1):
+            try:
+                part = slide.part.related_part(p.media_rid)
+            except KeyError:
+                continue
+            blob = getattr(part, "blob", None)
+            partname = str(getattr(part, "partname", "/image.bin"))
+            ext = partname.rsplit(".", 1)[-1].lower() if "." in partname else "bin"
+            stem = "image" if len(pics) == 1 else f"image{i}"
+            out_name = f"{stem}.{ext}"
+            (image_extract_dir / out_name).write_bytes(blob or b"")
+            p.media_path = f"{image_extract_rel.rstrip('/')}/{out_name}"
 
     return emit_dsl(shapes, cmap, layout_name,
                     theme_name=theme_name,
