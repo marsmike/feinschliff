@@ -1228,6 +1228,59 @@ def _signals_from_slide(slide: dict) -> dict:
     }
 
 
+def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
+    """Return the DSL path for *layout_name*, checking brand-local first then
+    the toolkit pool.  Returns None if the layout can't be found anywhere."""
+    # 1. Brand-local override.
+    brand_local = brand_root / "layouts" / f"{layout_name}.slide.dsl"
+    if brand_local.is_file():
+        return brand_local
+    # 2. Toolkit pool (sibling of the brands/ directory).
+    toolkit = Path(__file__).resolve().parents[1] / "layouts" / f"{layout_name}.slide.dsl"
+    if toolkit.is_file():
+        return toolkit
+    return None
+
+
+def _slot_budgets_for_layout(
+    layout_name: str,
+    brand_root: Path,
+    tokens: "Tokens",
+) -> dict[str, dict[str, int]]:
+    """Compute slot budgets for *layout_name* and return a plain serialisable
+    dict mapping slot names to ``{chars_per_line, max_lines, max_chars}``.
+
+    Returns an empty dict and logs a warning on any error so the caller
+    never crashes.
+    """
+    layout_path = _resolve_layout_path(brand_root, layout_name)
+    if layout_path is None:
+        print(
+            f"deck plan-skeleton: layout {layout_name!r} not found in brand "
+            f"or toolkit; slot_budgets will be empty",
+            file=sys.stderr,
+        )
+        return {}
+    try:
+        nodes, _ = parse_file(layout_path)
+        budgets = compute_slot_budgets(nodes, tokens)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"deck plan-skeleton: could not compute slot budgets for "
+            f"{layout_name!r}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+    return {
+        slot: {
+            "chars_per_line": b.chars_per_line,
+            "max_lines": b.max_lines,
+            "max_chars": b.max_chars,
+        }
+        for slot, b in budgets.items()
+    }
+
+
 def cmd_plan_skeleton(args) -> int:
     """`feinschliff deck plan-skeleton <content_plan>` — centralized layout
     pick. Reads a content_plan (JSON or YAML) and writes a skeleton
@@ -1238,9 +1291,16 @@ def cmd_plan_skeleton(args) -> int:
     re-ranks per-slide picker output with a deck-wide usage budget, so
     eligible-but-overlooked layouts (e.g. `vertical-bullets`,
     `funnel`, `pyramid`) surface instead of the same 2-3 winners
-    repeating across the deck."""
+    repeating across the deck.
+
+    Each slide's ``_meta`` block carries a ``slot_budgets`` mapping derived
+    from the picked layout DSL + brand tokens.  Authoring subagents should
+    honour these limits when filling ``content`` slots to avoid
+    ``slot-overflow`` defects at pre-render content-lint time."""
     import json as _json
     from lib.layout_budget import plan_deck_layouts
+    from lib.brand_discovery import find_brand
+    from lib.dsl.tokens import load_tokens
 
     cp_path = Path(args.content_plan).resolve()
     if not cp_path.is_file():
@@ -1257,12 +1317,30 @@ def cmd_plan_skeleton(args) -> int:
     brand = args.brand or plan.get("brand") or "feinschliff"
     out_pptx = args.out_pptx or "out/deck.pptx"
 
+    # Resolve brand root + tokens once; reused for every slide's budget calc.
+    try:
+        brand_obj = find_brand(brand)
+        brand_root = brand_obj.root
+        tokens = load_tokens(brand_root)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"deck plan-skeleton: could not load brand {brand!r}: {exc}; "
+            "slot_budgets will be empty for all slides",
+            file=sys.stderr,
+        )
+        brand_root = None
+        tokens = None
+
     signals = [_signals_from_slide(s) for s in plan["slides"]]
     assignments = plan_deck_layouts(signals)
 
     skeleton_slides: list[dict] = []
     for slide, assignment in zip(plan["slides"], assignments):
         layout = assignment["layout"]
+        if brand_root is not None and tokens is not None:
+            slot_budgets = _slot_budgets_for_layout(layout, brand_root, tokens)
+        else:
+            slot_budgets = {}
         skeleton_slides.append({
             "layout": f"layouts/{layout}.slide.dsl",
             "content": {},  # left empty for the authoring subagent to fill
@@ -1274,6 +1352,7 @@ def cmd_plan_skeleton(args) -> int:
                 "role": slide.get("role") or slide.get("purpose"),
                 "diagram_kind": slide.get("diagram_kind"),
                 "layout_rationale": assignment["rationale"],
+                "slot_budgets": slot_budgets,
             },
         })
 

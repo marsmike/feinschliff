@@ -294,6 +294,12 @@ budgets = compute_slot_budgets(nodes, tokens)
 print(format_budget_hint(budgets))
 ```
 
+In the fan-out (Step 2a) path, `deck plan-skeleton` computes and embeds
+these budgets automatically — each slide's `_meta.slot_budgets` dict
+carries `{chars_per_line, max_lines, max_chars}` per slot. **In serial
+mode, compute the budgets yourself** using the snippet above and apply the
+same constraints when filling `content` slots.
+
 **Diagram and tech-radar layouts are first-class v2 layouts.** When
 the brief mentions diagram / flowchart / architecture / system overview
 / layers / concept map / block diagram, pick a diagram layout based on
@@ -363,7 +369,13 @@ Required to be opted into — short decks should skip.
    - Instruction: "Author the `content:` block for each assigned slide. Write the
      result as one YAML file per slide at `<deck-dir>/chunks/slide-NN.yaml` in
      the shape `{index: N, content: {...}}`. Use the color contract verbatim.
-     Do not change the `layout:` unless you have a strong reason."
+     Do not change the `layout:` unless you have a strong reason.
+     **Honor the slot budgets.** Each skeleton entry carries
+     `_meta.slot_budgets` — a mapping of slot name to
+     `{chars_per_line, max_lines, max_chars}`. Keep every slot value
+     within its `max_chars` limit and individual lines within
+     `chars_per_line`. Violations produce `slot-overflow` defects at
+     pre-render content-lint time and cost an iteration to fix."
 5. Wait for all subagents to return.
 6. Merge:
    ```bash
