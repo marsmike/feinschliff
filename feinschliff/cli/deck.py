@@ -54,8 +54,9 @@ from lib.dsl.expander import (
 )
 from lib.dsl.pptx_emit import build_multi_slide
 from lib.content_validator import (
-    emit_defects_and_abort_message, validate_content, validate_notes,
+    emit_defects_and_abort_message, validate_content,
 )
+from lib.verify.deck.notes_budget import validate_notes
 from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect

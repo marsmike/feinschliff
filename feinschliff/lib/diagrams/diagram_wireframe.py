@@ -22,6 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._dsl_common import canvas_scale as _canvas_scale
+from ._text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
 @dataclass
@@ -63,8 +64,7 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
             parts = shlex.split(line)
             _, _id, xy, level, content = parts[:5]
             x, y = [int(p) for p in xy.split(",")]
-            sizes = {"title": 22, "subtitle": 16, "body": 14, "detail": 11, "value": 13}
-            base_size = sizes.get(level, 14)
+            base_size = _SVG_TEXT_SIZES.get(level, 14)
             size = base_size * scale
             prims.append(Primitive(
                 id=_id, kind="text",
@@ -203,9 +203,7 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
             base_size = 14
             for p in parts[4:]:
                 if p.startswith("size:"):
-                    base_size = {"title": 28, "subtitle": 20, "eyebrow": 12,
-                                 "body": 14, "detail": 12, "mono": 13}.get(
-                                     p.split(":", 1)[1], 14)
+                    base_size = _EXCALIDRAW_TEXT_SIZES.get(p.split(":", 1)[1], 14)
             size = base_size * scale
             prims.append(Primitive(
                 id=_id, kind="text", x=x, y=int(y - size), w=len(content) * 8, h=int(size + 4),

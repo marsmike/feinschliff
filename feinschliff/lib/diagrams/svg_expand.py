@@ -66,6 +66,7 @@ from ._dsl_common import (
     scaled_int as _sz,
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
+from ._text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
 
 
 # SVG path `d` attribute allowlist. Letters allow the canonical command set
@@ -187,8 +188,7 @@ def _emit_text(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     parts = shlex.split(line)
     _, _id, xy, level, content = parts[:5]
     x, y = _parse_xy(xy)
-    sizes = {"title": 22, "subtitle": 16, "body": 14, "detail": 12, "value": 13}
-    size = _sz(sizes.get(level, 14), scale)
+    size = _sz(_SVG_TEXT_SIZES.get(level, 14), scale)
     fill = resolve("ink", brand_dir)
     # Optional flags: align:start|middle|end (CSS text-anchor) and
     # color:<token> (override ink default for tonal hierarchy).
@@ -782,8 +782,7 @@ def _emit_label_box(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
             label = f"{label} {tok}"
     attrs = _attr_dict(attrs_tokens, allowed=allowed_attrs)
     variant = attrs.get("variant", "body")
-    sizes = {"title": 22, "subtitle": 16, "body": 14, "detail": 12}
-    size = _sz(sizes.get(variant, 14), scale)
+    size = _sz(_SVG_TEXT_SIZES.get(variant, 14), scale)
     fill_token = attrs.get("fill", "surface-2")
     stroke_token = attrs.get("stroke", "neutral")
     fill = resolve(fill_token, brand_dir)

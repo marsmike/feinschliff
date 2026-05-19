@@ -62,6 +62,7 @@ from ._dsl_common import (
     parse_xy as _parse_xy,
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
+from ._text_metrics import EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
 _VALID_PORTS = frozenset({"left", "right", "top", "bottom"})
@@ -896,10 +897,7 @@ def _emit_text(line: str, brand_dir: Path, theme: str = "light", *, scale: float
       mono     13  monospace code
     """
     parts = shlex.split(line)
-    size_map = {
-        "title": 28, "subtitle": 20, "eyebrow": 12,
-        "body": 14, "detail": 12, "mono": 13,
-    }
+    size_map = _EXCALIDRAW_TEXT_SIZES
     _, _dsl_id, xy = parts[:3]
     rest = parts[3:]
     level = "body"
