@@ -16,6 +16,10 @@ feinschliff/docs/images/slides/
 # render_pngs.py. These are ephemeral intermediates; never commit.
 *.pngs/
 
+# Per-slide LLM verify result cache — persisted alongside the deck, keyed by
+# content hash + rubric name. Regenerated automatically; never commit.
+.verify_cache.json
+
 # port_brand.py working files — keep local for review, never commit.
 feinschliff/brands/*/.port-needs-review.txt
 feinschliff/brands/*/.port-verify/

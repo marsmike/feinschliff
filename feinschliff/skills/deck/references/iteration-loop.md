@@ -201,6 +201,36 @@ Skipping this checklist is the failure mode the iteration loop exists to prevent
 
 One-shot agents produce garbage. 15-shot agents spiral and burn budget. A hard stop keeps iteration a discipline, not a compulsion. **3 is the sweet spot for everyday work** — enough to catch obvious defects, not enough to dither. **6 is for first-impression decks** where the extra passes are worth the cost: cover-slide polish, typography tuning, overflow edge cases that only show up on 3rd-render eyeball.
 
+## Per-slide verify cache
+
+`lib/verify/cache.py` provides a content-hash cache that skips LLM calls for slides whose content has not changed since the last run.
+
+**How it works:**
+
+Each slide's hash is `sha256(brand + layout + json.dumps(content, sort_keys=True))`. The hash intentionally excludes `_meta` (informational) and `slot_budgets` (derived) — only the inputs that affect rendering are hashed. If the hash already has a cached verdict for the rubric being run, the LLM call is skipped and `"cached": True` appears on that slide's result.
+
+**Cost impact on a 15-slide deck with 2 dirty slides per iteration:**
+
+| Run | LLM calls (without cache) | LLM calls (with cache) |
+|---|---|---|
+| Iteration 1 | 15 | 15 (cold) |
+| Iteration 2 | 15 | 2 (~87% saving) |
+| Iteration 3 | 15 | 2 (~87% saving) |
+
+**Cache file:** `.verify_cache.json`, stored alongside the deck. It is gitignored.
+
+**CLI usage:**
+
+```bash
+# Standard — cache is active when --plan is supplied
+uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff
+
+# Force full re-verify (ignore cache)
+uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
+```
+
+The cache is keyed by `(slide_hash, rubric_name)`. Changing brand, layout, or any content slot produces a new key, invalidating that slide's entry automatically (old entries are not pruned in v1 — acceptable given small cache size).
+
 ## Implementation notes
 
 - Always render via `soffice --headless --convert-to pdf` not PowerPoint — LibreOffice is faster, headless, and deterministic.
