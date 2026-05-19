@@ -812,3 +812,141 @@ class TestIntegrationLoop:
         assert after_overflow == [], (
             f"Expected no SLOT_OVERFLOW after apply_fixes, still got: {after_overflow}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Array-slot path navigator unit tests
+# ---------------------------------------------------------------------------
+
+class TestPathNavigator:
+    """Direct unit tests for _get_slot_value / _set_slot_value."""
+
+    def test_plain_key(self):
+        from lib.verify.autofix import _get_slot_value, _set_slot_value
+
+        content = {"title": "Hello"}
+        assert _get_slot_value(content, "title") == "Hello"
+        assert _set_slot_value(content, "title", "World")
+        assert content["title"] == "World"
+
+    def test_array_index(self):
+        from lib.verify.autofix import _get_slot_value, _set_slot_value
+
+        content = {"kpis": [{"unit": "USD"}, {"unit": "EUR"}]}
+        assert _get_slot_value(content, "kpis[0].unit") == "USD"
+        assert _get_slot_value(content, "kpis[1].unit") == "EUR"
+        assert _set_slot_value(content, "kpis[0].unit", "GBP")
+        assert content["kpis"][0]["unit"] == "GBP"
+
+    def test_nested_path(self):
+        from lib.verify.autofix import _get_slot_value, _set_slot_value
+
+        content = {"data": {"rows": [{"label": "A"}, {"label": "B"}]}}
+        assert _get_slot_value(content, "data.rows[1].label") == "B"
+        assert _set_slot_value(content, "data.rows[0].label", "Z")
+        assert content["data"]["rows"][0]["label"] == "Z"
+
+    def test_out_of_range_index_returns_none(self):
+        from lib.verify.autofix import _get_slot_value, _set_slot_value
+
+        content = {"kpis": [{"unit": "USD"}, {"unit": "EUR"}, {"unit": "GBP"}]}
+        assert _get_slot_value(content, "kpis[5].unit") is None
+        assert _set_slot_value(content, "kpis[5].unit", "CHF") is False
+
+    def test_missing_key_returns_none(self):
+        from lib.verify.autofix import _get_slot_value, _set_slot_value
+
+        content = {"title": "Hello"}
+        assert _get_slot_value(content, "missing_key") is None
+        assert _set_slot_value(content, "missing_key", "x") is False
+
+    def test_set_does_not_create_intermediate(self):
+        from lib.verify.autofix import _set_slot_value
+
+        content: dict = {}
+        # Should not create 'kpis' key
+        assert _set_slot_value(content, "kpis[0].unit", "X") is False
+        assert "kpis" not in content
+
+
+# ---------------------------------------------------------------------------
+# Array-indexed slot patching via apply_fixes
+# ---------------------------------------------------------------------------
+
+class TestArraySlotApply:
+    """apply_fixes must navigate array-indexed slot paths like 'kpis[0].unit'."""
+
+    def test_apply_shorten_slot_array_indexed_path(self):
+        """shorten_slot patch on 'kpis[0].unit' navigates into the array and mutates.
+
+        Before: kpis[0].unit = 'US share' (8 chars).
+        Defect: budget_chars=4 (over by 4).
+        After apply_fixes: kpis[0].unit is shortened to ≤4 chars.
+        """
+        from lib.verify.autofix import apply_fixes, FixPatch
+        from lib.defects import DefectKind
+
+        plan = {
+            "brand": "feinschliff",
+            "out": "deck.pptx",
+            "slides": [{
+                "layout": "layouts/executive-summary.slide.dsl",
+                "content": {
+                    "kpis": [{"value": "9%", "unit": "US share"}],
+                },
+            }],
+        }
+        patch = FixPatch(
+            slide_index=1,
+            action="shorten_slot",
+            slot="kpis[0].unit",
+            payload={"budget_chars": 4},
+            source_defect=DefectKind.SLOT_OVERFLOW,
+        )
+        after = apply_fixes(plan, [patch])
+        result = after["slides"][0]["content"]["kpis"][0]["unit"]
+        assert len(result) <= 4, (
+            f"Expected 'kpis[0].unit' shortened to ≤4 chars, got {len(result)}: {result!r}"
+        )
+
+    def test_apply_shorten_slot_array_out_of_range(self, capsys):
+        """shorten_slot on 'kpis[5].unit' with a 3-element array logs a skip and does not crash."""
+        from lib.verify.autofix import apply_fixes, FixPatch
+        from lib.defects import DefectKind
+
+        plan = {
+            "brand": "feinschliff",
+            "out": "deck.pptx",
+            "slides": [{
+                "layout": "layouts/executive-summary.slide.dsl",
+                "content": {
+                    "kpis": [
+                        {"value": "9%", "unit": "US share"},
+                        {"value": "45%", "unit": "EU share"},
+                        {"value": "12%", "unit": "APAC shr"},
+                    ],
+                },
+            }],
+        }
+        original_kpis = [dict(k) for k in plan["slides"][0]["content"]["kpis"]]
+        patch = FixPatch(
+            slide_index=1,
+            action="shorten_slot",
+            slot="kpis[5].unit",
+            payload={"budget_chars": 4},
+            source_defect=DefectKind.SLOT_OVERFLOW,
+        )
+        # Must not raise
+        after = apply_fixes(plan, [patch])
+
+        # Content must be unchanged
+        after_kpis = after["slides"][0]["content"]["kpis"]
+        assert after_kpis == original_kpis, (
+            "Out-of-range array patch must not mutate existing content"
+        )
+
+        # A skip message must have been emitted to stderr
+        captured = capsys.readouterr()
+        assert "kpis[5].unit" in captured.err, (
+            f"Expected skip log mentioning 'kpis[5].unit' in stderr; got: {captured.err!r}"
+        )

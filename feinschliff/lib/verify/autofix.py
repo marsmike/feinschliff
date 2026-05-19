@@ -123,6 +123,132 @@ def suggest_fix(d: Defect) -> dict[str, Any] | None:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Slot-path navigator helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _parse_slot_path(path: str) -> list[str | int]:
+    """Tokenise a slot path like 'kpis[0].unit' into ['kpis', 0, 'unit'].
+
+    Grammar: key( '[' digit+ ']' | '.' key )*
+    Plain keys become str tokens; bracketed integers become int tokens.
+    """
+    tokens: list[str | int] = []
+    # Split on '.' or '[N]', keeping the matched separators as part of the split
+    remaining = path
+    while remaining:
+        # Consume a plain key (everything up to the next '.' or '[')
+        dot_pos = remaining.find(".")
+        bracket_pos = remaining.find("[")
+
+        # Find next separator
+        if dot_pos == -1 and bracket_pos == -1:
+            # Terminal plain key
+            tokens.append(remaining)
+            break
+        elif dot_pos == -1:
+            sep_pos = bracket_pos
+        elif bracket_pos == -1:
+            sep_pos = dot_pos
+        else:
+            sep_pos = min(dot_pos, bracket_pos)
+
+        if sep_pos > 0:
+            tokens.append(remaining[:sep_pos])
+            remaining = remaining[sep_pos:]
+        elif sep_pos == 0:
+            # We're at a separator
+            if remaining[0] == ".":
+                remaining = remaining[1:]  # skip the dot
+            elif remaining[0] == "[":
+                close = remaining.find("]")
+                if close == -1:
+                    # Malformed — treat the rest as a plain key
+                    tokens.append(remaining)
+                    break
+                idx_str = remaining[1:close]
+                try:
+                    tokens.append(int(idx_str))
+                except ValueError:
+                    tokens.append(idx_str)
+                remaining = remaining[close + 1:]
+                # Skip a following '.' if present
+                if remaining.startswith("."):
+                    remaining = remaining[1:]
+        else:
+            # sep_pos == 0 shouldn't happen since we check > 0 / == 0 above;
+            # guard against infinite loop
+            break
+
+    return tokens
+
+
+def _get_slot_value(content: dict | list, path: str) -> str | None:
+    """Navigate a slot path like 'kpis[0].unit' or 'body' into content.
+
+    Returns the value at that path, or None if any segment is missing.
+    """
+    tokens = _parse_slot_path(path)
+    node: object = content
+    for token in tokens:
+        if isinstance(token, int):
+            if not isinstance(node, list):
+                return None
+            if token >= len(node) or token < 0:
+                return None
+            node = node[token]
+        else:
+            if not isinstance(node, dict):
+                return None
+            if token not in node:
+                return None
+            node = node[token]
+    if isinstance(node, str):
+        return node
+    return None
+
+
+def _set_slot_value(content: dict | list, path: str, value: str) -> bool:
+    """Set the value at the given path.
+
+    Returns True on success, False if the path can't be navigated (any
+    missing intermediate segment). Does NOT create intermediate keys/indices.
+    """
+    tokens = _parse_slot_path(path)
+    if not tokens:
+        return False
+    node: object = content
+    for token in tokens[:-1]:
+        if isinstance(token, int):
+            if not isinstance(node, list):
+                return False
+            if token >= len(node) or token < 0:
+                return False
+            node = node[token]
+        else:
+            if not isinstance(node, dict):
+                return False
+            if token not in node:
+                return False
+            node = node[token]
+    # Apply final segment
+    last = tokens[-1]
+    if isinstance(last, int):
+        if not isinstance(node, list):
+            return False
+        if last >= len(node) or last < 0:
+            return False
+        node[last] = value  # type: ignore[index]
+        return True
+    else:
+        if not isinstance(node, dict):
+            return False
+        if last not in node:
+            return False
+        node[last] = value  # type: ignore[index]
+        return True
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Internal helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -352,7 +478,7 @@ def plan_fixes(
             if slot is None or budget is None:
                 continue  # not enough info
 
-            current_text = (slide.get("content") or {}).get(slot) or ""
+            current_text = _get_slot_value(slide.get("content") or {}, slot) or ""
 
             # Decision: try swap_layout_larger first when the overflow is
             # extreme (>20% of budget). If a candidate layout exists, emit
@@ -395,7 +521,7 @@ def plan_fixes(
             if not slot:
                 continue
 
-            current_text = (slide.get("content") or {}).get(slot) or ""
+            current_text = _get_slot_value(slide.get("content") or {}, slot) or ""
             if not current_text:
                 continue
 
@@ -440,7 +566,7 @@ def plan_fixes(
             if not slot:
                 continue
 
-            current_text = (slide.get("content") or {}).get(slot) or ""
+            current_text = _get_slot_value(slide.get("content") or {}, slot) or ""
             bullet_count = len(_count_bullets(current_text))
             if bullet_count <= 5:
                 # Not enough bullets to warrant dropping — skip
@@ -538,10 +664,10 @@ def _apply_shorten_slot(slide: dict, patch: FixPatch) -> None:
     if slot is None:
         return
     content = slide.setdefault("content", {})
-    current = content.get(slot)
+    current = _get_slot_value(content, slot)
     if current is None:
         print(
-            f"apply_fixes: shorten_slot: slot {slot!r} not found in content — skipped",
+            f"apply_fixes: shorten_slot: slot path {slot!r} not found in content — skipped",
             file=sys.stderr,
         )
         return
@@ -550,7 +676,8 @@ def _apply_shorten_slot(slide: dict, patch: FixPatch) -> None:
     budget = patch.payload.get("budget_chars")
     if budget is None:
         return
-    content[slot] = _shorten_to_budget(current, budget)
+    shortened = _shorten_to_budget(current, budget)
+    _set_slot_value(content, slot, shortened)
 
 
 def _apply_delete_word(slide: dict, patch: FixPatch) -> None:
@@ -559,7 +686,7 @@ def _apply_delete_word(slide: dict, patch: FixPatch) -> None:
     if not slot or not word:
         return
     content = slide.setdefault("content", {})
-    current = content.get(slot)
+    current = _get_slot_value(content, slot)
     if current is None or not isinstance(current, str):
         return
     # Case-insensitive word-boundary removal.
@@ -567,7 +694,7 @@ def _apply_delete_word(slide: dict, patch: FixPatch) -> None:
     result = pattern.sub("", current)
     # Collapse multiple spaces that removal may leave behind.
     result = re.sub(r'  +', ' ', result).strip()
-    content[slot] = result
+    _set_slot_value(content, slot, result)
 
 
 def _apply_drop_bullet(slide: dict, patch: FixPatch) -> None:
@@ -575,11 +702,11 @@ def _apply_drop_bullet(slide: dict, patch: FixPatch) -> None:
     if slot is None:
         return
     content = slide.setdefault("content", {})
-    current = content.get(slot)
+    current = _get_slot_value(content, slot)
     if current is None or not isinstance(current, str):
         return
     keep = patch.payload.get("keep", 5)
-    content[slot] = _drop_weakest_bullets(current, keep=keep)
+    _set_slot_value(content, slot, _drop_weakest_bullets(current, keep=keep))
 
 
 def _apply_swap_layout(slide: dict, patch: FixPatch) -> None:

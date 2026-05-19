@@ -511,3 +511,94 @@ def test_deck_build_strict_static_exits_nonzero_on_bad_plan(tmp_path):
     assert not out_pptx.exists(), (
         "deck.pptx should NOT be written when --strict-static aborts early"
     )
+
+
+# ---------------------------------------------------------------------------
+# Optional scalar slots — must NOT fire EMPTY_PLACEHOLDER
+# ---------------------------------------------------------------------------
+
+def test_optional_slots_dont_fire_empty_placeholder():
+    """Well-known optional slots like 'eyebrow', 'so_what', 'pgmeta' must not fire."""
+    from lib.verify.static import static_verify
+    from lib.defects import DefectKind
+
+    plan = _make_plan(
+        "end.slide.dsl",
+        {
+            "title": "Thank you",
+            "footer_left": "Corp",
+            "footer_right": "2026",
+            # pgmeta, footnote intentionally absent — both are optional
+        },
+    )
+    defects = static_verify(plan, BRAND_DIR)
+    ep = [d for d in defects if d.kind == DefectKind.EMPTY_PLACEHOLDER]
+    optional_ep = [
+        d for d in ep
+        if d.meta.get("slot") in ("pgmeta", "eyebrow", "kicker", "so_what",
+                                   "footnote", "subtitle", "tracker")
+    ]
+    assert optional_ep == [], (
+        f"Optional slots must not fire EMPTY_PLACEHOLDER; got: {optional_ep}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Structural-array detection (Bug 2 fix)
+# ---------------------------------------------------------------------------
+
+def test_structural_array_slot_fires_empty_placeholder():
+    """bar-chart.slide.dsl: missing 'bars' array fires EMPTY_PLACEHOLDER.
+
+    The bar-chart layout has rect nodes using {{ bars[N].width*12 }} in
+    positional args for sizing math.  When 'bars' is absent from content,
+    this causes a render crash.  The structural-array heuristic must flag
+    bars[].width* as a required slot so the defect surfaces pre-render.
+    """
+    from lib.verify.static import static_verify
+    from lib.defects import DefectKind
+
+    plan = _make_plan(
+        "bar-chart.slide.dsl",
+        {
+            "action_title": "EV cost remains the top barrier",
+            "footer_left": "Corp",
+            "footer_right": "2026",
+            # 'bars' intentionally absent — simulates the benchmark crash case
+        },
+    )
+    defects = static_verify(plan, BRAND_DIR)
+    ep = [d for d in defects if d.kind == DefectKind.EMPTY_PLACEHOLDER]
+    bars_ep = [d for d in ep if "bars" in d.meta.get("slot", "")]
+    assert len(bars_ep) >= 1, (
+        f"Expected ≥1 EMPTY_PLACEHOLDER for missing 'bars[]' structural array; "
+        f"got ep defects: {ep}"
+    )
+
+
+def test_content_flexible_array_slot_does_not_fire():
+    """agenda.slide.dsl: missing 'items' array does NOT fire EMPTY_PLACEHOLDER.
+
+    The agenda layout interpolates items[] only in kw_args of the agenda-item
+    compound call (not in rect/line pos_args), so the array is content-flexible.
+    An author who leaves items[] empty gets blank agenda boxes — not a crash.
+    """
+    from lib.verify.static import static_verify
+    from lib.defects import DefectKind
+
+    plan = _make_plan(
+        "agenda.slide.dsl",
+        {
+            "title": "Agenda",
+            "footer_left": "Corp",
+            "footer_right": "2026",
+            # 'items' intentionally absent
+        },
+    )
+    defects = static_verify(plan, BRAND_DIR)
+    ep = [d for d in defects if d.kind == DefectKind.EMPTY_PLACEHOLDER]
+    items_ep = [d for d in ep if "items" in d.meta.get("slot", "")]
+    assert items_ep == [], (
+        f"Content-flexible 'items[]' array must NOT fire EMPTY_PLACEHOLDER; "
+        f"got: {items_ep}"
+    )

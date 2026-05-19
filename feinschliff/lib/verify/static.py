@@ -37,6 +37,11 @@ from lib.defects import Defect, DefectKind, Severity
 _SLOT_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
 # Normalise array indices: cells[0].heading → cells[].heading
 _IDX_RE = re.compile(r"\[\d+\]")
+# Extract slot-path tokens from an expression that may contain math operators.
+# Matches identifier chains like 'bars[0].width', 'phases[1].to_event',
+# 'chart.series[0].pct' — stopping at non-identifier characters (operators,
+# parens, spaces). Used to separate slot references from arithmetic context.
+_SLOT_PATH_RE = re.compile(r"[A-Za-z_]\w*(?:\[\d+\]|\.\w+)*")
 
 # Well-known optional scalar slots that layouts may interpolate but authors
 # intentionally leave empty.  EMPTY_PLACEHOLDER is suppressed for these.
@@ -74,50 +79,112 @@ def _resolve_layout_path(plan_dir: Path, layout_rel: str) -> Path | None:
     return None
 
 
-def _collect_interpolated_slots(nodes: list) -> set[str]:
-    """Walk DSL nodes and collect the normalised slot names that appear in
-    ``{{ slot }}`` interpolations inside text labels.
+def _collect_interpolated_slots(nodes: list) -> tuple[set[str], set[str]]:
+    """Walk DSL nodes and collect slot names from ``{{ slot }}`` interpolations.
 
-    Only returns slots where the entire label is a single interpolation
-    (or the label contains the interpolation as a substring). Array indices
-    are normalised to ``[]`` so they match the content validator's convention.
+    Returns ``(required_scalar_slots, structural_array_bases)`` where:
 
-    This is deliberately broad — any ``{{ slot }}`` that appears in any text
-    node is treated as required (WARN if missing, not fatal).
+    - ``required_scalar_slots``: normalised slot paths that must be non-empty
+      in content (scalar slots not in ``_OPTIONAL_SLOT_NAMES``; excludes
+      content-flexible array-shape slots).
+    - ``structural_array_bases``: bare array names (e.g. ``bars``, ``phases``)
+      whose elements appear in sizing/positioning pos_args of non-text DSL
+      nodes.  The caller checks whether these arrays are present and non-empty
+      in the content dict.
+
+    **Structural-array detection heuristic:**
+    Array-shape slots (``bars[].width``) are normally exempt from
+    EMPTY_PLACEHOLDER because an array being empty is a content choice.
+    However, when a slot appears in a *positional argument* of a non-text
+    DSL node (``rect``, ``line``, etc.) the value drives sizing/positioning
+    math — missing values cause render crashes.  The base array name is
+    collected into ``structural_array_bases`` so the caller can check for
+    presence separately.
+
+    Arithmetic expressions (e.g. ``{{ bars[0].width*12 }}``,
+    ``{{ (phases[0].to_event - phases[0].from_event)*375 }}``) are parsed
+    with ``_SLOT_PATH_RE`` to extract just the slot references before applying
+    normalisation, avoiding false positives from numeric suffixes.
     """
     from lib.dsl.parser import DSLNode
 
     required: set[str] = set()
+    structural_array_bases: set[str] = set()
 
-    def _visit(node: DSLNode) -> None:
-        # text nodes carry a `label` attribute
-        label = getattr(node, "label", None) or ""
-        for m in _SLOT_RE.finditer(label):
+    def _slot_refs_in_expr(raw: str) -> list[str]:
+        """Extract normalised slot paths from a Jinja2 expression.
+
+        Simple case (no operators): normalise the whole expression.
+        Arithmetic case: use _SLOT_PATH_RE to pull out identifier-path tokens.
+        """
+        if re.search(r"[+\-*/()\s]", raw):
+            paths = []
+            for path_m in _SLOT_PATH_RE.finditer(raw):
+                paths.append(path_m.group(0))
+            return [_IDX_RE.sub("[]", p) for p in paths if p]
+        return [_IDX_RE.sub("[]", raw)]
+
+    def _slots_in_string(s: str) -> list[str]:
+        """Extract normalised slot names from a string containing {{ }} exprs."""
+        result = []
+        for m in _SLOT_RE.finditer(s):
             raw = m.group(1).strip()
-            # Skip slots that carry a Jinja2 |default(...) filter — the
-            # template will supply the fallback value, so an absent content
-            # key is intentional and never a defect.
             if "|default(" in raw:
                 continue
-            normalised = _IDX_RE.sub("[]", raw)
-            # Skip array-shape slots (e.g. items[].id, kpis[].unit) — an
-            # array being empty or partially-populated is a content choice,
-            # not a missing-slot defect.
-            if "[]" in normalised:
-                continue
-            # Skip known-optional scalar slots — these are deliberately left
-            # empty by many authors and render fine when empty.
-            base_name = normalised.split(".")[0]
-            if base_name in _OPTIONAL_SLOT_NAMES:
-                continue
-            required.add(normalised)
-        # recurse into children (e.g. compound body)
+            result.extend(_slot_refs_in_expr(raw))
+        return result
+
+    def _visit(node: DSLNode, *, in_for_body: bool = False) -> None:
+        is_text_node = (node.kind == "text")
+        is_for_node = (node.kind == "_for")
+
+        # ── label (text node labels; other nodes rarely have labels) ─────────
+        # Skip slot collection inside for-block bodies — all slot references
+        # there use loop-scoped variables (e.g. `row.label`, `i`) rather than
+        # content-dict keys.
+        label = getattr(node, "label", None) or ""
+        if not in_for_body:
+            for normalised in _slots_in_string(label):
+                if "[]" in normalised:
+                    # Array-shape slot in a label — content-flexible, skip.
+                    continue
+                base_name = normalised.split(".")[0]
+                if base_name in _OPTIONAL_SLOT_NAMES:
+                    continue
+                required.add(normalised)
+
+        # ── pos_args of non-text nodes — structural sizing/positioning ────────
+        # Skip structural detection when:
+        # (a) we're inside a for-block body — variables like `i` and `row.*`
+        #     are loop-scoped, not content slots.
+        # (b) the node carries an `if:` kw_arg — rendering is conditional and
+        #     the array is by definition optional.
+        kw_args = getattr(node, "kw_args", None) or {}
+        has_if_guard = bool(kw_args.get("if"))
+        if not is_text_node and not is_for_node and not in_for_body and not has_if_guard:
+            for arg in getattr(node, "pos_args", None) or []:
+                for normalised in _slots_in_string(arg):
+                    if "[]" in normalised:
+                        # Array slot in a non-text pos_arg → structural.
+                        base = normalised.split(".")[0].rstrip("[]").split("[")[0]
+                        structural_array_bases.add(base)
+                    else:
+                        base_name = normalised.split(".")[0]
+                        if base_name not in _OPTIONAL_SLOT_NAMES:
+                            required.add(normalised)
+
+        # ── recurse into children (e.g. compound body) ───────────────────────
         for child in getattr(node, "children", None) or []:
-            _visit(child)
+            _visit(child, in_for_body=in_for_body)
+        # ── recurse into for-block body — mark children as in_for_body ───────
+        if is_for_node and getattr(node, "body", None):
+            for child in node.body:
+                _visit(child, in_for_body=True)
 
     for node in nodes:
         _visit(node)
-    return required
+
+    return required, structural_array_bases
 
 
 def _flatten_content_keys(ctx: dict, prefix: str = "") -> dict[str, str]:
@@ -226,7 +293,7 @@ def static_verify(
         # ── 1. EMPTY_PLACEHOLDER ──────────────────────────────────────────
         # Collect all {{ slot }} interpolations in the layout and check
         # whether each is supplied and non-empty in the content dict.
-        interpolated = _collect_interpolated_slots(layout_nodes)
+        interpolated, structural_bases = _collect_interpolated_slots(layout_nodes)
         flat_content = _flatten_content_keys(ctx)
 
         for slot_path in sorted(interpolated):
@@ -238,6 +305,26 @@ def static_verify(
                     severity=Severity.WARN,
                     message=(
                         f"slot {slot_path!r} is empty or missing "
+                        f"(layout: {layout_path.name})"
+                    ),
+                    meta={"slot": slot_path, "layout": layout_path.name},
+                ))
+
+        # ── 1b. STRUCTURAL ARRAY CHECK ────────────────────────────────────
+        # For each structural array base (e.g. 'bars'), verify that the
+        # content dict has a non-empty list at that key.  A missing or empty
+        # structural array will cause a render crash (WxH parse error), so
+        # this fires EMPTY_PLACEHOLDER as a pre-render warning.
+        for base in sorted(structural_bases):
+            arr = ctx.get(base)
+            if arr is None or (isinstance(arr, list) and len(arr) == 0):
+                slot_path = f"{base}[]"
+                defects.append(Defect(
+                    slide_index=slide_index,
+                    kind=DefectKind.EMPTY_PLACEHOLDER,
+                    severity=Severity.WARN,
+                    message=(
+                        f"structural array {slot_path!r} is empty or missing "
                         f"(layout: {layout_path.name})"
                     ),
                     meta={"slot": slot_path, "layout": layout_path.name},
