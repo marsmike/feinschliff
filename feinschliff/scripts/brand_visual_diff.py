@@ -160,6 +160,86 @@ def _render_with_noise(ren: np.ndarray, diff_mask: np.ndarray) -> Image.Image:
     return Image.fromarray(out)
 
 
+def _find_diff_hotspots(diff_mask: np.ndarray, min_area: int = 500,
+                        top_n: int = 4) -> list[dict]:
+    """Connected-component analysis on the diff mask → top-N hotspots.
+
+    Returns `[{"area": int, "bbox": (x1, y1, x2, y2)}]` sorted by area desc.
+    Used by the `--loupe` view to crop each high-mismatch region tightly
+    so a reviewer (or sub-agent) can read the per-pixel offset that's
+    invisible at slide scale.
+    """
+    try:
+        from scipy import ndimage
+    except ImportError:
+        return []
+    mask = diff_mask > DIFF_THRESHOLD
+    if not mask.any():
+        return []
+    labeled, n = ndimage.label(mask)
+    if n == 0:
+        return []
+    sizes = ndimage.sum(mask, labeled, range(1, n + 1))
+    indexed = sorted(
+        [(int(s), i + 1) for i, s in enumerate(sizes) if s >= min_area],
+        key=lambda x: -x[0],
+    )
+    hotspots = []
+    for area, lbl in indexed[:top_n]:
+        ys, xs = np.where(labeled == lbl)
+        hotspots.append({
+            "area": area,
+            "bbox": (int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())),
+        })
+    return hotspots
+
+
+def _build_loupe_page(layout: str, slide_no: int, hotspot_idx: int,
+                      total_hotspots: int, hotspot: dict,
+                      src: np.ndarray, ren: np.ndarray,
+                      redline: Image.Image, pad: int = 30) -> Image.Image:
+    """Render one loupe page: source / render / redline crops at the hotspot."""
+    x1, y1, x2, y2 = hotspot["bbox"]
+    h_img, w_img = src.shape[:2]
+    x1 = max(0, x1 - pad)
+    y1 = max(0, y1 - pad)
+    x2 = min(w_img, x2 + pad)
+    y2 = min(h_img, y2 + pad)
+    bw, bh = x2 - x1, y2 - y1
+    PAGE_W, PAGE_H = 2200, 1200
+    page = Image.new("RGB", (PAGE_W, PAGE_H), (252, 252, 252))
+    draw = ImageDraw.Draw(page)
+    try:
+        title_f = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 32)
+        label_f = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 20)
+        foot_f = ImageFont.truetype("/System/Library/Fonts/Helvetica.ttc", 16)
+    except OSError:
+        title_f = label_f = foot_f = ImageFont.load_default()
+    draw.text((40, 30),
+              f"{layout}  ·  slide {slide_no:02d}  ·  hotspot {hotspot_idx}/{total_hotspots}",
+              fill=(20, 20, 20), font=title_f)
+    draw.text((40, 72),
+              f"bbox ({x1},{y1})–({x2},{y2})  ·  {bw}×{bh}px  ·  area {hotspot['area']}px",
+              fill=(120, 120, 120), font=label_f)
+    target_w = (PAGE_W - 80 - 60) // 3
+    target_h = max(80, min(int(target_w * bh / max(bw, 1)), PAGE_H - 200))
+    top_y = 130
+    draw.text((40, top_y - 26), "SOURCE", fill=(60, 90, 200), font=label_f)
+    draw.text((40 + target_w + 30, top_y - 26), "RENDER", fill=(200, 60, 60), font=label_f)
+    draw.text((40 + 2 * (target_w + 30), top_y - 26), "REDLINE", fill=(120, 60, 140), font=label_f)
+    src_crop = Image.fromarray(src).crop((x1, y1, x2, y2)).resize((target_w, target_h), Image.LANCZOS)
+    rnd_crop = Image.fromarray(ren).crop((x1, y1, x2, y2)).resize((target_w, target_h), Image.LANCZOS)
+    rl_crop = redline.crop((x1, y1, x2, y2)).resize((target_w, target_h), Image.LANCZOS)
+    page.paste(src_crop, (40, top_y))
+    page.paste(rnd_crop, (40 + target_w + 30, top_y))
+    page.paste(rl_crop, (40 + 2 * (target_w + 30), top_y))
+    draw.text((40, PAGE_H - 40),
+              "loupe view — cropped + scaled to the largest mismatch region; "
+              "zoom in to read fine offsets.",
+              fill=(140, 140, 140), font=foot_f)
+    return page
+
+
 def _redline_diff(src: np.ndarray, ren: np.ndarray) -> Image.Image:
     """Two-tone diff: source ink in BLUE, render ink in RED, overlap in PURPLE.
 
@@ -205,6 +285,17 @@ def main() -> int:
                    help="Restrict to a subset of layouts (by name). Keeps the "
                         "report and score-trace consistent when an orchestrator "
                         "is iterating on a subset of verify-map.yaml.")
+    p.add_argument("--loupe", action="store_true",
+                   help="Emit a per-layout loupe PDF (top-N connected-component "
+                        "diff hotspots, each cropped + scaled). Use when the "
+                        "redline shows residual mismatches that are too small "
+                        "to diagnose at slide scale. Writes loupe-hotspots.pdf "
+                        "in --output-dir.")
+    p.add_argument("--loupe-top-n", type=int, default=4,
+                   help="Hotspots per layout in the loupe view (default: 4).")
+    p.add_argument("--loupe-min-area", type=int, default=500,
+                   help="Minimum connected-component area (px) to count as a "
+                        "hotspot. Filters out single-pixel AA noise. Default: 500.")
     args = p.parse_args()
 
     map_path = args.brand_pack / "verify-map.yaml"
@@ -224,6 +315,11 @@ def main() -> int:
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     report = {}
+    # Loupe pages accumulate across layouts and flush to a single PDF at
+    # the end. Each entry is a (layout, slide_no, hotspot_idx, total, dict,
+    # src_array, ren_array, redline_image) tuple — building the actual
+    # PIL pages here would balloon memory; defer to the writer below.
+    loupe_pages: list[Image.Image] = []
     print(f"{'layout':<28}{'slide':<7}{'total':>8}{'struct':>9}{'ssim':>8}{'cover':>8}")
     print("-" * 70)
     for layout, slide_no in layouts_map.items():
@@ -256,8 +352,23 @@ def main() -> int:
         # purple. Lets a reviewer see at a glance "thing we should have
         # drawn but didn't" (blue ghost) vs "thing we drew that doesn't
         # belong" (red ghost) vs "matching content" (purple).
-        _redline_diff(src, ren).save(
-            args.output_dir / f"{prefix}_redline.png", format="PNG", optimize=False)
+        redline_img = _redline_diff(src, ren)
+        redline_img.save(args.output_dir / f"{prefix}_redline.png",
+                         format="PNG", optimize=False)
+
+        # Loupe hotspots (Split-and-Polish technique): connected-component
+        # analysis of the diff mask surfaces the 3-5 worst localised
+        # mismatches per layout, each cropped + scaled so per-pixel offsets
+        # become readable. Lets a reviewer or sub-agent target specific
+        # primitives instead of squinting at the full-slide redline.
+        if args.loupe:
+            hotspots = _find_diff_hotspots(diff, min_area=args.loupe_min_area,
+                                           top_n=args.loupe_top_n)
+            for idx, hs in enumerate(hotspots, 1):
+                loupe_pages.append(_build_loupe_page(
+                    layout, slide_no, idx, len(hotspots), hs,
+                    src, ren, redline_img,
+                ))
 
         ssim_s = f"{metrics['ssim']:.3f}" if metrics["ssim"] is not None else "—"
         print(f"{layout:<28}{slide_no:<7}"
@@ -276,6 +387,11 @@ def main() -> int:
     print(f"\nwrote {len(report)} overlay+mask pairs to {args.output_dir}")
     print(f"wrote {args.output_dir / 'report.json'}")
     print(f"appended to {trace_path}")
+    if loupe_pages:
+        loupe_pdf = args.output_dir / "loupe-hotspots.pdf"
+        loupe_pages[0].save(loupe_pdf, format="PDF", save_all=True,
+                            append_images=loupe_pages[1:], resolution=150)
+        print(f"wrote loupe view → {loupe_pdf} ({len(loupe_pages)} pages)")
     return 0
 
 

@@ -159,7 +159,8 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
 
 def run_diff(brand_pack: Path, source_png_dir: Path,
              render_png_dir: Path, diff_dir: Path,
-             only: list[str] | None = None) -> None:
+             only: list[str] | None = None,
+             loupe: bool = False) -> None:
     diff_dir.mkdir(parents=True, exist_ok=True)
     cmd = ["uv", "run", "python", str(SCRIPT_DIR / "brand_visual_diff.py"),
            "--brand-pack", str(brand_pack),
@@ -168,6 +169,8 @@ def run_diff(brand_pack: Path, source_png_dir: Path,
            "--output-dir", str(diff_dir)]
     if only:
         cmd += ["--only", *only]
+    if loupe:
+        cmd.append("--loupe")
     _run(cmd, cwd=REPO)
 
 
@@ -191,6 +194,11 @@ def main() -> int:
                          "before scoring. Use on the first run of an "
                          "improve-brand loop so brand_before_after_pdf.py "
                          "can compose source ↔ baseline ↔ final overlays.")
+    ap.add_argument("--loupe", action="store_true",
+                    help="Also emit a loupe PDF (per-layout top-N "
+                         "connected-component diff hotspots, each cropped + "
+                         "scaled). Use when the redline shows residual "
+                         "mismatches too small to diagnose at slide scale.")
     args = ap.parse_args()
 
     brand_pack: Path = args.brand_pack.resolve()
@@ -243,7 +251,8 @@ def main() -> int:
               f"{baseline_dir.name}/")
 
     only = list(mapping) if args.only else None
-    run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir, only=only)
+    run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir, only=only,
+             loupe=args.loupe)
     print(f"\n→ overlays: {diff_dir}")
     return 0
 
