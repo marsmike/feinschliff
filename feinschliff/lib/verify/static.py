@@ -63,19 +63,23 @@ _OPTIONAL_SLOT_NAMES: frozenset[str] = frozenset({
 })
 
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-BRANDS_DIR = REPO_ROOT / "brands"
-STD_COMPOUNDS = REPO_ROOT / "compounds"
+def _bundled_compounds() -> Path:
+    """Return the compounds/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[2] / "compounds"
 
 
 def _resolve_layout_path(plan_dir: Path, layout_rel: str) -> Path | None:
-    """Resolve a layout path from the plan directory or repo root."""
+    """Resolve a layout path from the plan directory or discovered layout dirs."""
+    from lib.layout_discovery import all_layout_dirs
+
     candidate = (plan_dir / layout_rel).resolve()
     if candidate.is_file():
         return candidate
-    candidate2 = (REPO_ROOT / layout_rel).resolve()
-    if candidate2.is_file():
-        return candidate2
+    # Try each discovered layout directory (bundled first, then env/user).
+    for layout_dir in all_layout_dirs():
+        candidate2 = (layout_dir.parent / layout_rel).resolve()
+        if candidate2.is_file():
+            return candidate2
     return None
 
 
@@ -225,11 +229,11 @@ def static_verify(
         ``load_compounds_for_brand``).
     plan_dir:
         Directory that ``layout:`` paths in the plan are resolved relative to.
-        When *None* (the default), falls back to ``REPO_ROOT`` — matching the
-        historical behaviour for toolkit layouts.  CLI callers that load a plan
-        from a file should pass ``plan_path.parent`` so brand-relative layout
-        overrides (e.g. ``brands/acme/layouts/cover.slide.dsl``) resolve
-        correctly.
+        When *None* (the default), falls back to the current working directory.
+        Layout resolution also searches all discovered layout dirs as a fallback,
+        so toolkit layouts resolve without an explicit ``plan_dir``. CLI callers
+        that load a plan from a file should pass ``plan_path.parent`` so
+        brand-relative layout overrides resolve correctly.
 
     Returns
     -------
@@ -250,13 +254,14 @@ def static_verify(
     defects: list[Defect] = []
     slides_spec = plan.get("slides") or []
 
-    # Resolve layout paths against plan_dir when supplied; fall back to
-    # REPO_ROOT so existing callers that don't pass plan_dir are unaffected.
-    effective_plan_dir = plan_dir if plan_dir is not None else REPO_ROOT
+    # Resolve layout paths against plan_dir when supplied; fall back to CWD
+    # so existing callers that don't pass plan_dir still work (the layout
+    # resolution also searches all discovered layout dirs as a fallback).
+    effective_plan_dir = plan_dir if plan_dir is not None else Path.cwd()
 
-    tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+    tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+        brand_dir, std_dir=_bundled_compounds()
     )
 
     for i, spec in enumerate(slides_spec):
