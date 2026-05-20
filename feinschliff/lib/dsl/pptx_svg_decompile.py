@@ -597,6 +597,16 @@ _BRAND_TO_SVG_COLOR: dict[str, str] = {
     "severity-high":  "danger",
     "status-done":    "status-on",
     "status-current": "status-pending",
+    # Chart-series ramp — identity-mapped because chart-series-N is BOTH
+    # a brand-pack token and a valid SVG semantic name (added together
+    # in the chart-decompile feature so pie/bar slice fills survive the
+    # round-trip from XML → DSL → SVG block).
+    "chart-series-1": "chart-series-1",
+    "chart-series-2": "chart-series-2",
+    "chart-series-3": "chart-series-3",
+    "chart-series-4": "chart-series-4",
+    "chart-series-5": "chart-series-5",
+    "chart-series-6": "chart-series-6",
     "status-next":    "status-off",
 }
 
@@ -1328,17 +1338,224 @@ def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
         y_cursor += row_h
 
 
-def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
-    """Extract bar chart geometry from a c:chartSpace part and emit primitives.
+def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
+    """Extract pie/doughnut chart geometry and emit one svg{} arc path per slice.
 
-    Only handles c:barChart; other chart types fall through unhandled.
-    Computes plot area, bar positions, value labels, category labels, and
-    legend. Plot-area extents are heuristically inset from the frame.
+    Each slice becomes a Shape with kind='shape', svg_path_d set to an SVG
+    arc path of the form 'M cx,cy L x1,y1 A r,r 0 large,sweep x2,y2 Z',
+    fill mapped to chart-series-N via slice index (using the brand's
+    chart-series ramp — for BSH that's accent → accent-80 → ... → accent-10).
+    emit_dsl() converts each Shape into a standalone `svg{}` block; the
+    blocks share the same bbox (the chart frame) so slices overlay into
+    one unified pie at render time.
+
+    Percentage labels are emitted as `text` Shapes positioned just outside
+    the slice's arc bisector when <c:dLbls><c:showPercent val="1"> is set
+    in the source — matches PowerPoint's default external-label placement.
+
+    Per-slice colors in the source XML are intentionally ignored in favour
+    of the brand's chart-series ramp: source decks authored against the
+    brand already use the same hue sequence, so index-based mapping gives
+    fidelity AND brand-correctness in one pass. Source decks authored
+    off-brand will use the brand's hues here — that is by design (a
+    brand-pack decompile is brand-conforming output, not pixel mimicry).
+    """
+    ser = pie_el.find(f"{{{CHART_NS}}}ser")
+    if ser is None:
+        return
+    val_els = ser.findall(
+        f".//{{{CHART_NS}}}val//{{{CHART_NS}}}pt/{{{CHART_NS}}}v"
+    )
+    try:
+        values = [float(v.text) for v in val_els if v.text]
+    except (TypeError, ValueError):
+        return
+    if not values or sum(values) <= 0:
+        return
+    total = sum(values)
+
+    cat_els = ser.findall(
+        f".//{{{CHART_NS}}}cat//{{{CHART_NS}}}pt/{{{CHART_NS}}}v"
+    )
+    categories = [c.text or "" for c in cat_els]
+
+    # Legend position: source PowerPoint convention is r/l/t/b. We honour
+    # only r/l (column-style legend with one row per category — the
+    # dominant case for pies); t/b are rare on small pies and fall back
+    # to right-side. Search at chart-space level since legend lives on
+    # the chart root, not inside pie_el.
+    chart_root = pie_el
+    while chart_root is not None and chart_root.tag != f"{{{CHART_NS}}}chartSpace":
+        parent = chart_root.getparent()
+        if parent is None:
+            break
+        chart_root = parent
+    legend_pos = "r"
+    if chart_root is not None:
+        lp = chart_root.find(f".//{{{CHART_NS}}}legend/{{{CHART_NS}}}legendPos")
+        if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
+            legend_pos = lp.get("val")
+
+    # Data label flags — <c:dLbls><c:showPercent val="1"/> or
+    # <c:dLbls><c:showVal val="1"/>. Mutually exclusive in practice;
+    # percent wins when both are set, matching PowerPoint behaviour.
+    show_percent = False
+    show_val = False
+    sp = pie_el.find(
+        f".//{{{CHART_NS}}}dLbls/{{{CHART_NS}}}showPercent"
+    )
+    if sp is not None and sp.get("val") == "1":
+        show_percent = True
+    sv = pie_el.find(
+        f".//{{{CHART_NS}}}dLbls/{{{CHART_NS}}}showVal"
+    )
+    if sv is not None and sv.get("val") == "1":
+        show_val = True
+
+    # svg-block-local pixel coords for slice paths. The block's outer
+    # bbox is the chart frame; coords inside are 0..bbox_w_px by
+    # 0..bbox_h_px. min(w,h) keeps pies circular in non-square frames.
+    # Pie-area fraction adapts to chart-frame aspect ratio: wide frames
+    # (multi-pie-in-column layouts) keep ~60% pie area so pies fill the
+    # narrow column adequately; square-ish frames (single-big-pie
+    # layouts) shrink to 45% so the pie + adjacent legend mirror
+    # PowerPoint's left-edge placement.
+    bbox_w_px = cmap.w(fw)
+    bbox_h_px = cmap.h(fh)
+    frame_aspect = bbox_w_px / bbox_h_px if bbox_h_px else 1.0
+    if categories and legend_pos in ("l", "r"):
+        pie_w_frac = 0.60 if frame_aspect > 1.4 else 0.50
+    else:
+        pie_w_frac = 1.0
+    pie_w_px = bbox_w_px * pie_w_frac
+    pie_h_px = bbox_h_px
+    pie_off_x = (bbox_w_px - pie_w_px) if legend_pos == "l" else 0
+    cx_px = pie_off_x + pie_w_px / 2
+    cy_px = pie_h_px / 2
+    # 0.36 of pie-area min dimension leaves margin for external percentage
+    # labels around the circumference.
+    r_px = min(pie_w_px, pie_h_px) * 0.36
+
+    # Start at 12 o'clock (-π/2), sweep clockwise. PowerPoint pies follow
+    # this convention; matching it preserves slice-to-color correspondence
+    # against the source.
+    angle_start = -math.pi / 2
+
+    for i, v in enumerate(values):
+        if v <= 0:
+            angle_start += 0
+            continue
+        sweep = (v / total) * 2 * math.pi
+        angle_end = angle_start + sweep
+        x1 = cx_px + r_px * math.cos(angle_start)
+        y1 = cy_px + r_px * math.sin(angle_start)
+        x2 = cx_px + r_px * math.cos(angle_end)
+        y2 = cy_px + r_px * math.sin(angle_end)
+        large_arc = 1 if sweep > math.pi else 0
+        # SVG arc: A rx,ry x-axis-rotation large-arc-flag sweep-flag x,y
+        # sweep-flag=1 (clockwise) matches our positive-angle direction in
+        # screen-space (y grows down).
+        d = (
+            f"M {cx_px:.1f},{cy_px:.1f} "
+            f"L {x1:.1f},{y1:.1f} "
+            f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
+        )
+        fill_token = f"chart-series-{(i % 6) + 1}"
+        shapes.append(Shape(
+            kind="shape",
+            x=cmap.x(x0), y=cmap.y(y0),
+            w=bbox_w_px, h=bbox_h_px,
+            fill=fill_token,
+            svg_path_d=d,
+        ))
+
+        if show_percent or show_val:
+            mid_angle = angle_start + sweep / 2
+            # showPercent labels sit ~15% outside circumference (PPT
+            # default external placement on small pies). showVal labels
+            # sit inside the slice at ~65% radius — PowerPoint's default
+            # internal-label position.
+            label_r = r_px * 1.15 if show_percent else r_px * 0.65
+            lx = cx_px + label_r * math.cos(mid_angle)
+            ly = cy_px + label_r * math.sin(mid_angle)
+            if show_percent:
+                label_text = f"{round((v / total) * 100)} %"
+            else:
+                # Format like the source: 8.2 → "8,2", 1 → "1".
+                if v == int(v):
+                    label_text = str(int(v))
+                else:
+                    label_text = f"{v:.1f}".replace(".", ",")
+            shapes.append(Shape(
+                kind="text",
+                x=cmap.x(x0) + int(lx) - 20,
+                y=cmap.y(y0) + int(ly) - 10,
+                w=40, h=20,
+                text_runs=[TextRun(text=label_text, pt=10)],
+            ))
+
+        angle_start = angle_end
+
+    # Legend (categories + colour swatches). Position: right or left of pie.
+    # Stack one row per category centred vertically against the pie. Skip
+    # entirely when no categories — labelled-from-percentage slices alone
+    # carry enough signal for the small pies common in showcase decks.
+    if categories and legend_pos in ("l", "r"):
+        swatch_w = 14
+        swatch_h = 14
+        row_gap = 32  # vertical pitch between legend rows
+        text_gap = 8  # swatch-to-label horizontal gap
+        legend_w_px = bbox_w_px - pie_w_px
+        # Legend bbox top-left within the chart frame.
+        legend_x_local = 0 if legend_pos == "l" else pie_w_px
+        # Center the legend block vertically against the pie.
+        block_h = len(categories) * row_gap
+        legend_y_local = max(0, (bbox_h_px - block_h) / 2)
+        # Insets keep legend out of frame edges.
+        legend_x_local += 12
+        for i, cat in enumerate(categories):
+            row_y = legend_y_local + i * row_gap
+            color = f"chart-series-{(i % 6) + 1}"
+            # Swatch as a rect — survives outside svg{} blocks and accepts
+            # the brand vocab directly.
+            shapes.append(Shape(
+                kind="rect",
+                x=cmap.x(x0) + int(legend_x_local),
+                y=cmap.y(y0) + int(row_y),
+                w=swatch_w, h=swatch_h,
+                fill=color,
+            ))
+            shapes.append(Shape(
+                kind="text",
+                x=cmap.x(x0) + int(legend_x_local) + swatch_w + text_gap,
+                y=cmap.y(y0) + int(row_y) - 4,
+                w=int(legend_w_px) - swatch_w - text_gap - 12,
+                h=24,
+                text_runs=[TextRun(text=cat, pt=10)],
+            ))
+
+
+def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
+    """Extract chart geometry from a c:chartSpace part and emit DSL primitives.
+
+    Dispatches by chart type:
+      * c:pieChart / c:doughnutChart → _emit_pie_chart (arc paths + labels)
+      * c:barChart                   → _emit_bar_chart (rects + axis + labels)
+    Other chart types (line, area, scatter, etc.) fall through unhandled —
+    the decompile-as-rects fallback in the hybrid SVG pass still gives a
+    rough first-pass for those, and improve-brand sub-agents refine.
     """
     try:
         root = etree.fromstring(chart_part.blob)
     except Exception:
         return
+
+    pie = (root.find(f".//{{{CHART_NS}}}pieChart")
+           or root.find(f".//{{{CHART_NS}}}doughnutChart"))
+    if pie is not None:
+        _emit_pie_chart(pie, x0, y0, fw, fh, shapes, cmap)
+        return
+
     bar = root.find(f".//{{{CHART_NS}}}barChart")
     if bar is None:
         return
@@ -1349,7 +1566,13 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         name = name_el.text if name_el is not None else "?"
         vals = [float(v.text) for v in ser.findall(f".//{{{CHART_NS}}}val//{{{CHART_NS}}}pt/{{{CHART_NS}}}v")]
         cats = [v.text for v in ser.findall(f".//{{{CHART_NS}}}cat//{{{CHART_NS}}}pt/{{{CHART_NS}}}v")]
-        series.append((name, vals, cats))
+        # Per-series fill colour from <c:ser><c:spPr><a:solidFill>. Falls
+        # back to None so the caller knows to use the chart-series-N ramp
+        # by index instead. Reads either scheme or srgb fills via the
+        # existing solid-fill resolver.
+        sp_pr = ser.find(f"{{{CHART_NS}}}spPr")
+        ser_color = _resolve_fill(sp_pr, theme, palette) if sp_pr is not None else None
+        series.append((name, vals, cats, ser_color))
     if not series:
         return
 
@@ -1401,12 +1624,14 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     # Bars: each category has n_series side-by-side bars. Source bars are slim
     # (~8% of category width) and adjacent (no inter-bar gap). Wider/spaced
     # bars produced visibly different pixels and inflated struct_diff.
-    series_colors = ["accent", "fog"]  # 2022 orange, 2023 light grey
+    # Series colour: prefer the per-series fill resolved from <c:ser><c:spPr>
+    # (gives brand-accurate orange/peach/grey progression). Fall back to the
+    # chart-series ramp by index when the source omits per-series colour.
     bar_w = int(cat_w * 0.085)
     group_w = bar_w * n_series
     group_inset = (cat_w - group_w) // 2
-    for si, (name, vals, _) in enumerate(series):
-        color = series_colors[si % len(series_colors)]
+    for si, (name, vals, _, ser_color) in enumerate(series):
+        color = ser_color or f"chart-series-{(si % 6) + 1}"
         for ci, v in enumerate(vals):
             bx = plot_x + ci * cat_w + group_inset + si * bar_w
             bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
@@ -1450,8 +1675,8 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             text_runs=[TextRun(text=title_text, pt=14)],
         ))
     lx = legend_x + int(fw * 0.18)
-    for si, (name, _, _) in enumerate(series):
-        color = series_colors[si % len(series_colors)]
+    for si, (name, _, _, ser_color) in enumerate(series):
+        color = ser_color or f"chart-series-{(si % 6) + 1}"
         shapes.append(Shape(
             kind="rect",
             x=cmap.x(lx), y=cmap.y(legend_y + (swatch_h // 4)),

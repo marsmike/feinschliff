@@ -35,6 +35,13 @@ SEMANTIC_NAMES: Final[frozenset[str]] = frozenset({
     "neutral", "neutral-soft", "neutral-strong",
     # status
     "status-on", "status-off", "status-pending",
+    # chart series ramp — for pie/bar/line series where the brand defines
+    # a graduated tint progression of its accent. Brands without explicit
+    # chart-series-N tokens fall back to color.accent (all series same hue
+    # — distinguishable only by labels). Six slots cover typical chart
+    # series counts; >6 is unusual and indicates a chart-redesign signal.
+    "chart-series-1", "chart-series-2", "chart-series-3",
+    "chart-series-4", "chart-series-5", "chart-series-6",
 })
 
 # Maps each semantic DSL name to a dotted path inside tokens.json.
@@ -81,6 +88,15 @@ _TOKEN_PATHS: Final[dict[str, str]] = {
     "status-on":        "color.status-done",      # completed / active
     "status-off":       "color.status-next",      # not started / inactive
     "status-pending":   "color.status-current",   # in-progress / pending
+    # Chart-series ramp — see SEMANTIC_NAMES comment. Brand-specific
+    # tokens (color.chart-series-N) define the tint progression; resolve()
+    # falls back to color.accent when a slot is missing.
+    "chart-series-1":   "color.chart-series-1",
+    "chart-series-2":   "color.chart-series-2",
+    "chart-series-3":   "color.chart-series-3",
+    "chart-series-4":   "color.chart-series-4",
+    "chart-series-5":   "color.chart-series-5",
+    "chart-series-6":   "color.chart-series-6",
 }
 
 _LITERAL_RE: Final = re.compile(r"^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()")
@@ -116,6 +132,13 @@ def resolve(name: str, brand_dir: Path) -> str:
     path = _TOKEN_PATHS[name]
     raw = _json_walk(tokens, path)
     value = _extract_value(raw)
+    # Chart-series ramp falls back to accent when the brand doesn't define
+    # an explicit tint progression — all series render in the brand's
+    # primary hue, distinguishable only by labels. This keeps charts
+    # building on brands without per-series colors.
+    if value is None and name.startswith("chart-series-"):
+        raw = _json_walk(tokens, "color.accent")
+        value = _extract_value(raw)
     if value is None:
         raise BrandBridgeError(
             f"brand '{brand_dir.name}' missing token '{path}' for "
