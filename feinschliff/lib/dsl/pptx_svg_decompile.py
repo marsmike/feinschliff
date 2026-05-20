@@ -1976,7 +1976,26 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         # existing solid-fill resolver.
         sp_pr = ser.find(f"{{{CHART_NS}}}spPr")
         ser_color = _resolve_fill(sp_pr, theme, palette) if sp_pr is not None else None
-        series.append((name, vals, cats, ser_color))
+        # Per-data-point colours from `<c:dPt>` overrides. Showcase decks
+        # often colour alternating bars different hues to highlight a
+        # specific category — that information lives in dPt only, not on
+        # the series. Without this lookup every bar in the series renders
+        # the series colour, losing the highlight pattern. Mirrors the
+        # equivalent handling in `_emit_pie_chart`.
+        bar_colors: dict[int, str] = {}
+        for dpt in ser.findall(f"{{{CHART_NS}}}dPt"):
+            idx_el = dpt.find(f"{{{CHART_NS}}}idx")
+            dpt_sp = dpt.find(f"{{{CHART_NS}}}spPr")
+            if idx_el is None or dpt_sp is None:
+                continue
+            try:
+                idx = int(idx_el.get("val") or "-1")
+            except (TypeError, ValueError):
+                continue
+            color = _resolve_fill(dpt_sp, theme, palette)
+            if color and idx >= 0:
+                bar_colors[idx] = color
+        series.append((name, vals, cats, ser_color, bar_colors))
     if not series:
         return
 
@@ -2120,11 +2139,13 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                     cat_total = data_max
                 cursor_x = plot_x
                 row_y = plot_y + ci * cat_h + (cat_h - bar_h) // 2
-                for si, (name, vals, _, ser_color) in enumerate(series):
+                for si, (name, vals, _, ser_color, dpt_colors) in enumerate(series):
                     if ci >= len(vals):
                         continue
                     v = vals[ci]
-                    color = ser_color or f"chart-series-{(si % 6) + 1}"
+                    # Per-data-point `<c:dPt>` colour overrides the
+                    # series colour for this specific category index.
+                    color = dpt_colors.get(ci) or ser_color or f"chart-series-{(si % 6) + 1}"
                     if grouping == "percentStacked":
                         seg_w = int(plot_w * (v / cat_total)) if cat_total > 0 else 0
                     else:
@@ -2140,9 +2161,10 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             bar_h = int(cat_h / (n_series + gap_pct / 100))
             group_h = bar_h * n_series
             group_inset_v = (cat_h - group_h) // 2
-            for si, (name, vals, _, ser_color) in enumerate(series):
-                color = ser_color or f"chart-series-{(si % 6) + 1}"
+            for si, (name, vals, _, ser_color, dpt_colors) in enumerate(series):
+                default_color = ser_color or f"chart-series-{(si % 6) + 1}"
                 for ci, v in enumerate(vals):
+                    color = dpt_colors.get(ci) or default_color
                     by_ = plot_y + ci * cat_h + group_inset_v + si * bar_h
                     bw_ = int(plot_w * v / axis_max) if axis_max > 0 else 0
                     bx_ = plot_x
@@ -2167,9 +2189,10 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         bar_w = int(cat_w / (n_series + gap_pct / 100))
         group_w = bar_w * n_series
         group_inset = (cat_w - group_w) // 2
-        for si, (name, vals, _, ser_color) in enumerate(series):
-            color = ser_color or f"chart-series-{(si % 6) + 1}"
+        for si, (name, vals, _, ser_color, dpt_colors) in enumerate(series):
+            default_color = ser_color or f"chart-series-{(si % 6) + 1}"
             for ci, v in enumerate(vals):
+                color = dpt_colors.get(ci) or default_color
                 bx = plot_x + ci * cat_w + group_inset + si * bar_w
                 bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
                 by = plot_y + plot_h - bh
@@ -2213,7 +2236,7 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             text_runs=[TextRun(text=title_text, pt=14)],
         ))
     lx = legend_x + int(fw * 0.18)
-    for si, (name, _, _, ser_color) in enumerate(series):
+    for si, (name, _, _, ser_color, _dpt) in enumerate(series):
         color = ser_color or f"chart-series-{(si % 6) + 1}"
         shapes.append(Shape(
             kind="rect",
