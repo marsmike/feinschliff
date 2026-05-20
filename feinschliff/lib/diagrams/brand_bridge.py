@@ -297,5 +297,10 @@ def resolve_brand_dir(
     """
     env = os.environ.get("FEINSCHLIFF_BRAND")
     chosen = directive or cli_flag or env or deck_context or "feinschliff"
-    root = brands_root or (Path(__file__).resolve().parent.parent.parent / "brands")
-    return root / chosen
+    if brands_root is not None:
+        return brands_root / chosen
+    from lib.brand_discovery import find_brand as _find_brand
+    try:
+        return _find_brand(chosen).root
+    except ValueError:
+        raise FileNotFoundError(f"Brand {chosen!r} not found in any discovery source")
