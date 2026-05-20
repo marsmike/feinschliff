@@ -1097,9 +1097,23 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     x, y, w, h = bbox
     ph_type, ph_idx = _placeholder_info(ch)
     runs = _text_runs(ch, theme, palette)
-    fill = _resolve_fill(spPr, theme, palette)
-    gradient = _resolve_gradient(spPr, theme, palette)
     kind = _shape_geometry_kind(spPr)
+    # For custGeom shapes (kind="shape") — typically map polygons,
+    # decorative vector clusters, or hand-drawn paths — bypass the
+    # brand-token mapping in `nearest_token` and emit the source colour
+    # as raw hex. These shapes carry hundreds of subtly-different
+    # source colours (e.g. world-map country fills at #EBEBEB /
+    # #DDDDDD / #C8C8C8) and the round-trip through nearest_token →
+    # `_svg_color_token` → `brand_bridge.resolve` collapses them to a
+    # handful of SVG semantic names that resolve to materially
+    # different greys in the brand pack. Going straight to hex
+    # preserves source-pixel fidelity for these high-cardinality
+    # vector compositions.
+    if kind == "shape":
+        fill = _resolve_fill(spPr, theme, palette={})
+    else:
+        fill = _resolve_fill(spPr, theme, palette)
+    gradient = _resolve_gradient(spPr, theme, palette)
     # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
     # this the rendered text lands at frame-top even when source centers
     # it, which is the dominant cause of the redline "two ghost positions"
