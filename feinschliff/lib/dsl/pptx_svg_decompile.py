@@ -1942,27 +1942,66 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
 
     # svg-block-local pixel coords for slice paths. The block's outer
     # bbox is the chart frame; coords inside are 0..bbox_w_px by
-    # 0..bbox_h_px. min(w,h) keeps pies circular in non-square frames.
-    # Pie-area fraction adapts to chart-frame aspect ratio: wide frames
-    # (multi-pie-in-column layouts) keep ~60% pie area so pies fill the
-    # narrow column adequately; square-ish frames (single-big-pie
-    # layouts) shrink to 45% so the pie + adjacent legend mirror
-    # PowerPoint's left-edge placement.
+    # 0..bbox_h_px.
     bbox_w_px = cmap.w(fw)
     bbox_h_px = cmap.h(fh)
-    frame_aspect = bbox_w_px / bbox_h_px if bbox_h_px else 1.0
-    if categories and legend_pos in ("l", "r"):
-        pie_w_frac = 0.60 if frame_aspect > 1.4 else 0.50
+
+    # `<c:plotArea><c:layout><c:manualLayout>` gives EXACT fractional
+    # plot-area position within the chart frame (xMode/yMode="edge" with
+    # x/y/w/h as fractions of bbox_w/bbox_h). When present, use those
+    # directly — they're what PowerPoint's layout engine resolved when
+    # the deck author placed the chart. Falls back to the aspect-based
+    # heuristic when the source uses `<c:layout/>` (auto-layout).
+    pa_layout = None
+    chart_root_for_layout = chart_root
+    if chart_root_for_layout is not None:
+        pa_layout = chart_root_for_layout.find(
+            f".//{{{CHART_NS}}}plotArea/{{{CHART_NS}}}layout/{{{CHART_NS}}}manualLayout"
+        )
+
+    def _layout_frac(el, tag: str, default: float | None = None) -> float | None:
+        if el is None:
+            return default
+        c = el.find(f"{{{CHART_NS}}}{tag}")
+        if c is None or not c.get("val"):
+            return default
+        try:
+            return float(c.get("val"))
+        except (TypeError, ValueError):
+            return default
+
+    if pa_layout is not None:
+        plot_xf = _layout_frac(pa_layout, "x", 0.0) or 0.0
+        plot_yf = _layout_frac(pa_layout, "y", 0.0) or 0.0
+        plot_wf = _layout_frac(pa_layout, "w", 1.0) or 1.0
+        plot_hf = _layout_frac(pa_layout, "h", 1.0) or 1.0
+        pie_off_x = plot_xf * bbox_w_px
+        pie_off_y = plot_yf * bbox_h_px
+        pie_w_px = plot_wf * bbox_w_px
+        pie_h_px = plot_hf * bbox_h_px
     else:
-        pie_w_frac = 1.0
-    pie_w_px = bbox_w_px * pie_w_frac
-    pie_h_px = bbox_h_px
-    pie_off_x = (bbox_w_px - pie_w_px) if legend_pos == "l" else 0
+        # Heuristic: pie-area fraction adapts to chart-frame aspect.
+        # Wide frames (multi-pie-in-column layouts) keep ~60%; square-ish
+        # frames shrink to ~50% leaving room for the legend.
+        frame_aspect = bbox_w_px / bbox_h_px if bbox_h_px else 1.0
+        if categories and legend_pos in ("l", "r"):
+            pie_w_frac = 0.60 if frame_aspect > 1.4 else 0.50
+        else:
+            pie_w_frac = 1.0
+        pie_w_px = bbox_w_px * pie_w_frac
+        pie_h_px = bbox_h_px
+        pie_off_x = (bbox_w_px - pie_w_px) if legend_pos == "l" else 0.0
+        pie_off_y = 0.0
     cx_px = pie_off_x + pie_w_px / 2
-    cy_px = pie_h_px / 2
-    # 0.36 of pie-area min dimension leaves margin for external percentage
-    # labels around the circumference.
-    r_px = min(pie_w_px, pie_h_px) * 0.36
+    cy_px = pie_off_y + pie_h_px / 2
+    # min(w,h) keeps pies circular in non-square frames. When manualLayout
+    # gave us a plot-area smaller than the chart frame, the radius is half
+    # the plot's shortest side (no further margin); otherwise 0.36 leaves
+    # margin for the auto-layout's external label placement.
+    if pa_layout is not None:
+        r_px = min(pie_w_px, pie_h_px) / 2.0
+    else:
+        r_px = min(pie_w_px, pie_h_px) * 0.36
 
     # Doughnut hole: `<c:holeSize val="N"/>` on `<c:doughnutChart>` where
     # N is 10..90 = inner-radius percentage of outer radius. Default 50
