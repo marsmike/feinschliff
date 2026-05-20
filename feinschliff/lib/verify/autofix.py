@@ -449,12 +449,37 @@ def _layout_name(layout_rel: str) -> str:
 # plan_fixes — batch defect → patch translation
 # ─────────────────────────────────────────────────────────────────────────────
 
+def _defect_slide_index(d: object) -> int:
+    """Extract slide_index from either a legacy or new-style Defect."""
+    # Legacy lib.defects.Defect has .slide_index directly.
+    si = getattr(d, "slide_index", None)
+    if si is not None:
+        return int(si)
+    # New lib.diagnostics.Defect stores it in .extra["slide_index"].
+    extra = getattr(d, "extra", None) or {}
+    return int(extra.get("slide_index", 0))
+
+
+def _defect_meta(d: object) -> dict:
+    """Return the metadata dict from either a legacy or new-style Defect."""
+    # Legacy: .meta; new: .extra
+    meta = getattr(d, "meta", None)
+    if meta is not None:
+        return meta
+    return getattr(d, "extra", None) or {}
+
+
 def plan_fixes(
-    defects: list[Defect],
+    defects,
     plan: dict,
     brand_dir: Path,
 ) -> list[FixPatch]:
     """Translate *defects* into deterministic patches.
+
+    Accepts either a list of legacy ``lib.defects.Defect`` objects or a
+    ``DiagnosticBag`` (``lib.diagnostics``).  Both are supported via duck-
+    typing so callers can migrate to ``validate()`` without also updating
+    the downstream ``plan_fixes`` call.
 
     Returns only patches we are confident in — anything ambiguous (e.g.
     CLAIM_TITLE, TITLE_BODY_COHERENCE) is skipped and left for LLM revise.
@@ -472,15 +497,17 @@ def plan_fixes(
     swap_history: list[str] = []
 
     for d in defects:
-        slide_0 = d.slide_index - 1  # 0-based index into slides[]
+        _sidx = _defect_slide_index(d)
+        _meta = _defect_meta(d)
+        slide_0 = _sidx - 1  # 0-based index into slides[]
         if not (0 <= slide_0 < len(slides)):
             continue
         slide = slides[slide_0]
 
         # ── SLOT_OVERFLOW ────────────────────────────────────────────────────
-        if d.kind is DefectKind.SLOT_OVERFLOW:
-            slot = d.meta.get("slot")
-            budget = d.meta.get("budget_chars")
+        if d.kind == DefectKind.SLOT_OVERFLOW:
+            slot = _meta.get("slot")
+            budget = _meta.get("budget_chars")
             if slot is None or budget is None:
                 continue  # not enough info
 
@@ -510,7 +537,7 @@ def plan_fixes(
                 if larger_rel:
                     swap_history.append(_layout_name(larger_rel))
                     patches.append(FixPatch(
-                        slide_index=d.slide_index,
+                        slide_index=_sidx,
                         action="swap_layout_larger",
                         slot=None,
                         payload={"new_layout": larger_rel},
@@ -521,7 +548,7 @@ def plan_fixes(
             if not swap_emitted:
                 trimmed = _shorten_to_budget(current_text, budget)
                 patches.append(FixPatch(
-                    slide_index=d.slide_index,
+                    slide_index=_sidx,
                     action="shorten_slot",
                     slot=slot,
                     payload={"budget_chars": budget, "trimmed_to": len(trimmed)},
@@ -529,9 +556,9 @@ def plan_fixes(
                 ))
 
         # ── TEXT_OVERLAP ─────────────────────────────────────────────────────
-        elif d.kind is DefectKind.TEXT_OVERLAP:
-            a_id = d.meta.get("a_id")
-            b_id = d.meta.get("b_id")
+        elif d.kind == DefectKind.TEXT_OVERLAP:
+            a_id = _meta.get("a_id")
+            b_id = _meta.get("b_id")
             slot = b_id or a_id  # prefer b (the one that moves / is shorter)
             if not slot:
                 continue
@@ -541,12 +568,12 @@ def plan_fixes(
                 continue
 
             # When no budget_chars is present, shorten by 75% of current length.
-            budget = d.meta.get("budget_chars")
+            budget = _meta.get("budget_chars")
             if budget is None:
                 budget = max(1, int(len(current_text) * 0.75))
 
             patches.append(FixPatch(
-                slide_index=d.slide_index,
+                slide_index=_sidx,
                 action="shorten_slot",
                 slot=slot,
                 payload={"budget_chars": budget},
@@ -554,14 +581,14 @@ def plan_fixes(
             ))
 
         # ── FILLER_WORD ───────────────────────────────────────────────────────
-        elif d.kind is DefectKind.FILLER_WORD:
-            word = d.meta.get("word")
-            slot = d.meta.get("slot")
+        elif d.kind == DefectKind.FILLER_WORD:
+            word = _meta.get("word")
+            slot = _meta.get("slot")
             if not word or not slot:
                 continue
 
             patches.append(FixPatch(
-                slide_index=d.slide_index,
+                slide_index=_sidx,
                 action="delete_word",
                 slot=slot,
                 payload={"word": word},
@@ -569,8 +596,8 @@ def plan_fixes(
             ))
 
         # ── BULLET_DUMP ───────────────────────────────────────────────────────
-        elif d.kind is DefectKind.BULLET_DUMP:
-            slot = d.meta.get("slot")
+        elif d.kind == DefectKind.BULLET_DUMP:
+            slot = _meta.get("slot")
             if not slot:
                 # Try common body slot names
                 content = slide.get("content") or {}
@@ -588,7 +615,7 @@ def plan_fixes(
                 continue
 
             patches.append(FixPatch(
-                slide_index=d.slide_index,
+                slide_index=_sidx,
                 action="drop_bullet",
                 slot=slot,
                 payload={"keep": 5},
@@ -596,7 +623,7 @@ def plan_fixes(
             ))
 
         # ── EMPTY_PLACEHOLDER ─────────────────────────────────────────────────
-        elif d.kind is DefectKind.EMPTY_PLACEHOLDER:
+        elif d.kind == DefectKind.EMPTY_PLACEHOLDER:
             current_layout = slide.get("layout", "")
             smaller_rel = _find_smaller_layout(
                 current_layout, slide, brand_dir, layout_history=swap_history
@@ -604,7 +631,7 @@ def plan_fixes(
             if smaller_rel:
                 swap_history.append(_layout_name(smaller_rel))
                 patches.append(FixPatch(
-                    slide_index=d.slide_index,
+                    slide_index=_sidx,
                     action="swap_layout_smaller",
                     slot=None,
                     payload={"new_layout": smaller_rel},

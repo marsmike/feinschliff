@@ -229,6 +229,22 @@ def test_find_compound_returns_none_when_not_found(tmp_path):
     assert result is None
 
 
+def test_find_compound_falls_back_to_toolkit(tmp_path):
+    """A brand with no local compounds/ falls back to the toolkit's bundled ones."""
+    # Brand has no compounds/ directory — only tokens.json.
+    d = _write_brand(tmp_path, "zeta")
+    pack = BrandPack.load(d)
+    assert pack.compounds_path is None  # no local compounds
+
+    # "card" is a real toolkit compound: compounds/card.dsl
+    result = pack.find_compound("card")
+    assert result is not None
+    assert result.name == "card"
+    assert result.path.is_file()
+    assert result.path.name == "card.dsl"
+    assert result.origin == "toolkit"
+
+
 # ---------------------------------------------------------------------------
 # Repr + equality
 # ---------------------------------------------------------------------------
