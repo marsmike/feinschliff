@@ -1422,7 +1422,7 @@ def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
         y_cursor += row_h
 
 
-def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
+def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=None):
     """Extract pie/doughnut chart geometry and emit one svg{} arc path per slice.
 
     Each slice becomes a Shape with kind='shape', svg_path_d set to an SVG
@@ -1457,6 +1457,25 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
     if not values or sum(values) <= 0:
         return
     total = sum(values)
+
+    # Per-slice colors from <c:dPt> data-point elements. Each dPt carries
+    # <c:idx val="N"/> identifying the slice index plus an optional
+    # <c:spPr><a:solidFill> with that slice's brand color. Falls back to
+    # the chart-series-N ramp by index when absent.
+    slice_colors: dict[int, str] = {}
+    if theme is not None and palette is not None:
+        for dpt in ser.findall(f"{{{CHART_NS}}}dPt"):
+            idx_el = dpt.find(f"{{{CHART_NS}}}idx")
+            sp_pr = dpt.find(f"{{{CHART_NS}}}spPr")
+            if idx_el is None or sp_pr is None:
+                continue
+            try:
+                idx = int(idx_el.get("val") or "-1")
+            except (TypeError, ValueError):
+                continue
+            color = _resolve_fill(sp_pr, theme, palette)
+            if color and idx >= 0:
+                slice_colors[idx] = color
 
     cat_els = ser.findall(
         f".//{{{CHART_NS}}}cat//{{{CHART_NS}}}pt/{{{CHART_NS}}}v"
@@ -1544,7 +1563,7 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
             f"L {x1:.1f},{y1:.1f} "
             f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
         )
-        fill_token = f"chart-series-{(i % 6) + 1}"
+        fill_token = slice_colors.get(i) or f"chart-series-{(i % 6) + 1}"
         shapes.append(Shape(
             kind="shape",
             x=cmap.x(x0), y=cmap.y(y0),
@@ -1637,7 +1656,7 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     pie = (root.find(f".//{{{CHART_NS}}}pieChart")
            or root.find(f".//{{{CHART_NS}}}doughnutChart"))
     if pie is not None:
-        _emit_pie_chart(pie, x0, y0, fw, fh, shapes, cmap)
+        _emit_pie_chart(pie, x0, y0, fw, fh, shapes, cmap, theme=theme, palette=palette)
         return
 
     bar = root.find(f".//{{{CHART_NS}}}barChart")
@@ -1710,13 +1729,24 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             text_runs=[TextRun(text=cats[ci] if ci < len(cats) else "", pt=14)],
         ))
 
-    # Bars: each category has n_series side-by-side bars. Source bars are slim
-    # (~8% of category width) and adjacent (no inter-bar gap). Wider/spaced
-    # bars produced visibly different pixels and inflated struct_diff.
-    # Series colour: prefer the per-series fill resolved from <c:ser><c:spPr>
-    # (gives brand-accurate orange/peach/grey progression). Fall back to the
-    # chart-series ramp by index when the source omits per-series colour.
-    bar_w = int(cat_w * 0.085)
+    # Bars: each category has n_series side-by-side bars. PowerPoint sizes
+    # them via `<c:gapWidth val="N"/>` where N is the inter-group gap as a
+    # percentage of bar width (default 150 = gap is 1.5x bar width). The
+    # category width then holds n_series bars plus a gap on each side:
+    #   cat_w = bar_w * n_series + bar_w * (gapWidth/100)
+    #   →  bar_w = cat_w / (n_series + gapWidth/100)
+    # Reading the actual gapWidth lets thick "showcase" bars (default 150)
+    # decompile at their real width instead of a fixed 8.5%-of-cat hairline,
+    # which left source-bar pixels uncovered and inflated struct_diff on
+    # every bar-chart slide.
+    gap_pct = 150.0
+    gw_el = bar.find(f"{{{CHART_NS}}}gapWidth")
+    if gw_el is not None and gw_el.get("val"):
+        try:
+            gap_pct = float(gw_el.get("val"))
+        except (TypeError, ValueError):
+            pass
+    bar_w = int(cat_w / (n_series + gap_pct / 100))
     group_w = bar_w * n_series
     group_inset = (cat_w - group_w) // 2
     for si, (name, vals, _, ser_color) in enumerate(series):
@@ -1838,7 +1868,9 @@ def _style_for(pt: float, text: str, is_footer: bool) -> str:
 # a new corporate template surfaces a new prompt variant.
 _PLACEHOLDER_EXACT: frozenset[str] = frozenset(map(str.lower, [
     "headline", "subheadline", "sub-headline", "sub headline",
-    "placeholder", "title", "subtitle", "sub-title",
+    "placeholder", "placeholder text", "placeholder copy",
+    "this is a placeholder text", "this is placeholder text",
+    "title", "subtitle", "sub-title",
     "presentation title", "chapter title", "section title", "slide title",
     "welcome!", "welcome", "thank you!", "thank you",
     "lorem ipsum",
@@ -1866,9 +1898,18 @@ _PLACEHOLDER_PREFIXES: tuple[str, ...] = (
     "click to edit",
     "lorem ipsum",
     "this text can be replaced",
+    "this text demonstrates",       # "This text demonstrates how your own text..."
+    "this is a placeholder",
+    "this is placeholder",
+    "placeholder text",             # "Placeholder text\n…" wrappers
     "click here to add",
     "tap to add",
     "double-click to edit",
+    "replace this text",
+    "replace with your",
+    "your own text",
+    "sample text",
+    "example text",
 )
 
 # Mail-merge / template-variable tokens (Bosch convention, also seen on
@@ -1918,6 +1959,58 @@ def _is_placeholder_text(text_runs: list["TextRun"]) -> bool:
     return False
 
 
+def _strip_placeholder_paragraphs(text_runs: list["TextRun"]) -> list["TextRun"]:
+    """Return text_runs with placeholder paragraphs removed.
+
+    Source decks often combine real labels with prompt copy inside one
+    placeholder, e.g.
+
+        "04\\nThis is a placeholder text\\nThis text demonstrates how your
+        own text will look when you replace the placeholder with your own
+        text."
+
+    Dropping the whole shape would lose the "04" label that's actual
+    content. This walks paragraphs (separated by `TextRun(text="\\n")`
+    markers inserted by `_text_runs`), drops paragraphs whose joined
+    text matches `_is_placeholder_line`, and stitches the survivors
+    back together with the same `\\n` separators.
+
+    Returns the original list unchanged when no paragraph qualifies as
+    placeholder, or an empty list when EVERY paragraph qualifies (caller
+    drops the shape).
+    """
+    if not text_runs:
+        return text_runs
+    # Group into paragraphs. A paragraph is a contiguous slice of runs
+    # not crossed by a `\n` separator run.
+    paragraphs: list[list["TextRun"]] = [[]]
+    for r in text_runs:
+        if r.text == "\n":
+            paragraphs.append([])
+            continue
+        paragraphs[-1].append(r)
+    kept: list[list["TextRun"]] = []
+    dropped_any = False
+    for para in paragraphs:
+        joined = "".join((r.text or "") for r in para)
+        if _is_placeholder_line(joined.strip()):
+            dropped_any = True
+            continue
+        kept.append(para)
+    if not dropped_any:
+        return text_runs
+    out: list["TextRun"] = []
+    for i, para in enumerate(kept):
+        if i > 0:
+            # Reuse a TextRun shape similar to what `_text_runs` emits —
+            # `pt` from the para's first run so the separator's height is
+            # consistent with the surrounding text.
+            sep_pt = para[0].pt if para else 12
+            out.append(TextRun(text="\n", pt=sep_pt))
+        out.extend(para)
+    return out
+
+
 def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
              placeholder_rel: str = PLACEHOLDER_REL,
@@ -1962,7 +2055,28 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # the rendered round-trip — keeps the layout chrome / geometry but
     # drops the prompt text so the slot reads as empty in the brand
     # template render. See `_is_placeholder_text` for the patterns.
-    texts = [t for t in texts if not _is_placeholder_text(t.text_runs)]
+    #
+    # When a shape mixes a real label with placeholder paragraphs
+    # ("04\nThis is a placeholder text\nThis text demonstrates…"), strip
+    # ONLY the placeholder paragraphs so the label survives. Shapes
+    # whose every paragraph is placeholder collapse to empty runs and
+    # the whole shape gets dropped.
+    filtered: list[Shape] = []
+    for t in texts:
+        if _is_placeholder_text(t.text_runs):
+            continue
+        stripped = _strip_placeholder_paragraphs(t.text_runs)
+        if stripped is t.text_runs:
+            filtered.append(t)
+            continue
+        if not any((r.text or "").strip() for r in stripped):
+            continue
+        filtered.append(Shape(
+            kind=t.kind, x=t.x, y=t.y, w=t.w, h=t.h,
+            text_runs=stripped, ph_type=t.ph_type, ph_idx=t.ph_idx,
+            valign=t.valign, padding=t.padding,
+        ))
+    texts = filtered
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
