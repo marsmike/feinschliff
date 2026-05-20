@@ -1822,7 +1822,7 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
     Each slice becomes a Shape with kind='shape', svg_path_d set to an SVG
     arc path of the form 'M cx,cy L x1,y1 A r,r 0 large,sweep x2,y2 Z',
     fill mapped to chart-series-N via slice index (using the brand's
-    chart-series ramp — for BSH that's accent → accent-80 → ... → accent-10).
+    chart-series ramp — e.g. accent → accent-80 → ... → accent-10).
     emit_dsl() converts each Shape into a standalone `svg{}` block; the
     blocks share the same bbox (the chart frame) so slices overlay into
     one unified pie at render time.
@@ -2567,7 +2567,7 @@ _PLACEHOLDER_EXACT: frozenset[str] = frozenset(map(str.lower, [
     "this text can be replaced",
     "your text here", "insert text here",
     # PowerPoint outline-level prompts (default for body placeholders) —
-    # English + German since BSH/Bosch templates ship localised.
+    # English + German since many corporate templates ship localised.
     "click to edit master title style",
     "click to edit master text styles",
     "second level", "third level", "fourth level", "fifth level",
@@ -2575,7 +2575,7 @@ _PLACEHOLDER_EXACT: frozenset[str] = frozenset(map(str.lower, [
     "zweite ebene", "dritte ebene", "vierte ebene", "fünfte ebene", "fuenfte ebene",
     "klicken sie, um einen titel hinzuzufügen",
     "klicken sie, um titel hinzuzufügen",
-    # Bosch-specific common prompts surfaced from the Design Kit Blue.
+    # Common prompts from vendor design kits.
     "add text", "add title", "add headline", "add subheadline",
 ]))
 
@@ -2598,8 +2598,8 @@ _PLACEHOLDER_PREFIXES: tuple[str, ...] = (
     "example text",
 )
 
-# Mail-merge / template-variable tokens (Bosch convention, also seen on
-# other corporate brands): wholly-token strings like `%classification%`
+# Mail-merge / template-variable tokens (corporate convention): wholly-token
+# strings like `%classification%`
 # or chained `%a%%b%%c%`. PowerPoint replaces these at the org level;
 # our renderer has no such facility, so they emit literally.
 _TEMPLATE_VAR_RE = __import__("re").compile(r"^(%[A-Za-z][A-Za-z0-9_-]*%)+$")

@@ -138,7 +138,7 @@ def test_brand_image_provider_resolved_via_discover_brands(tmp_path, monkeypatch
         bundled,
         "child-swapped",
         extends="parent",
-        tokens_extra={"$image_provider": {"kind": "bsh-designkit"}},
+        tokens_extra={"$image_provider": {"kind": "vendor-designkit"}},
     )
 
     monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
@@ -158,7 +158,7 @@ def test_brand_image_provider_resolved_via_discover_brands(tmp_path, monkeypatch
     # Override (kind swap): child wins; parent's config is dropped.
     swapped = brands["child-swapped"].image_provider_config
     assert swapped is not None
-    assert swapped["kind"] == "bsh-designkit"
+    assert swapped["kind"] == "vendor-designkit"
     assert swapped.get("config") in (None, {})
 
 
@@ -206,12 +206,12 @@ def test_brand_overrides_image_provider_kind(tmp_path):
         "child",
         extends="parent",
         tokens_extra={
-            "$image_provider": {"kind": "bsh-designkit"},
+            "$image_provider": {"kind": "vendor-designkit"},
         },
     )
 
     tokens = load_tokens(tmp_path / "child", brands_dir=tmp_path)
-    assert tokens.raw["$image_provider"]["kind"] == "bsh-designkit"
+    assert tokens.raw["$image_provider"]["kind"] == "vendor-designkit"
     # Parent's config does NOT carry over — kind swap invalidates it.
     assert "config" not in tokens.raw["$image_provider"] or \
         tokens.raw["$image_provider"].get("config") in (None, {})
@@ -262,13 +262,13 @@ def test_kind_swap_preserves_non_config_parent_keys(tmp_path):
         tmp_path,
         "child",
         extends="parent",
-        tokens_extra={"$image_provider": {"kind": "bsh-designkit"}},
+        tokens_extra={"$image_provider": {"kind": "vendor-designkit"}},
     )
 
     tokens = load_tokens(tmp_path / "child", brands_dir=tmp_path)
     ip = tokens.raw["$image_provider"]
     # Kind from child wins.
-    assert ip["kind"] == "bsh-designkit"
+    assert ip["kind"] == "vendor-designkit"
     # Parent's `config` was dropped (provider-scoped, not portable).
     assert "config" not in ip or ip.get("config") in (None, {})
     # Parent's non-`config` key SURVIVES — the precise-drop, not whole-block-clear.
