@@ -8,7 +8,7 @@ Two defect classes are detected:
 
 - **SLOT_OVERFLOW** — text in ``slide.content[slot]`` exceeds the pixel
   budget computed from the layout's ``maxwidth``/``maxheight`` nodes.
-  Delegates to :func:`lib.content_validator._check_slot_overflow` via the
+  Delegates to :func:`feinschliff.content_validator.check_slot_overflow` via the
   same ``textfit.fits()`` helper the autoshrink emitter uses.
 
 - **EMPTY_PLACEHOLDER** — a slot that the layout interpolates via
@@ -205,7 +205,7 @@ def _collect_interpolated_slots(nodes: list) -> tuple[set[str], set[str]]:
 def _flatten_content_keys(ctx: dict, prefix: str = "") -> dict[str, str]:
     """Flatten a nested content dict to normalised-path → value.
 
-    Mirrors the normalisation in ``lib.content_validator._iter_slot_values``:
+    Mirrors the normalisation in ``feinschliff.content_validator.iter_slot_values``:
     array indices collapse to ``[]``.
     """
     out: dict[str, str] = {}
@@ -257,8 +257,8 @@ def static_verify(
     from feinschliff.dsl.expander import load_compounds_for_brand
     from feinschliff.slot_budget import compute_slot_budgets
     from feinschliff.content_validator import (
-        _check_slot_overflow,
-        _iter_slot_values,
+        check_slot_overflow,
+        iter_slot_values,
         ContentDefect,
     )
 
@@ -363,11 +363,11 @@ def static_verify(
             slot_budgets = {}
 
         if slot_budgets:
-            for norm_path, raw_path, value in _iter_slot_values(ctx):
+            for norm_path, raw_path, value in iter_slot_values(ctx):
                 budget = slot_budgets.get(norm_path)
                 if budget is None:
                     continue
-                content_defects: list[ContentDefect] = _check_slot_overflow(
+                content_defects: list[ContentDefect] = check_slot_overflow(
                     value, slot=raw_path, budget=budget, slide_index=slide_index,
                 )
                 for cd in content_defects:

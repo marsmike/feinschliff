@@ -66,7 +66,7 @@ from ._dsl_common import (
     scaled_int as _sz,
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
-from ._text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
+from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
 
 
 # SVG path `d` attribute allowlist. Letters allow the canonical command set

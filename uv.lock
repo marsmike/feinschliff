@@ -167,13 +167,9 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "imagehash" },
-    { name = "img2pdf" },
-    { name = "numpy" },
     { name = "pillow" },
     { name = "pytest" },
     { name = "ruff" },
-    { name = "scikit-image" },
 ]
 
 [package.metadata]
@@ -190,13 +186,9 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "imagehash", specifier = ">=4.3.2" },
-    { name = "img2pdf", specifier = ">=0.4" },
-    { name = "numpy", specifier = ">=1.26" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.13" },
-    { name = "scikit-image", specifier = ">=0.22" },
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 """`feinschliff verify …` — pre-flight layout validator.
 
-Runs `lib.layout_validator.validate_deck` over a `.pptx` file and prints a
+Runs `feinschliff.layout_validator.validate_deck` over a `.pptx` file and prints a
 human-readable report. Exits 0 if clean, 1 if any text-overlap or
 out-of-bounds defects are found. Useful in CI: gate a deck before
 shipping it out, without needing a PNG render + human eyeball.

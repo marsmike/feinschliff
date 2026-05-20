@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._dsl_common import canvas_scale as _canvas_scale
-from ._text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
+from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
 @dataclass

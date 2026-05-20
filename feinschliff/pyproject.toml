@@ -26,13 +26,9 @@ package = true
 
 [dependency-groups]
 dev = [
-    "imagehash>=4.3.2",
-    "img2pdf>=0.4",
-    "numpy>=1.26",
     "pillow>=12.2.0",
     "pytest>=9.0.3",
     "ruff>=0.15.13",
-    "scikit-image>=0.22",
 ]
 
 [tool.pytest.ini_options]

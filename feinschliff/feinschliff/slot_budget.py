@@ -18,7 +18,7 @@ Usage::
 
 The computed budgets are fed to two consumers:
 
-1. ``content_validator.py`` — ``_check_slot_overflow`` uses ``textfit.fits()``
+1. ``content_validator.py`` — ``check_slot_overflow`` uses ``textfit.fits()``
    to catch overflows before the render budget is burned.
 
 2. ``/deck`` generation (Step 2) — ``format_budget_hint()`` produces a table

@@ -1,4 +1,4 @@
-# feinschliff/lib/pipeline.py
+# feinschliff/feinschliff/pipeline.py
 """Shared per-slide compile pipeline.
 
 Every CLI entrypoint that emits a `.pptx` slide flows through
