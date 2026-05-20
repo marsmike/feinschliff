@@ -99,8 +99,9 @@ PRIMITIVES = {"canvas", "theme", "text", "rect", "line", "polyline", "picture", 
 def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
     """Expand a typed :class:`~lib.dsl.ast.Document` using brand compounds.
 
-    Wraps :func:`expand_compounds` via a dict round-trip so all existing
-    expansion logic is reused. The input document is not mutated.
+    Wraps :func:`expand_compounds` via per-COMPOUND-element DSLNode
+    reconstruction.  Non-compound elements pass through the typed AST
+    unchanged.  The input document is not mutated.
 
     Each slide's elements go through compound expansion; diagram blocks
     are NOT rendered (use :func:`expand_diagram_blocks` for that).  This

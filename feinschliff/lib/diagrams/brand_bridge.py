@@ -131,6 +131,7 @@ def resolve_with_pack(name: str, pack: "BrandPack") -> str:
     return resolve(name, pack.root)
 
 
+
 def resolve(name: str, brand_dir: Path) -> str:
     """Resolve a semantic color name to a hex string using brand tokens.
 
@@ -138,6 +139,8 @@ def resolve(name: str, brand_dir: Path) -> str:
     - literal hex/rgb/hsl
     - unknown semantic name
     - brand tokens missing the slot (after extends: walk)
+
+    New code with a BrandPack should use :func:`resolve_with_pack` instead.
     """
     if _LITERAL_RE.match(name):
         # Hex literals pass through as-is. The decompile pipeline emits

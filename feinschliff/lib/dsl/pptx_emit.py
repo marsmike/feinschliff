@@ -1932,6 +1932,10 @@ def emit_pptx_from_document(
     -------
     Path
         The written ``out_path``.
+
+    Note: deck_dir is not exposed via this typed entry point. Decks needing
+    asset_lock.json persistence or a build cache should use build_presentation /
+    build_multi_slide directly with an explicit deck_dir argument.
     """
     from lib.dsl.tokens import load_tokens
 
