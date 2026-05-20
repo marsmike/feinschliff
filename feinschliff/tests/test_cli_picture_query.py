@@ -80,7 +80,7 @@ def staged_env(tmp_path):
     # pyproject.toml). The fixture path is interpolated directly into the
     # module body as a string literal — keeps the provider trivial.
     provider_py.write_text(textwrap.dedent(f"""\
-        from lib.image_provider import (
+        from lib.io.image_provider import (
             ImageHit, ImageProvider, register_provider,
         )
 
@@ -123,7 +123,7 @@ def staged_env(tmp_path):
     # FEINSCHLIFF_PROVIDER_PATH (mirrors how brand_discovery enumerates).
     # Point at the providers root, not its parent.
     env["FEINSCHLIFF_PROVIDER_PATH"] = str(providers_root)
-    # PYTHONPATH so the fake provider can `from lib.image_provider import ...`.
+    # PYTHONPATH so the fake provider can `from lib.io.image_provider import ...`.
     existing_pp = env.get("PYTHONPATH", "")
     env["PYTHONPATH"] = (
         f"{FEINSCHLIFF}{os.pathsep}{existing_pp}" if existing_pp else str(FEINSCHLIFF)

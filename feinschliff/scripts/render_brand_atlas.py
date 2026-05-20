@@ -41,7 +41,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib.soffice import PDFTOPPM, SOFFICE, pptx_to_png
+from lib.io.soffice import PDFTOPPM, SOFFICE, pptx_to_png
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 BRANDS_DIR = REPO_ROOT / "brands"

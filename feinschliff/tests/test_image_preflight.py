@@ -9,7 +9,7 @@ import pytest
 from PIL import Image
 
 from lib.defects import DefectKind, Severity
-from lib.image_preflight import ImageScore, preflight_image, score_image
+from lib.io.image_preflight import ImageScore, preflight_image, score_image
 
 
 # ---------------------------------------------------------------------------

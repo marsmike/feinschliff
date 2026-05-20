@@ -50,7 +50,7 @@ from .polish import normalize_text
 from .tokens import Tokens
 
 if TYPE_CHECKING:
-    from ..image_provider import ImageHit, ImageProvider
+    from ..io.image_provider import ImageHit, ImageProvider
     from lib.brand import BrandPack
     from lib.dsl.ast import Document, Element
 
@@ -1120,7 +1120,7 @@ def _write_lock(deck_dir: Path | None, lock: dict) -> None:
 def _hit_from_lock_entry(entry: dict) -> "ImageHit | None":
     """Reconstruct an ``ImageHit`` from a lock-file slot dict. Returns None
     if the entry is missing required fields."""
-    from ..image_provider import ImageHit
+    from ..io.image_provider import ImageHit
     try:
         return ImageHit(
             url=entry["url"],
