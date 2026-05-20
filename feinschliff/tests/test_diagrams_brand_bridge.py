@@ -17,14 +17,17 @@ def _brand_dir(name: str) -> Path:
 
 
 def test_vocabulary_is_frozen_at_planned_size():
-    """The vocabulary is fixed at 19 names — extending it is a coordinated change
+    """The vocabulary is fixed at 25 names — extending it is a coordinated change
     across brand_bridge, brand packs, and DSL references.
 
-    19 = original 17 + `off-white` (always-light fg, paired with chapter-slab)
-       + `chapter-slab` (always-dark bg for `theme dark` and chapter dividers,
-         decoupled from `ink` which inverts between light/dark brands).
+    25 = 19 base + 6 `chart-series-N` (N=1..6) for pie/doughnut slice
+    colours (added in PR #19). The 19 base was: original 17 +
+    `off-white` (always-light fg, paired with chapter-slab) +
+    `chapter-slab` (always-dark bg for `theme dark` and chapter
+    dividers, decoupled from `ink` which inverts between light/dark
+    brands).
     """
-    assert len(SEMANTIC_NAMES) == 19
+    assert len(SEMANTIC_NAMES) == 25
     # Spot-check representative members from each group
     assert "primary" in SEMANTIC_NAMES       # brand
     assert "paper" in SEMANTIC_NAMES          # surface
@@ -32,6 +35,8 @@ def test_vocabulary_is_frozen_at_planned_size():
     assert "chapter-slab" in SEMANTIC_NAMES   # surface (always-dark bg)
     assert "success" in SEMANTIC_NAMES        # severity
     assert "status-on" in SEMANTIC_NAMES      # status
+    assert "chart-series-1" in SEMANTIC_NAMES # chart-slice ramp head
+    assert "chart-series-6" in SEMANTIC_NAMES # chart-slice ramp tail
 
 
 def test_unknown_name_rejected():
