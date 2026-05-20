@@ -57,6 +57,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from lxml import etree
 from pptx import Presentation
@@ -133,6 +134,12 @@ class Shape:
     # placeholder (genericised brand-template behaviour).
     media_path: str | None = None
     media_rid: str | None = None  # rId of the <a:blip r:embed=...>, for extraction
+    # Resolved python-pptx Part for the embedded image, captured at walk
+    # time so the rId is looked up against the part that actually owns it
+    # (slide vs. layout vs. master). Without this, layout-inherited
+    # pictures (most corporate-template chrome) fail extraction because
+    # their rId only resolves on the layout part, not the slide.
+    media_part: Any = None
     # For custGeom shapes: the full pathLst converted to an SVG-`d` string
     # in *canvas pixels* (already scaled from the path's path-local space).
     # When set, emit_dsl emits the shape as an `svg { path … }` block
@@ -1259,12 +1266,25 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     # Capture the embedded media rId so derive() can extract the binary
     # when image_extract_dir is set (pipeline-optimization mode).
     rid = None
+    media_part = None
     blip = ch.find(".//a:blip", NS)
     if blip is not None:
         rid = blip.get(f"{{{NS['r']}}}embed")
+        # Resolve the related part NOW against the source object that
+        # actually owns the rId (the slide, layout, or master `slide`
+        # param of this call). Storing only the rId and re-resolving on
+        # `slide.part` later breaks for layout-inherited pictures —
+        # their rId is scoped to the layout's relationships, not the
+        # slide's.
+        if rid is not None:
+            try:
+                media_part = slide.part.related_part(rid)
+            except (KeyError, AttributeError):
+                media_part = None
     shapes.append(Shape(
         kind="pic", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         is_picture=True, ph_type=ph_type, ph_idx=ph_idx, media_rid=rid,
+        media_part=media_part,
     ))
 
 
@@ -2171,11 +2191,18 @@ def derive(
                 "it relative to the brand pack root)."
             )
         image_extract_dir.mkdir(parents=True, exist_ok=True)
-        pics = [s for s in shapes if s.is_picture and s.media_rid]
+        # Prefer pictures whose Part was resolved at walk-time (handles
+        # layout-inherited pics); fall back to slide.part lookup for the
+        # in-slide case so callers that pre-date media_part still work.
+        pics = [s for s in shapes if s.is_picture and (s.media_part or s.media_rid)]
         for i, p in enumerate(pics, 1):
-            try:
-                part = slide.part.related_part(p.media_rid)
-            except KeyError:
+            part = p.media_part
+            if part is None and p.media_rid:
+                try:
+                    part = slide.part.related_part(p.media_rid)
+                except KeyError:
+                    continue
+            if part is None:
                 continue
             blob = getattr(part, "blob", None)
             partname = str(getattr(part, "partname", "/image.bin"))
