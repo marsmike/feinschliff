@@ -101,6 +101,17 @@ class Shape:
     # `<a:gd name="adj" fmla="val N">` adjustment value where N is N/100000
     # of the shape's shortest side. None when the source uses sharp corners.
     corner_radius: float | None = None
+    # Drop shadow descriptor from `<a:effectLst><a:outerShdw>`. Tuple
+    # (blur_px, dist_px, angle_deg, color_token, alpha) so the decompiler
+    # can emit a compact `shadow:` kwarg and the emitter can rebuild the
+    # `<a:effectLst>` XML at build time. None = no shadow.
+    shadow: tuple[float, float, float, str, float] | None = None
+    # Gradient fill descriptor from `<a:gradFill>`. List of (position, color)
+    # stops (position 0..1, color = token or hex) plus the linear angle in
+    # degrees. None = solid fill (use `Shape.fill` instead). When set, the
+    # emitter writes a `gradFill` XML block onto the shape's spPr; the
+    # decompiler emits a `gradient:angle=Ddeg;0=token;1=token` kwarg.
+    gradient: tuple[list[tuple[float, str]], float] | None = None
     # Source bodyPr `anchor` attribute — controls text vertical position
     # within the shape bbox. "ctr" centers (PowerPoint default for many
     # text frames); "b" bottoms; "t" or absent = top. Without this the DSL
@@ -309,6 +320,42 @@ def _split_runs_by_color(runs: list["TextRun"]) -> list[list["TextRun"]]:
     if current:
         blocks.append(current)
     return blocks
+
+
+def _resolve_gradient(spPr: etree._Element, theme: dict[str, str],
+                       palette: dict[str, tuple[int, int, int]]
+                       ) -> tuple[list[tuple[float, str]], float] | None:
+    """Extract `<a:gradFill>` as ([(pos, token)], angle_deg) — or None."""
+    if spPr is None:
+        return None
+    grad = spPr.find("a:gradFill", NS)
+    if grad is None:
+        return None
+    stops: list[tuple[float, str]] = []
+    for gs in grad.findall("a:gsLst/a:gs", NS):
+        try:
+            pos = int(gs.get("pos") or 0) / 100000
+        except ValueError:
+            continue
+        srgb = gs.find("a:srgbClr", NS)
+        if srgb is not None and srgb.get("val"):
+            hx = srgb.get("val")
+            try:
+                rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+                color = nearest_token(rgb, palette) if palette else f"#{hx}"
+            except ValueError:
+                continue
+            stops.append((pos, color))
+    if not stops:
+        return None
+    angle_deg = 0.0
+    lin = grad.find("a:lin", NS)
+    if lin is not None and lin.get("ang"):
+        try:
+            angle_deg = int(lin.get("ang")) / 60000.0
+        except ValueError:
+            pass
+    return (stops, angle_deg)
 
 
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -730,6 +777,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     ph_type, ph_idx = _placeholder_info(ch)
     runs = _text_runs(ch, theme, palette)
     fill = _resolve_fill(spPr, theme, palette)
+    gradient = _resolve_gradient(spPr, theme, palette)
     kind = _shape_geometry_kind(spPr)
     # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
     # this the rendered text lands at frame-top even when source centers
@@ -797,6 +845,33 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                 if m:
                     adj_frac = int(m.group(1)) / 100000
             corner_radius = cmap.w(min(w, h)) * adj_frac
+    # Drop shadow — `<a:effectLst><a:outerShdw>`. Standard PowerPoint card
+    # shadows use blurRad/dist in EMU, dir in 1/60000ths of a degree, and a
+    # solid colour with an `<a:alpha val="...">` modifier (0-100000 = 0-100%).
+    shadow: tuple[float, float, float, str, float] | None = None
+    if spPr is not None:
+        eff = spPr.find(".//a:effectLst/a:outerShdw", NS)
+        if eff is not None:
+            blur_emu = int(eff.get("blurRad") or 0)
+            dist_emu = int(eff.get("dist") or 0)
+            dir_60k = int(eff.get("dir") or 0)
+            blur_px = cmap.w(blur_emu)
+            dist_px = cmap.w(dist_emu)
+            angle_deg = dir_60k / 60000.0
+            sh_color = "black"
+            sh_alpha = 1.0
+            srgb = eff.find("a:srgbClr", NS)
+            if srgb is not None and srgb.get("val"):
+                hx = srgb.get("val")
+                try:
+                    rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+                    sh_color = nearest_token(rgb, palette) if palette else f"#{hx}"
+                except ValueError:
+                    pass
+                alpha = srgb.find("a:alpha", NS)
+                if alpha is not None and alpha.get("val"):
+                    sh_alpha = int(alpha.get("val")) / 100000.0
+            shadow = (blur_px, dist_px, angle_deg, sh_color, sh_alpha)
 
     # Picture-typed placeholder → picture shape (no actual <p:pic>).
     if ph_type == "pic":
@@ -857,7 +932,8 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         fill=fill, stroke=stroke, stroke_width=stroke_width,
-        stroke_dash=stroke_dash, corner_radius=corner_radius,
+        stroke_dash=stroke_dash, corner_radius=corner_radius, shadow=shadow,
+        gradient=gradient,
         text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
     ))
 
@@ -1225,6 +1301,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # rounded rects, and dashed dividers survive the round-trip.
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
+        if r.gradient is not None:
+            stops, angle = r.gradient
+            stops_str = ";".join(f"{p:.2f}={c}" for p, c in stops)
+            line += f" gradient:angle={angle:g};{stops_str}"
         if r.corner_radius is not None and r.corner_radius > 0:
             line += f" radius:{r.corner_radius:g}"
         if r.stroke:
@@ -1233,6 +1313,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 line += f" stroke-width:{r.stroke_width:g}"
             if r.stroke_dash:
                 line += f" dash:{r.stroke_dash}"
+        if r.shadow is not None:
+            blur, dist, angle, color, alpha = r.shadow
+            line += (f" shadow:blur:{blur:g},dist:{dist:g},"
+                     f"angle:{angle:g},color:{color},alpha:{alpha:.2f}")
         out.append(line)
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring

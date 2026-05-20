@@ -719,8 +719,11 @@ def _emit_rect(slide, node: DSLNode, ctx: EmitContext) -> None:
     shape.shadow.inherit = False
     _strip_theme_style(shape)
 
+    gradient_attr = node.kw_args.get("gradient")
     fill_name = node.kw_args.get("fill")
-    if fill_name:
+    if gradient_attr:
+        _apply_gradient_fill(shape, gradient_attr, ctx.tokens)
+    elif fill_name:
         shape.fill.solid()
         shape.fill.fore_color.rgb = _hex_to_rgb(ctx.tokens.color(fill_name))
     else:
@@ -736,6 +739,111 @@ def _emit_rect(slide, node: DSLNode, ctx: EmitContext) -> None:
             _apply_line_dash(shape.line, dash_name)
     else:
         shape.line.fill.background()
+
+    shadow_attr = node.kw_args.get("shadow")
+    if shadow_attr:
+        _apply_drop_shadow(shape, shadow_attr, ctx.tokens)
+
+
+def _apply_gradient_fill(shape, descriptor: str, tokens) -> None:
+    """Replace the shape's solidFill with a `<a:gradFill>` block.
+
+    Descriptor format: `angle=Ddeg;0.00=token;1.00=token` — matches what
+    the decompiler emits. Stops are positioned 0..1. Replaces any existing
+    solid/no-fill on `<p:spPr>` and survives `sanitize_chrome` (which by
+    default replaces gradFill with the first stop's solid colour) via the
+    `_EFFECT_ALLOW_ATTR` opt-in on the parent `<p:sp>`.
+    """
+    from lxml import etree
+    A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    parts = [p.strip() for p in descriptor.split(";") if p.strip()]
+    angle_deg = 0.0
+    stops: list[tuple[float, str]] = []
+    for p in parts:
+        if "=" not in p:
+            continue
+        k, v = p.split("=", 1)
+        if k == "angle":
+            try:
+                angle_deg = float(v.replace("deg", ""))
+            except ValueError:
+                pass
+        else:
+            try:
+                stops.append((float(k), v))
+            except ValueError:
+                continue
+    if not stops:
+        return
+    shape._element.set(_EFFECT_ALLOW_ATTR, "1")
+    spPr = shape._element.spPr
+    # Remove any existing fill on the spPr (solidFill / noFill / gradFill).
+    for tag in ("solidFill", "noFill", "gradFill", "blipFill", "pattFill"):
+        for old in spPr.findall(f"{{{A}}}{tag}"):
+            spPr.remove(old)
+    grad = etree.SubElement(spPr, f"{{{A}}}gradFill")
+    grad.set("flip", "none")
+    grad.set("rotWithShape", "1")
+    gs_lst = etree.SubElement(grad, f"{{{A}}}gsLst")
+    for pos, color_ref in stops:
+        gs = etree.SubElement(gs_lst, f"{{{A}}}gs")
+        gs.set("pos", str(int(round(pos * 100000))))
+        try:
+            color_hex = tokens.color(color_ref).lstrip("#")
+        except KeyError:
+            color_hex = color_ref.lstrip("#") if color_ref.startswith("#") else "808080"
+        srgb = etree.SubElement(gs, f"{{{A}}}srgbClr")
+        srgb.set("val", color_hex.upper())
+    lin = etree.SubElement(grad, f"{{{A}}}lin")
+    lin.set("ang", str(int(round(angle_deg * 60000))))
+    lin.set("scaled", "0")
+
+
+def _apply_drop_shadow(shape, descriptor: str, tokens) -> None:
+    """Attach an `<a:effectLst><a:outerShdw>` block to the shape's spPr.
+
+    Descriptor format: `blur:Npx,dist:Npx,angle:Ddeg,color:T,alpha:0.30` —
+    matches what the decompiler emits. python-pptx's `shape.shadow` API
+    can't write outerShdw effects, so we build the XML directly. PowerPoint
+    units: blur/dist in EMU, angle in 1/60000ths of a degree, alpha in
+    0..100000 (≡ 0..100%).
+    """
+    fields = dict(kv.split(":", 1) for kv in descriptor.split(",") if ":" in kv)
+    try:
+        blur_emu = int(float(fields.get("blur", "0")) * _EMU_PER_PX)
+        dist_emu = int(float(fields.get("dist", "0")) * _EMU_PER_PX)
+        angle = int(float(fields.get("angle", "0")) * 60000)
+        alpha = int(float(fields.get("alpha", "1.0")) * 100000)
+    except ValueError:
+        return
+    color_token = fields.get("color", "black")
+    try:
+        color_hex = tokens.color(color_token).lstrip("#")
+    except KeyError:
+        color_hex = color_token.lstrip("#") if color_token.startswith("#") else "000000"
+    from lxml import etree
+    A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    spPr = shape._element.spPr
+    # Opt this shape into surviving sanitize_chrome's effectLst strip
+    # (which is otherwise scoped to flat templated brands that don't want
+    # PowerPoint's default shadow ride-alongs). Mark via the shared
+    # opt-in attribute so a decompile-derived shadow rebuilt from source
+    # XML isn't stripped after we've just attached it.
+    shape._element.set(_EFFECT_ALLOW_ATTR, "1")
+    # Strip any existing effectLst so a re-emit doesn't stack shadows.
+    for old in spPr.findall(f"{{{A}}}effectLst"):
+        spPr.remove(old)
+    effect_lst = etree.SubElement(spPr, f"{{{A}}}effectLst")
+    shdw = etree.SubElement(effect_lst, f"{{{A}}}outerShdw")
+    shdw.set("blurRad", str(blur_emu))
+    shdw.set("dist", str(dist_emu))
+    shdw.set("dir", str(angle))
+    shdw.set("algn", "bl")
+    shdw.set("rotWithShape", "0")
+    srgb = etree.SubElement(shdw, f"{{{A}}}srgbClr")
+    srgb.set("val", color_hex.upper())
+    alpha_el = etree.SubElement(srgb, f"{{{A}}}alpha")
+    alpha_el.set("val", str(alpha))
 
 
 # PowerPoint preset-dash names → python-pptx MSO_LINE_DASH_STYLE. Keys are
@@ -1586,9 +1694,17 @@ def sanitize_chrome(slide_xml) -> None:
             continue
         effect_lst.getparent().remove(effect_lst)
 
-    # 2. gradFill → solidFill (with the first stop's color).
+    # 2. gradFill → solidFill (with the first stop's color), unless the
+    #    parent <p:sp> opts in via _EFFECT_ALLOW_ATTR (same gate as the
+    #    effectLst case above — used by decompile-derived shapes that
+    #    deliberately carry a source-faithful gradient).
     ns = {"a": _NS_A}
     for grad in list(sptree.iter(f"{{{_NS_A}}}gradFill")):
+        sp_anc = grad.getparent()
+        while sp_anc is not None and not sp_anc.tag.endswith("}sp"):
+            sp_anc = sp_anc.getparent()
+        if sp_anc is not None and sp_anc.get(_EFFECT_ALLOW_ATTR) == "1":
+            continue
         grad_parent = grad.getparent()
         first_clr = grad.find(".//a:gs[1]/a:srgbClr", ns)
         idx = list(grad_parent).index(grad)
