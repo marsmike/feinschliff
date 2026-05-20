@@ -16,8 +16,6 @@
 
 [Browse the brand gallery](https://marsmike.github.io/feinschliff/brands/) — every brand pack rendered against every layout.
 
-![Feinschliff showcase grid — six slides rendered from the eponymous brand pack](feinschliff/docs/images/hero-grid.png)
-
 ## Plugins
 
 This repo ships three independent Claude Code plugins. Install only what you need.

@@ -55,9 +55,7 @@ feinschliff ship --brand mybrand -o /tmp/test.pptx layouts/title-orange.slide.ds
 ## Documentation
 
 See the parent repo docs for the full pipeline:
-[`docs/architecture.md`](../feinschliff/docs/architecture.md),
-[`docs/brand-system.md`](../feinschliff/docs/brand-system.md),
-[`docs/BRAND-PACK-CONTRACT.md`](../feinschliff/docs/BRAND-PACK-CONTRACT.md).
+[`docs/brand-pack-contract.md`](../feinschliff/docs/brand-pack-contract.md).
 
 ## License
 

@@ -4,7 +4,6 @@ A brand pack is a directory that `feinschliff` discovers at build time and
 uses to resolve colors, fonts, sizes, layouts, and compounds.
 
 Full schema: [`feinschliff/schemas/tokens.schema.json`](../feinschliff/schemas/tokens.schema.json).
-End-to-end tutorial: [`docs/port-your-brand.md`](port-your-brand.md).
 
 ## Directory structure
 

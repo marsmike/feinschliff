@@ -5,8 +5,6 @@
 
 [Browse the brand gallery](https://marsmike.github.io/feinschliff/brands/) — every brand pack rendered against every layout.
 
-![Feinschliff showcase grid — six slides rendered from the eponymous brand pack](docs/images/hero-grid.png)
-
 ## Install
 
 ```bash
@@ -67,11 +65,7 @@ Brand packs can add or override layouts in their own `layouts/` directory.
 
 ## Documentation
 
-- [`docs/architecture.md`](docs/architecture.md) — pipeline walkthrough
-- [`docs/brand-system.md`](docs/brand-system.md) — DESIGN.md authoring + bake recipe
-- [`docs/dsl-grammar.md`](docs/dsl-grammar.md) — DSL primitive reference
-- [`docs/port-your-brand.md`](docs/port-your-brand.md) — new-brand tutorial
-- [`docs/BRAND-PACK-CONTRACT.md`](docs/BRAND-PACK-CONTRACT.md) — brand-pack specification
+- [`docs/brand-pack-contract.md`](docs/brand-pack-contract.md) — brand-pack specification
 
 ## License
 
