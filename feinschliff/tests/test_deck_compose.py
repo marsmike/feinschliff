@@ -144,3 +144,60 @@ def test_from_dsl_text_round_trips_through_build(tmp_path):
     Deck.from_dsl_text(dsl, brand=pack).build(out)
     assert out.is_file()
     assert zipfile.is_zipfile(out)
+
+
+# ── Deck.from_brief ───────────────────────────────────────────────────────────
+
+def _layouts_dir() -> Path:
+    """Return the bundled layouts directory."""
+    return Path(__file__).resolve().parents[1] / "layouts"
+
+
+def test_from_brief_returns_deck(tmp_path):
+    """Deck.from_brief reads a plan YAML and returns a Deck with correct slide count."""
+    pack = _make_pack(tmp_path)
+    layouts = _layouts_dir()
+    layout1 = layouts / "horizontal-bullets.slide.dsl"
+    layout2 = layouts / "vertical-bullets.slide.dsl"
+    assert layout1.is_file(), f"test prerequisite: {layout1} not found"
+    assert layout2.is_file(), f"test prerequisite: {layout2} not found"
+
+    # Write a minimal two-slide plan YAML using absolute layout paths.
+    brief = tmp_path / "brief.yaml"
+    brief.write_text(
+        f"brand: feinschliff\n"
+        f"out: out/deck.pptx\n"
+        f"slides:\n"
+        f"  - layout: {layout1}\n"
+        f"    content: {{}}\n"
+        f"  - layout: {layout2}\n"
+        f"    content: {{}}\n",
+        encoding="utf-8",
+    )
+
+    deck = Deck.from_brief(brief, brand=pack)
+
+    assert isinstance(deck, Deck)
+    assert isinstance(deck.document, Document)
+    assert len(deck.document.slides) == 2
+
+
+def test_from_brief_missing_slides_raises(tmp_path):
+    """Deck.from_brief raises ValueError when the plan has no 'slides' key."""
+    pack = _make_pack(tmp_path)
+    brief = tmp_path / "bad.yaml"
+    brief.write_text("brand: feinschliff\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="slides"):
+        Deck.from_brief(brief, brand=pack)
+
+
+def test_from_brief_missing_layout_raises(tmp_path):
+    """Deck.from_brief raises FileNotFoundError for an unknown layout."""
+    pack = _make_pack(tmp_path)
+    brief = tmp_path / "bad.yaml"
+    brief.write_text(
+        "brand: feinschliff\nslides:\n  - layout: nonexistent-layout.slide.dsl\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(FileNotFoundError):
+        Deck.from_brief(brief, brand=pack)

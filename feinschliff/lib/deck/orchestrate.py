@@ -14,6 +14,8 @@ independently testable and reusable outside the CLI:
   slide plans (each with a ``{layout, content}`` dict).
 - :func:`patch_set_hash` — stable hash of an autofix patch set for
   oscillation detection.
+- :func:`compose_from_brief` — read a deck plan YAML (the "brief") and
+  return a typed :class:`~lib.dsl.ast.Document`.
 
 ``cli/deck.py`` delegates to these functions; callers outside the CLI
 can import them directly.
@@ -339,3 +341,86 @@ def build_refurbished_deck(
         )
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
+
+
+# ── compose_from_brief ────────────────────────────────────────────────────────
+
+def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
+    """Build a typed :class:`~lib.dsl.ast.Document` from a deck plan YAML.
+
+    Reads a plan YAML (the "brief") in the standard ``feinschliff deck build``
+    format — ``brand:``, ``slides: [{layout:, content:}, …]`` — resolves each
+    slide's layout DSL file via :func:`resolve_layout_path`, parses it into a
+    typed :class:`~lib.dsl.ast.Slide`, and assembles all slides into a single
+    :class:`~lib.dsl.ast.Document`.
+
+    .. note::
+        Slot interpolation (``{{ slot_name }}`` → content values) is **not**
+        performed here.  The returned ``Document`` preserves slot placeholders
+        as-is.  Callers that need fully-filled slides should call
+        :func:`build_primitives_for_layout` instead.
+
+    Parameters
+    ----------
+    brief_path:
+        Path to a deck plan YAML (``brand:``, ``slides:`` with ``layout:``
+        and optional ``content:`` keys).
+    brand:
+        A :class:`~lib.brand.pack.BrandPack` instance.  Its ``root``
+        attribute supplies the brand directory for layout resolution.
+
+    Returns
+    -------
+    Document
+        A typed :class:`~lib.dsl.ast.Document` with one
+        :class:`~lib.dsl.ast.Slide` per entry in ``plan.slides``.
+
+    Raises
+    ------
+    FileNotFoundError
+        When *brief_path* or a referenced layout DSL file cannot be found.
+    ValueError
+        When the plan YAML is missing the ``slides`` key.
+    """
+    import yaml
+    from lib.dsl.ast import Document
+    from lib.dsl.parser import parse_document_file
+
+    text = brief_path.read_text(encoding="utf-8")
+    plan: dict = yaml.safe_load(text) or {}
+    slides_spec = plan.get("slides")
+    if not isinstance(slides_spec, list):
+        raise ValueError(
+            f"compose_from_brief: {brief_path}: missing or invalid 'slides' list"
+        )
+
+    brief_dir = brief_path.parent
+    all_slides = []
+
+    for i, spec in enumerate(slides_spec):
+        layout_rel = spec.get("layout") or ""
+        # Try plan-dir-relative first, then brand-local, then toolkit pool.
+        layout_path: Path | None = None
+        candidate = (brief_dir / layout_rel).resolve()
+        if candidate.is_file():
+            layout_path = candidate
+        else:
+            layout_name = Path(layout_rel).stem
+            if layout_name.endswith(".slide"):
+                layout_name = layout_name[:-len(".slide")]
+            layout_path = resolve_layout_path(brand.root, layout_name)
+
+        if layout_path is None or not layout_path.is_file():
+            raise FileNotFoundError(
+                f"compose_from_brief: slide {i}: layout not found: {layout_rel!r}"
+            )
+
+        slide_doc = parse_document_file(layout_path)
+        # slide_doc has exactly one Slide; carry notes from the plan if present.
+        for slide in slide_doc.slides:
+            notes = spec.get("notes")
+            if notes is not None:
+                slide.notes = notes
+            all_slides.append(slide)
+
+    return Document(version=1, slides=all_slides)
