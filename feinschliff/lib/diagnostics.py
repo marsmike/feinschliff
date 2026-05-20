@@ -46,7 +46,7 @@ class DefectKind(str, Enum):
     SLOT_OVERFLOW = "slot-overflow"          # text overflows slot budget
 
     # --- Text quality ---
-    TEXT_OVERFLOW = "slot-overflow"          # alias: same as SLOT_OVERFLOW
+    TEXT_OVERFLOW = "slot-overflow"          # alias for SLOT_OVERFLOW (Python enum alias — does not appear in iteration)
     TEXT_UNDERFLOW = "text-underflow"        # text too short for slot
 
     # --- Brand token ---
@@ -55,7 +55,7 @@ class DefectKind(str, Enum):
 
     # --- Diagram ---
     DIAGRAM_INVALID_PRIMITIVE = "diagram-invalid-file"    # bad diagram DSL / invalid file
-    DIAGRAM_STRUCTURAL = "diagram-shape-overlap"          # structural layout defect in diagram
+    DIAGRAM_STRUCTURAL = "diagram-shape-overlap"          # structural layout defect in diagram  # legacy name: DIAGRAM_SHAPE_OVERLAP (lib.defects)
     DIAGRAM_OVERFLOW = "diagram-overflow"                 # diagram spills outside its slot
     DIAGRAM_TEXT_TOO_SMALL = "diagram-text-too-small"     # text below legibility threshold
     DIAGRAM_COLOR_MISMATCH = "diagram-color-mismatch"     # colour not in brand palette

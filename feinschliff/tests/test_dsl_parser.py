@@ -218,3 +218,14 @@ def test_parse_document_element_props_contain_label():
     doc = parse_document(dsl)
     el = doc.slides[0].elements[0]
     assert el.props.get("label") == "My Title"
+
+
+def test_parse_document_svg_and_excalidraw_become_diagram():
+    dsl = (
+        "svg flow 0,0 960x540 {}\n"
+        "excalidraw arch 960,0 960x540 {}\n"
+    )
+    doc = parse_document(dsl)
+    elements = doc.slides[0].elements
+    assert elements[0].kind is ElementKind.DIAGRAM
+    assert elements[1].kind is ElementKind.DIAGRAM

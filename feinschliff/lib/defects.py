@@ -16,6 +16,8 @@ used throughout the existing codebase (FATAL/WARN/INFO values, slide_index
 on Defect, etc.) and differ from the ``Severity``/``DefectKind`` in
 ``lib.diagnostics`` which follow conventional ERROR/WARNING/INFO naming.
 Both modules coexist during the migration.
+
+Planned removal: Phase 3 (marketplace split makes lib.diagnostics the public API).
 """
 from __future__ import annotations
 
