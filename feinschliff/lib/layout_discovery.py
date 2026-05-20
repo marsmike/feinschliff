@@ -31,6 +31,10 @@ def _plugin_layouts_roots() -> list[Path]:
     """`layouts/` dirs from installed Claude Code plugins whose parent
     contains "feinschliff" in the name.
 
+    Layouts are toolkit-specific — only plugins whose name (or marketplace name)
+    contains "feinschliff" contribute layouts, to prevent unrelated plugins from
+    accidentally shadowing toolkit layouts.
+
     Modern plugins land under ``~/.claude/plugins/marketplaces/{marketplace}/{plugin}/``;
     sideloaded plugins occasionally land directly under ``~/.claude/plugins/{plugin}/``.
     Both layouts are supported.
