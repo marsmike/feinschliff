@@ -41,6 +41,24 @@ def test_load_tokens_walks_extends_chain_child_overrides_parent():
     assert macchiato.font_size_px("body") == feinschliff.font_size_px("body")
 
 
+def test_color_accepts_inline_hex_literal():
+    """`Tokens.color()` returns `#RRGGBB` literals unchanged so the hybrid
+    decompiler's source-fidelity fallback (raw hex for shapes whose source
+    colour has no close brand-token match) doesn't crash the build with
+    `KeyError: no color token '#FFFFFF'`."""
+    tokens = load_tokens(BRANDS_DIR / "feinschliff", brands_dir=BRANDS_DIR)
+    assert tokens.color("#FFFFFF") == "#FFFFFF"
+    assert tokens.color("#ffed00") == "#FFED00"   # case-normalised
+    assert tokens.color("#abc") == "#AABBCC"      # 3-digit expanded
+
+
+def test_color_rejects_non_hex_unknown_token():
+    """Non-hex unknown names still raise KeyError — only `#…` passes through."""
+    tokens = load_tokens(BRANDS_DIR / "feinschliff", brands_dir=BRANDS_DIR)
+    with pytest.raises(KeyError, match="no color token 'royal-blue'"):
+        tokens.color("royal-blue")
+
+
 def test_load_tokens_detects_cycle(tmp_path):
     """Two brands that extend each other → ValueError."""
     a = tmp_path / "a"

@@ -52,6 +52,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from dataclasses import dataclass, field
@@ -165,11 +166,35 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
     brand_root = tokens_path.parent
     data = None
     if (brand_root / "DESIGN.md").is_file():
-        try:
-            from lib.dsl.tokens import load_tokens
-            data = load_tokens(brand_root).raw
-        except (FileNotFoundError, ValueError):
-            data = None
+        from lib.dsl.tokens import load_tokens
+        # Try sibling-located parent first (the default), then fall back
+        # to the toolkit's bundled brands/ dir. Out-of-tree packs (e.g.
+        # `.debug/brands/<name>` or `~/customer-brands/<name>`) declare
+        # `extends: feinschliff` but their sibling dir isn't the toolkit
+        # repo, so without this fallback the parent palette never loads
+        # and nearest_token() degrades to raw hex emission for every
+        # shape — visible in the decompiled DSL as `fill:#ffed00` instead
+        # of `fill:accent` and `fill:neutral` on every custGeom because
+        # _svg_color_token() then sees an unknown brand token.
+        candidate_dirs = [brand_root.parent]
+        toolkit_brands = Path(__file__).resolve().parents[2] / "brands"
+        if toolkit_brands.is_dir():
+            candidate_dirs.append(toolkit_brands)
+        env_paths = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+        for ep in env_paths.split(os.pathsep):
+            if ep and Path(ep).is_dir():
+                candidate_dirs.append(Path(ep))
+        seen: set[Path] = set()
+        for cd in candidate_dirs:
+            cd = cd.resolve()
+            if cd in seen:
+                continue
+            seen.add(cd)
+            try:
+                data = load_tokens(brand_root, brands_dir=cd).raw
+                break
+            except (FileNotFoundError, ValueError):
+                continue
     if data is None:
         data = json.loads(tokens_path.read_text(encoding="utf-8"))
     palette: dict[str, tuple[int, int, int]] = {}
@@ -213,7 +238,19 @@ def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, 
         if d < best_d:
             best_d = d
             best = name
-    return best or "#{:02x}{:02x}{:02x}".format(*rgb)
+    # Source-fidelity guard. Squared-euclidean threshold ≈ 25 per channel
+    # (3 * 25^2 = 1875). When the closest brand token is further than this,
+    # the source colour isn't really represented in the palette — emit the
+    # raw hex literal instead of approximating to a token that renders as
+    # a visibly different colour (e.g. the Sartorius source's #FFED00
+    # yellow shouldn't squash to the feinschliff parent's gold #C9A24A
+    # accent token just because it's the closest of 30 mostly-cool tokens).
+    if best is not None and best_d <= _NEAREST_TOKEN_THRESHOLD_SQ:
+        return best
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+_NEAREST_TOKEN_THRESHOLD_SQ = 1875
 
 
 def load_theme_scheme(pres: Presentation) -> dict[str, str]:
@@ -613,9 +650,20 @@ _BRAND_TO_SVG_COLOR: dict[str, str] = {
 
 
 def _svg_color_token(brand_token: str | None, *, default: str = "neutral") -> str:
-    """Best-effort map of brand-pack color token → SVG DSL semantic name."""
+    """Best-effort map of brand-pack color token → SVG DSL semantic name.
+
+    Inline `#rrggbb` literals (produced by nearest_token when the source
+    colour is too far from any palette entry) pass through unchanged so
+    the SVG block renders the source colour verbatim instead of
+    collapsing to the default neutral. Without this, the source-fidelity
+    guard in nearest_token would buy nothing for custGeom paths — they'd
+    still render as a generic grey because `_BRAND_TO_SVG_COLOR` only
+    knows the named feinschliff vocabulary.
+    """
     if not brand_token:
         return default
+    if brand_token.startswith("#"):
+        return brand_token
     return _BRAND_TO_SVG_COLOR.get(brand_token, default)
 
 
@@ -1582,6 +1630,11 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     cats = series[0][2] if series[0][2] else [f"Cat {i+1}" for i in range(n_cats)]
     data_max = max((max(s[1]) for s in series if s[1]), default=0)
     # Round axis max up to the next integer above data_max.
+    # LibreOffice's auto-axis (the source-PNG ground truth in the verify
+    # loop) adds one major-unit of headroom over data_max, so matching its
+    # tick count beats the more semantically-correct ceil(data_max) — the
+    # struct_diff_ratio improves when ticks line up with the source-PNG
+    # rasterisation, not with what PowerPoint would have drawn.
     axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
 
     # Plot-area extents inside the frame (EMU). Match PowerPoint defaults:
