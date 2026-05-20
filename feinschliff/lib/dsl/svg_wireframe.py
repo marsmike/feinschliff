@@ -487,7 +487,7 @@ def render_wireframe(
         supplied the wireframe boxes are drawn *on top* of the rasterized
         slide, making deviations between DSL intent and actual PPTX output
         immediately visible. Obtain via
-        :func:`lib.dsl.pptx_to_png.slide_to_b64`. Invalid base64 (anything
+        :func:`lib.io.pptx_to_png.slide_to_b64`. Invalid base64 (anything
         containing characters outside ``A–Za–z0–9+/=``) is rejected with a
         warning to avoid breaking SVG well-formedness.
     background_opacity:
