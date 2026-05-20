@@ -20,9 +20,14 @@ import re
 import warnings
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from .parser import DSLNode, CompoundDef, parse_file
 from .tokens import _parse_design_md_frontmatter
+
+if TYPE_CHECKING:
+    from lib.brand import BrandPack
+    from lib.dsl.ast import Document, Element, Slide
 
 
 @dataclass
@@ -85,6 +90,103 @@ def _safe_eval(expr: str, ctx: dict) -> float:
 
 
 PRIMITIVES = {"canvas", "theme", "text", "rect", "line", "polyline", "picture", "shape"}
+
+
+# ---------------------------------------------------------------------------
+# Typed Document entry point
+# ---------------------------------------------------------------------------
+
+def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
+    """Expand a typed :class:`~lib.dsl.ast.Document` using brand compounds.
+
+    Wraps :func:`expand_compounds` via a dict round-trip so all existing
+    expansion logic is reused. The input document is not mutated.
+
+    Each slide's elements go through compound expansion; diagram blocks
+    are NOT rendered (use :func:`expand_diagram_blocks` for that).  This
+    entry point is intended for content-slot interpolation and compound
+    resolution on a plan-level Document (one per deck, slides carry
+    layout + content metadata).
+
+    Parameters
+    ----------
+    doc:
+        The typed Document to expand.
+    pack:
+        BrandPack whose compounds/ directory contributes brand-specific
+        compound definitions.
+
+    Returns
+    -------
+    Document
+        A new Document with compound-call Elements replaced by their
+        expanded primitive children.
+    """
+    from lib.dsl.ast import Document, Slide, Element, ElementKind
+
+    std_dir = Path(__file__).resolve().parents[2] / "compounds"
+    compounds = load_compounds_for_brand(pack.root, std_dir=std_dir)
+
+    expanded_slides: list[Slide] = []
+    for slide in doc.slides:
+        expanded_elements = _expand_elements(slide.elements, compounds)
+        expanded_slides.append(Slide(
+            layout=slide.layout,
+            elements=expanded_elements,
+            meta=dict(slide.meta),
+            notes=slide.notes,
+        ))
+    return Document(
+        version=doc.version,
+        slides=expanded_slides,
+        meta=dict(doc.meta),
+    )
+
+
+def _expand_elements(
+    elements: list["Element"],
+    compounds: dict,
+) -> list["Element"]:
+    """Recursively expand COMPOUND-kind Elements using the compounds map.
+
+    Returns a new flat list of expanded elements.  Non-compound elements
+    pass through unchanged.  This mirrors ``expand_compounds`` but operates
+    on the typed Element AST rather than DSLNode lists.
+    """
+    from lib.dsl.ast import Element, ElementKind
+
+    out: list[Element] = []
+    for el in elements:
+        if el.kind is ElementKind.COMPOUND:
+            compound_name = el.props.get("compound_name") or el.props.get("_dsl_kind", "")
+            cd = compounds.get(compound_name)
+            if cd is None:
+                # Unknown compound — pass through as-is (matches expand_compounds behaviour).
+                out.append(el)
+            else:
+                # Reconstruct a DSLNode, run expand_compounds, convert back.
+                from lib.dsl.parser import DSLNode
+                call_node = DSLNode(
+                    kind=compound_name,
+                    pos_args=list(el.props.get("pos_args") or []),
+                    kw_args={k: v for k, v in el.props.items()
+                             if k not in ("pos_args", "label", "source", "line_no",
+                                          "compound_name", "_dsl_kind")},
+                    label=el.props.get("label"),
+                )
+                expanded_nodes, _ = expand_compounds([call_node], compounds)
+                from lib.dsl.parser import _node_to_element
+                for n in expanded_nodes:
+                    out.append(_node_to_element(n))
+        elif el.kind is ElementKind.GROUP and el.children:
+            out.append(Element(
+                kind=el.kind,
+                props=dict(el.props),
+                children=_expand_elements(el.children, compounds),
+            ))
+        else:
+            out.append(el)
+    return out
 
 
 # ---------------------------------------------------------------------------
