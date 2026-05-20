@@ -2070,7 +2070,11 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     # Category labels above each group — only when the category axis
     # isn't hidden AND the source explicitly enables them via dLbls.
     cat_w = plot_w // n_cats if n_cats else plot_w
-    if not cat_axis_hidden:
+    # Category labels render when the axis is visible AND the source either
+    # opts into `<c:showCatName val="1"/>` OR omits the dLbls flag entirely
+    # (PowerPoint's default behaviour shows axis-tied category labels even
+    # without an explicit dLbls override).
+    if not cat_axis_hidden and show_cat_labels:
         for ci in range(n_cats):
             cx = plot_x + ci * cat_w + cat_w // 4
             shapes.append(Shape(
