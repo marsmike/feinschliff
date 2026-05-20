@@ -446,6 +446,7 @@ def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str
     if srgb is not None:
         hx = srgb.get("val")
         rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+        rgb = _apply_color_mods(rgb, srgb)
         rgb = _blend_on_white(rgb, _alpha_for_color(srgb))
         return nearest_token(rgb, palette)
     scheme = sf.find("a:schemeClr", NS)
@@ -454,15 +455,7 @@ def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str
         hex_str = theme.get(key)
         if hex_str:
             rgb = (int(hex_str[1:3], 16), int(hex_str[3:5], 16), int(hex_str[5:7], 16))
-            # Apply lumMod/lumOff tints/shades crudely.
-            lumMod = scheme.find("a:lumMod", NS)
-            lumOff = scheme.find("a:lumOff", NS)
-            if lumMod is not None or lumOff is not None:
-                mod = int(lumMod.get("val")) / 100000 if lumMod is not None else 1.0
-                off = int(lumOff.get("val")) / 100000 if lumOff is not None else 0.0
-                rgb = tuple(
-                    max(0, min(255, int(c * mod + 255 * off))) for c in rgb
-                )
+            rgb = _apply_color_mods(rgb, scheme)
             rgb = _blend_on_white(rgb, _alpha_for_color(scheme))
             return nearest_token(rgb, palette)
     return None
@@ -694,11 +687,52 @@ def _blend_on_white(rgb: tuple[int, int, int], alpha: float) -> tuple[int, int, 
     )
 
 
+def _apply_color_mods(rgb: tuple[int, int, int],
+                      color_el: etree._Element) -> tuple[int, int, int]:
+    """Apply PPTX colour modifiers (lumMod/lumOff/tint/shade) to an RGB.
+
+    PowerPoint uses these to derive variants of theme colours — typically
+    `<a:schemeClr val="accent1"><a:lumMod val="50000"/><a:lumOff val="50000"/></a:schemeClr>`
+    for a 50%-mixed accent. The arithmetic is a crude HSL-luminance shim
+    sufficient for the dominant cases (mods used on dark theme colours to
+    derive lighter swatch variants in chart series, bar tinting, etc.).
+    All values are in PPTX percent-of-100000.
+    """
+    lumMod = color_el.find("a:lumMod", NS)
+    lumOff = color_el.find("a:lumOff", NS)
+    tint = color_el.find("a:tint", NS)
+    shade = color_el.find("a:shade", NS)
+    if lumMod is not None or lumOff is not None:
+        try:
+            mod = int(lumMod.get("val")) / 100000 if lumMod is not None else 1.0
+            off = int(lumOff.get("val")) / 100000 if lumOff is not None else 0.0
+            rgb = tuple(max(0, min(255, int(c * mod + 255 * off))) for c in rgb)
+        except (TypeError, ValueError):
+            pass
+    if tint is not None and tint.get("val"):
+        # `tint` blends toward white. val = strength of the SOURCE colour
+        # retained (lower val = closer to white).
+        try:
+            t = int(tint.get("val")) / 100000
+            rgb = tuple(max(0, min(255, int(c * t + 255 * (1 - t)))) for c in rgb)
+        except (TypeError, ValueError):
+            pass
+    if shade is not None and shade.get("val"):
+        # `shade` blends toward black.
+        try:
+            s = int(shade.get("val")) / 100000
+            rgb = tuple(max(0, min(255, int(c * s))) for c in rgb)
+        except (TypeError, ValueError):
+            pass
+    return rgb
+
+
 def _resolve_solid(sf: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
     srgb = sf.find("a:srgbClr", NS)
     if srgb is not None:
         hx = srgb.get("val")
         rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+        rgb = _apply_color_mods(rgb, srgb)
         rgb = _blend_on_white(rgb, _alpha_for_color(srgb))
         return nearest_token(rgb, palette)
     scheme = sf.find("a:schemeClr", NS)
@@ -707,6 +741,7 @@ def _resolve_solid(sf: etree._Element, theme: dict[str, str], palette: dict[str,
         hex_str = theme.get(key)
         if hex_str:
             rgb = (int(hex_str[1:3], 16), int(hex_str[3:5], 16), int(hex_str[5:7], 16))
+            rgb = _apply_color_mods(rgb, scheme)
             rgb = _blend_on_white(rgb, _alpha_for_color(scheme))
             return nearest_token(rgb, palette)
     return None
