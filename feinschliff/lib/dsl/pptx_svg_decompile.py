@@ -909,7 +909,10 @@ def _resolve_bg_ref(bgRef, theme: dict[str, str],
 
 
 def _walk(node, offset, shapes, slide, cmap, theme, palette):
-    ox, oy = offset
+    # offset is either a 2-tuple (ox, oy) or an 8-tuple carrying a scaled-
+    # group affine — the latter is unpacked by `_shape_bbox`. We only need
+    # ox/oy here to forward to nested non-scaled groups.
+    ox, oy = offset[:2]
     for ch in node:
         tag = etree.QName(ch).localname
         if tag == "sp":
@@ -921,15 +924,11 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
         elif tag == "graphicFrame":
             _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette)
         elif tag == "grpSp":
-            # Walk children with the group's offset added. PowerPoint
-            # groups can also SCALE their children (when ext != chExt).
-            # We don't currently support per-shape scaling in the walker,
-            # so a scaled group (typical for master-level logo glyph
-            # bundles where the source authoring tool drew the glyphs at
-            # one size and dropped them into a smaller group slot)
-            # would emit oversized off-canvas paths. Skip those — the
-            # source-faithful rendering can't reproduce them without a
-            # full transform stack.
+            # Walk children with the group's offset added. Scaled groups
+            # (ext != chExt — typical for master-level logo bundles
+            # dropped into smaller slots) are skipped because the walker
+            # only carries a pure translation offset; emitting their
+            # children at unscaled coords would land them off-canvas.
             grp_xfrm = ch.find("p:grpSpPr/a:xfrm", NS)
             child_off = (ox, oy)
             if grp_xfrm is not None:
@@ -937,23 +936,37 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
                 ext = grp_xfrm.find("a:ext", NS)
                 chOff = grp_xfrm.find("a:chOff", NS)
                 chExt = grp_xfrm.find("a:chExt", NS)
-                if off is not None and chOff is not None:
-                    dx = int(off.get("x")) - int(chOff.get("x"))
-                    dy = int(off.get("y")) - int(chOff.get("y"))
-                    child_off = (ox + dx, oy + dy)
-                if ext is not None and chExt is not None:
+                if (off is not None and ext is not None
+                        and chOff is not None and chExt is not None):
                     try:
+                        ox_emu = int(off.get("x"))
+                        oy_emu = int(off.get("y"))
                         cx = int(ext.get("cx"))
                         cy = int(ext.get("cy"))
                         chcx = int(chExt.get("cx"))
                         chcy = int(chExt.get("cy"))
-                        # Tolerate ~5% rounding; anything beyond that is a
-                        # genuine scale transform we can't reproduce.
+                        chox = int(chOff.get("x"))
+                        choy = int(chOff.get("y"))
                         if chcx > 0 and chcy > 0:
                             sx = cx / chcx
                             sy = cy / chcy
-                            if abs(sx - 1.0) > 0.05 or abs(sy - 1.0) > 0.05:
-                                continue  # skip the scaled group
+                            # Scaled group: thread a 6-tuple offset that
+                            # _shape_bbox unpacks and applies as an EMU-level
+                            # affine. Translation-only groups stay as 2-tuple
+                            # for backward compat.
+                            if abs(sx - 1.0) > 0.001 or abs(sy - 1.0) > 0.001:
+                                child_off = (ox, oy, ox_emu, oy_emu, chox, choy, sx, sy)
+                                _walk(ch, child_off, shapes, slide, cmap, theme, palette)
+                                continue
+                        # Pure translation fallthrough.
+                        child_off = (ox + ox_emu - chox, oy + oy_emu - choy)
+                    except (ValueError, TypeError):
+                        pass
+                elif off is not None and chOff is not None:
+                    try:
+                        dx = int(off.get("x")) - int(chOff.get("x"))
+                        dy = int(off.get("y")) - int(chOff.get("y"))
+                        child_off = (ox + dx, oy + dy)
                     except (ValueError, TypeError):
                         pass
             _walk(ch, child_off, shapes, slide, cmap, theme, palette)
@@ -968,8 +981,21 @@ def _shape_bbox(ch, offset, slide):
     if xfrm is None:
         return None
     x, y, w, h = xfrm
-    ox, oy = offset
-    return x + ox, y + oy, w, h
+    # Offset shapes:
+    #   2-tuple (ox, oy)      — translation-only ancestor group(s)
+    #   8-tuple (ox, oy, ax, ay, chox, choy, sx, sy)
+    #                         — current shape lives inside a scaled group;
+    #                           apply the EMU-level affine before adding
+    #                           any outer translation.
+    if len(offset) == 2:
+        ox, oy = offset
+        return x + ox, y + oy, w, h
+    ox, oy, ax, ay, chox, choy, sx, sy = offset
+    x_emu = ax + (x - chox) * sx
+    y_emu = ay + (y - choy) * sy
+    w_emu = w * sx
+    h_emu = h * sy
+    return x_emu + ox, y_emu + oy, w_emu, h_emu
 
 
 def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
@@ -1413,11 +1439,16 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             kind="text",
             x=cmap.x(lx + swatch_w + 50000),
             y=cmap.y(legend_y),
-            w=cmap.w(int(fw * 0.04)),
+            # Legend label width must fit "Data N" at 14pt without
+            # wrapping; the previous 4% gave ~31 design-px which forced
+            # multi-line "Da\nta\n1" — visibly wrong on every chart
+            # legend. 10% fits the common case comfortably + leaves
+            # room for short multi-word series names.
+            w=cmap.w(int(fw * 0.10)),
             h=cmap.h(int(fh * 0.04)),
             text_runs=[TextRun(text=name or "", pt=14)],
         ))
-        lx += int(fw * 0.06)
+        lx += int(fw * 0.12)
 
 
 # ---------------------------------------------------------------------------
