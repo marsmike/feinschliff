@@ -490,6 +490,59 @@ def _placeholder_info(node: etree._Element) -> tuple[str | None, str | None]:
     return ph.get("type"), ph.get("idx")
 
 
+def _layout_placeholder_default_sz(slide, ph_type: str | None, ph_idx: str | None) -> int | None:
+    """Walk slide layout + master for the placeholder's default font size.
+
+    PowerPoint inherits font sizes from the layout (and master) when a
+    slide-level placeholder has no explicit `sz` on its runs/paragraphs.
+    Layout writes the size on
+    `<p:sp><p:txBody><a:lstStyle><a:lvl1pPr><a:defRPr sz="...">`; master
+    defines title/body defaults on `<p:txStyles>/<p:titleStyle>` and
+    `<p:bodyStyle>`.
+
+    Without this lookup, body-level placeholders that omit explicit sz
+    inherit our hardcoded 1800 (18pt), which renders chapter titles and
+    other layout-controlled headlines at body-size — visibly wrong on
+    showcase decks where the layout sets large headlines.
+
+    Returns sz in hundredths-of-pt (PPTX units) or None.
+    """
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    parents = [p for p in (layout, master) if p is not None]
+    for parent in parents:
+        root = parent.element
+        for sp in root.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (
+                ph_idx and ph.get("idx") == ph_idx
+            ):
+                lvl1 = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr", NS)
+                if lvl1 is not None:
+                    d = lvl1.find("a:defRPr", NS)
+                    if d is not None and d.get("sz"):
+                        try:
+                            return int(d.get("sz"))
+                        except (TypeError, ValueError):
+                            pass
+    style_for_type = {"title": "titleStyle", "ctrTitle": "titleStyle"}
+    style_name = style_for_type.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        ts = master.element.find(f".//p:txStyles/p:{style_name}", NS)
+        if ts is not None:
+            lvl1 = ts.find("a:lvl1pPr", NS)
+            if lvl1 is not None:
+                d = lvl1.find("a:defRPr", NS)
+                if d is not None and d.get("sz"):
+                    try:
+                        return int(d.get("sz"))
+                    except (TypeError, ValueError):
+                        pass
+    return None
+
+
 def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> tuple[int, int, int, int] | None:
     """Walk slide layout + master to resolve an inherited placeholder bbox.
 
@@ -516,7 +569,8 @@ def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> 
     return None
 
 
-def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> list[TextRun]:
+def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]],
+               inherited_default_sz: int | None = None) -> list[TextRun]:
     runs: list[TextRun] = []
     txBody = node.find(".//p:txBody", NS)
     if txBody is None:
@@ -538,7 +592,16 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
         para_runs: list[TextRun] = []
         # Pick up para-level defRPr or pPr/defRPr for sz fallback.
         pPr = para.find("a:pPr", NS)
-        default_sz = body_default_sz if body_default_sz is not None else 1800
+        # Cascade for the paragraph's default sz:
+        # 1. txBody/lstStyle/lvl1pPr/defRPr sz (slide-level)
+        # 2. inherited_default_sz (layout/master placeholder lookup — only
+        #    threaded by `_emit_sp` when the shape is a placeholder)
+        # 3. hardcoded 1800 (18pt)
+        default_sz = body_default_sz
+        if default_sz is None and inherited_default_sz is not None:
+            default_sz = inherited_default_sz
+        if default_sz is None:
+            default_sz = 1800
         if pPr is not None:
             d = pPr.find("a:defRPr", NS)
             if d is not None and d.get("sz"):
@@ -1096,7 +1159,10 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         return
     x, y, w, h = bbox
     ph_type, ph_idx = _placeholder_info(ch)
-    runs = _text_runs(ch, theme, palette)
+    # Pull placeholder default sz from layout/master so body placeholders
+    # without explicit run-level `sz` inherit the right headline size.
+    inherited_sz = _layout_placeholder_default_sz(slide, ph_type, ph_idx) if (ph_type or ph_idx) else None
+    runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz)
     kind = _shape_geometry_kind(spPr)
     # For custGeom shapes (kind="shape") — typically map polygons,
     # decorative vector clusters, or hand-drawn paths — bypass the
