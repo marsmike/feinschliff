@@ -145,7 +145,7 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
     # immediate file when there's no DESIGN.md or the parent can't be
     # resolved (e.g. out-of-tree packs whose parent lives elsewhere).
     brand_root = tokens_path.parent
-    data: dict[str, Any] | None = None
+    data = None
     if (brand_root / "DESIGN.md").is_file():
         try:
             from lib.dsl.tokens import load_tokens
@@ -742,16 +742,16 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             # Insets — l/t/r/b. Source omits = PowerPoint defaults
             # (91440 / 45720 EMU). Capture whatever's there so decompile
             # preserves exact text position, including the default insets.
-            l = int(bodyPr.get("lIns") or 91440)
-            t_ins = int(bodyPr.get("tIns") or 45720)
-            r = int(bodyPr.get("rIns") or 91440)
-            b = int(bodyPr.get("bIns") or 45720)
-            padding_emu = (l, t_ins, r, b)
+            left = int(bodyPr.get("lIns") or 91440)
+            top = int(bodyPr.get("tIns") or 45720)
+            right = int(bodyPr.get("rIns") or 91440)
+            bottom = int(bodyPr.get("bIns") or 45720)
+            padding_emu = (left, top, right, bottom)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
-        l, t_ins, r, b = padding_emu
-        padding_px = (cmap.w(l), cmap.h(t_ins), cmap.w(r), cmap.h(b))
+        left, top, right, bottom = padding_emu
+        padding_px = (cmap.w(left), cmap.h(top), cmap.w(right), cmap.h(bottom))
     # Stroke (line) colour + width. PowerPoint stores stroke width in EMU
     # on `<a:ln w="...">` (default ~9525 EMU = 0.75pt = 1px hairline). We
     # convert to design-px so the emitter's `stroke-width:N` reads in the
@@ -833,7 +833,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-        fill=fill, stroke=stroke, text_runs=runs,
+        fill=fill, stroke=stroke, stroke_width=stroke_width, text_runs=runs,
         ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
     ))
 
@@ -1382,13 +1382,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         align_attr = f" align:{run_align}" if run_align else ""
         padding_attr = ""
         if t.padding is not None:
-            l, tp, r, b = t.padding
+            left, top, right, bottom = t.padding
             # Compact form `padding:N` when all four insets are equal,
             # `padding:L,T,R,B` otherwise — keeps the common-case DSL short.
-            if l == r and tp == b and l == tp:
-                padding_attr = f" padding:{l:g}"
+            if left == right and top == bottom and left == top:
+                padding_attr = f" padding:{left:g}"
             else:
-                padding_attr = f" padding:{l:g},{tp:g},{r:g},{b:g}"
+                padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
         out.append(
             f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'

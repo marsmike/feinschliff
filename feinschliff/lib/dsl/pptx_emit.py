@@ -87,7 +87,8 @@ def _installed_fonts() -> set[str]:
     case `_assert_font_available` becomes a no-op (we can't block the
     build on a check we can't run reliably).
     """
-    import shutil, subprocess
+    import shutil
+    import subprocess
     fams: set[str] = set()
     fc = shutil.which("fc-list")
     if fc:
@@ -529,15 +530,15 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
         parts = [p.strip() for p in str(padding).split(",")]
         if len(parts) == 1:
-            l = t = r = b = float(parts[0])
+            left = top = right = bottom = float(parts[0])
         elif len(parts) == 4:
-            l, t, r, b = (float(p) for p in parts)
+            left, top, right, bottom = (float(p) for p in parts)
         else:
-            l = t = r = b = 0.0
-        tf.margin_left = _px(l)
-        tf.margin_right = _px(r)
-        tf.margin_top = _px(t)
-        tf.margin_bottom = _px(b)
+            left = top = right = bottom = 0.0
+        tf.margin_left = _px(left)
+        tf.margin_right = _px(right)
+        tf.margin_top = _px(top)
+        tf.margin_bottom = _px(bottom)
     valign = node.kw_args.get("valign", "top")
     if valign == "middle":
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE

@@ -111,7 +111,8 @@ def main() -> int:
     # feinschliff), which has heavier strokes than e.g. Calibri — visible
     # as systematic bold-weight mismatch in the redline even when source
     # and render share the SAME pt + weight.
-    import zipfile as _zf, re as _re
+    import re as _re
+    import zipfile as _zf
     try:
         with _zf.ZipFile(str(source_pptx)) as _z:
             theme_xml = _z.read("ppt/theme/theme1.xml").decode("utf-8")
