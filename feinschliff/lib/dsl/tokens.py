@@ -237,8 +237,19 @@ class Tokens:
             # build the slide without forcing every literal into the
             # brand's palette.
             return name.upper() if len(name) == 7 else _expand_short_hex(name).upper()
-        c = self.raw.get("color", {}).get(name)
+        colors = self.raw.get("color", {})
+        c = colors.get(name)
         if c is None:
+            # chart-series ramp fallback — matches the same convention
+            # `brand_bridge.resolve()` applies for the diagram DSL.
+            # Brands that don't ship an explicit per-series tint
+            # progression render every series in the brand's accent hue;
+            # bar/pie chart decks still build instead of crashing the
+            # whole layout with KeyError.
+            if isinstance(name, str) and name.startswith("chart-series-"):
+                fallback = colors.get("accent")
+                if fallback is not None:
+                    return fallback["$value"] if isinstance(fallback, dict) else fallback
             raise KeyError(f"brand '{self.brand_name}': no color token '{name}'")
         if isinstance(c, dict):           # designtokens schema: {"$value": "..."}
             return c["$value"]

@@ -414,32 +414,34 @@ def _resolve_gradient(spPr: etree._Element, theme: dict[str, str],
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return a token name, or None if no fill.
 
-    Handles `<a:grpFill/>` by walking up to the nearest `<p:grpSp>` ancestor
-    and resolving its `grpSpPr/solidFill`. Without this, custGeom shapes that
-    declare `<a:grpFill/>` (a common pattern for vector logo glyph bundles
-    on slide masters) render unfilled instead of inheriting the group's
-    solid colour.
+    Handles `<a:grpFill/>` by walking up `<p:grpSp>` ancestors iteratively
+    until an actual `<a:solidFill>` is found. The walk is iterative (not
+    recursive on `_resolve_fill`) so nested `grpFill` chains — common in
+    multi-level Design Kit groups where every ancestor's grpSpPr itself
+    carries `<a:grpFill/>` — don't trigger `RecursionError`.
     """
     if spPr is None:
         return None
-    gf = spPr.find("a:grpFill", NS)
-    if gf is not None:
-        # Walk up to find the enclosing <p:grpSp> and resolve its fill.
-        anc = spPr.getparent()
-        while anc is not None:
-            tag = etree.QName(anc).localname
-            if tag == "grpSp":
-                grpSpPr = anc.find("p:grpSpPr", NS)
-                if grpSpPr is not None:
-                    grp_color = _resolve_fill(grpSpPr, theme, palette)
-                    if grp_color:
-                        return grp_color
-                anc = anc.getparent()
-                continue
-            anc = anc.getparent()
     sf = spPr.find("a:solidFill", NS)
     if sf is None:
-        return None
+        # No direct solid fill. If the shape declares grpFill, walk up
+        # ancestor groups looking for the first one with a real solid
+        # fill on its grpSpPr.
+        if spPr.find("a:grpFill", NS) is None:
+            return None
+        anc = spPr.getparent()
+        while anc is not None and sf is None:
+            if etree.QName(anc).localname == "grpSp":
+                grpSpPr = anc.find("p:grpSpPr", NS)
+                if grpSpPr is not None:
+                    inner_sf = grpSpPr.find("a:solidFill", NS)
+                    if inner_sf is not None:
+                        sf = inner_sf
+                        break
+                    # grpSpPr itself is grpFill-only — keep climbing.
+            anc = anc.getparent()
+        if sf is None:
+            return None
     srgb = sf.find("a:srgbClr", NS)
     if srgb is not None:
         hx = srgb.get("val")
