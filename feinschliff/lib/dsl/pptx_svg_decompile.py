@@ -741,16 +741,42 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
     shapes: list[Shape] = []
     spTree = slide.element.find(".//p:cSld/p:spTree", NS)
     _walk(spTree, (0, 0), shapes, slide, cmap, theme, palette)
-    slide_ph_idxs = {s.ph_idx for s in shapes if s.ph_idx}
+    # A slide-level placeholder only "owns" its idx when it actually
+    # carries content (text, fill, or geometry) — empty placeholders
+    # (common pattern: <p:ph idx="N"/> + empty <p:spPr/>) inherit
+    # EVERYTHING from the layout, including the layout's fill/size.
+    # Filtering by content here lets the layout walk re-add the rich
+    # version of those placeholders below.
+    def _has_content(sh: Shape) -> bool:
+        if sh.fill or sh.stroke or sh.gradient or sh.svg_path_d:
+            return True
+        if sh.is_picture:
+            return True
+        if any(r.text and r.text.strip() and r.text != "\n" for r in sh.text_runs):
+            return True
+        return False
+
+    slide_ph_idxs = {s.ph_idx for s in shapes if s.ph_idx and _has_content(s)}
+    # Filter out the empty placeholders themselves — the layout version
+    # will provide the actual content.
+    shapes = [s for s in shapes if not (s.ph_idx and not _has_content(s))]
     inherited: list[Shape] = []
-    for src in _layout_master_chain(slide):
+    layout_master_chain = _layout_master_chain(slide)
+    # Master is the LAST entry in the chain (index 1 when both layout +
+    # master are present). Used to suppress master text placeholders that
+    # carry default prompt copy ("Überschrift 1, TT Norms Pro, 28 pt",
+    # "Falls nicht benötigt, …") without a hasCustomPrompt attribute —
+    # PowerPoint hides those at render time when the slide's placeholder
+    # is empty, but our walker would otherwise emit them as visible text.
+    master_index = len(layout_master_chain) - 1
+    for chain_idx, src in enumerate(layout_master_chain):
         chain_spTree = src.element.find(".//p:cSld/p:spTree", NS)
         if chain_spTree is None:
             continue
         chain_shapes: list[Shape] = []
         _walk(chain_spTree, (0, 0), chain_shapes, src, cmap, theme, palette)
         for s in chain_shapes:
-            # Skip placeholder shapes the slide already owns.
+            # Skip placeholder shapes the slide already owns with content.
             if s.ph_idx and s.ph_idx in slide_ph_idxs:
                 continue
             # Skip pure page-number / footer placeholders by type when the
@@ -760,11 +786,60 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
             # the output. (sldNum/ftr/dt placeholders all carry ph_type.)
             if s.ph_type in ("sldNum", "ftr", "dt") and not s.text_runs:
                 continue
+            # Inherited PICTURE placeholders with no real media binary
+            # (no media_rid) are shells the slide should fill but didn't.
+            # PowerPoint renders them as empty; the build's missing-asset
+            # fallback paints them as white rectangles which inflate the
+            # diff visibly. Skip them so the rendered output matches
+            # PowerPoint's "absent" behaviour.
+            if s.is_picture and not s.media_rid:
+                continue
+            # Skip layout placeholders whose only text is template
+            # prompt copy ("Hier Zitat einfügen.", "Überschrift 1, TT
+            # Norms Pro, 28 pt", etc) — these are author hints that
+            # PowerPoint suppresses at render time when the slide's
+            # version is empty. We can't easily distinguish prompt from
+            # real content, but layouts mark prompts with
+            # `<p:nvPr hasCustomPrompt="1">` — drop just the text on
+            # those, keep the fill/geometry so the layout still emits
+            # its visual frame.
+            # Inherited PLACEHOLDER text is template prompt copy that
+            # PowerPoint never renders ("Überschrift 1, TT Norms Pro",
+            # "Diagramm durch Klicken …", "Click to edit Master title").
+            # The slide's placeholder either overrides it (filtered above
+            # via slide_ph_idxs) or is empty — in which case PowerPoint
+            # shows nothing. Drop the text but keep fill / geometry so
+            # the layout's visual frame (yellow rect, black square)
+            # still emits. Non-placeholder layout/master shapes (logo
+            # glyphs, decorative rects) pass through untouched.
+            if s.ph_type and s.text_runs:
+                s.text_runs = []
+                if not _has_content(s):
+                    continue
             inherited.append(s)
             if s.ph_idx:
                 slide_ph_idxs.add(s.ph_idx)
     # Inherited chrome draws behind slide content.
     return inherited + shapes
+
+
+def _is_custom_prompt(src, ph_idx: str | None) -> bool:
+    """True when the layout's placeholder for `ph_idx` carries the
+    `hasCustomPrompt="1"` marker. Those text bodies hold the template
+    instruction shown in PowerPoint while the slide placeholder is empty;
+    they're suppressed at render time and must not be emitted into the
+    DSL or they leak as visible template copy in derived slides.
+    """
+    if ph_idx is None:
+        return False
+    for sp in src.element.iter("{%s}sp" % NS["p"]):
+        ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+        if ph is None or ph.get("idx") != ph_idx:
+            continue
+        nvPr = sp.find(".//p:nvSpPr/p:nvPr", NS)
+        if nvPr is not None and ph.get("hasCustomPrompt") == "1":
+            return True
+    return False
 
 
 def _layout_master_chain(slide) -> list:
@@ -853,16 +928,39 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
         elif tag == "graphicFrame":
             _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette)
         elif tag == "grpSp":
-            # Walk children with the group's offset added.
+            # Walk children with the group's offset added. PowerPoint
+            # groups can also SCALE their children (when ext != chExt).
+            # We don't currently support per-shape scaling in the walker,
+            # so a scaled group (typical for master-level logo glyph
+            # bundles where the source authoring tool drew the glyphs at
+            # one size and dropped them into a smaller group slot)
+            # would emit oversized off-canvas paths. Skip those — the
+            # source-faithful rendering can't reproduce them without a
+            # full transform stack.
             grp_xfrm = ch.find("p:grpSpPr/a:xfrm", NS)
             child_off = (ox, oy)
             if grp_xfrm is not None:
                 off = grp_xfrm.find("a:off", NS)
+                ext = grp_xfrm.find("a:ext", NS)
                 chOff = grp_xfrm.find("a:chOff", NS)
+                chExt = grp_xfrm.find("a:chExt", NS)
                 if off is not None and chOff is not None:
                     dx = int(off.get("x")) - int(chOff.get("x"))
                     dy = int(off.get("y")) - int(chOff.get("y"))
                     child_off = (ox + dx, oy + dy)
+                if ext is not None and chExt is not None:
+                    try:
+                        cx = int(ext.get("cx")); cy = int(ext.get("cy"))
+                        chcx = int(chExt.get("cx")); chcy = int(chExt.get("cy"))
+                        # Tolerate ~5% rounding; anything beyond that is a
+                        # genuine scale transform we can't reproduce.
+                        if chcx > 0 and chcy > 0:
+                            sx = cx / chcx
+                            sy = cy / chcy
+                            if abs(sx - 1.0) > 0.05 or abs(sy - 1.0) > 0.05:
+                                continue  # skip the scaled group
+                    except (ValueError, TypeError):
+                        pass
             _walk(ch, child_off, shapes, slide, cmap, theme, palette)
 
 
