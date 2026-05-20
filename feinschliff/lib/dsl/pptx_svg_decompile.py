@@ -245,6 +245,15 @@ def load_theme_scheme(pres: Presentation) -> dict[str, str]:
                         out[key] = "#" + srgb.get("val").upper()
                     elif sys_ is not None:
                         out[key] = "#" + (sys_.get("lastClr") or "000000").upper()
+                # PowerPoint default clrMap aliases — these slots are
+                # always present and resolve to the matching scheme entry.
+                # Without them, a shape fill of `schemeClr val="bg2"` (used
+                # widely in corporate templates that put the slide bg in a
+                # layout rect rather than `<p:bg>`) falls through unmapped.
+                for alias, real in (("bg1", "lt1"), ("bg2", "lt2"),
+                                    ("tx1", "dk1"), ("tx2", "dk2")):
+                    if alias not in out and real in out:
+                        out[alias] = out[real]
                 break
     except Exception:
         pass
@@ -414,8 +423,17 @@ def _placeholder_info(node: etree._Element) -> tuple[str | None, str | None]:
 
 
 def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> tuple[int, int, int, int] | None:
-    """Walk slide layout + master to resolve an inherited placeholder bbox."""
-    for parent in (slide.slide_layout, slide.slide_layout.slide_master):
+    """Walk slide layout + master to resolve an inherited placeholder bbox.
+
+    Accepts a Slide, SlideLayout, or SlideMaster — when the caller is
+    already a layout/master (because walk_slide now recurses through the
+    inheritance chain), there's no further parent to walk so this just
+    no-ops out.
+    """
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    parents = [p for p in (layout, master) if p is not None]
+    for parent in parents:
         root = parent.element
         for sp in root.iter("{%s}sp" % NS["p"]):
             ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
@@ -706,27 +724,120 @@ def _shape_geometry_kind(spPr: etree._Element) -> str:
 
 
 def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> list[Shape]:
+    """Walk the slide's spTree; also collect shapes inherited from the
+    slide layout + master that aren't already represented on the slide.
+
+    A typical PowerPoint slide carries only its unique content (a title
+    placeholder, the body text). All decorative chrome — corporate logo,
+    page-number bar, branded background blocks — lives on the slide's
+    layout and master. Without this inheritance walk, the decompile of
+    a Sartorius-style deck emits ~10% of what the source renders.
+
+    Layout/master shapes that are placeholder fills already provided by
+    the slide itself (same ph_idx) are skipped — slide content wins.
+    Everything else is added at the front of the shape list so it draws
+    behind slide-level content.
+    """
     shapes: list[Shape] = []
     spTree = slide.element.find(".//p:cSld/p:spTree", NS)
     _walk(spTree, (0, 0), shapes, slide, cmap, theme, palette)
-    return shapes
+    slide_ph_idxs = {s.ph_idx for s in shapes if s.ph_idx}
+    inherited: list[Shape] = []
+    for src in _layout_master_chain(slide):
+        chain_spTree = src.element.find(".//p:cSld/p:spTree", NS)
+        if chain_spTree is None:
+            continue
+        chain_shapes: list[Shape] = []
+        _walk(chain_spTree, (0, 0), chain_shapes, src, cmap, theme, palette)
+        for s in chain_shapes:
+            # Skip placeholder shapes the slide already owns.
+            if s.ph_idx and s.ph_idx in slide_ph_idxs:
+                continue
+            # Skip pure page-number / footer placeholders by type when the
+            # slide hasn't overridden them — these are pp:fld things that
+            # the source-deck renderer fills at slide time; decompiling
+            # them from the master emits literal "<#>" tokens that pollute
+            # the output. (sldNum/ftr/dt placeholders all carry ph_type.)
+            if s.ph_type in ("sldNum", "ftr", "dt") and not s.text_runs:
+                continue
+            inherited.append(s)
+            if s.ph_idx:
+                slide_ph_idxs.add(s.ph_idx)
+    # Inherited chrome draws behind slide content.
+    return inherited + shapes
+
+
+def _layout_master_chain(slide) -> list:
+    """Return [layout, master] for a slide (best-effort, never raises)."""
+    chain = []
+    try:
+        layout = slide.slide_layout
+        if layout is not None:
+            chain.append(layout)
+            master = layout.slide_master
+            if master is not None:
+                chain.append(master)
+    except Exception:
+        pass
+    return chain
 
 
 def extract_slide_bg_fill(slide, theme: dict[str, str],
                           palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return the slide's background solid-fill colour as a token / hex.
 
-    PowerPoint stores slide-level backgrounds at `<p:cSld><p:bg><p:bgPr>`,
-    sibling to the shape tree. The hybrid decompiler used to walk only
-    `p:spTree`, so dark slide backgrounds were silently dropped and the
-    rebuild defaulted to the brand's paper colour — every white-on-dark
-    text turned invisible. Returns None when the slide has no explicit
-    background fill (the build will fall through to the brand default).
+    Walks the inheritance chain: slide → layout → master. Each level can
+    carry an explicit `<p:cSld><p:bg>` (solidFill or bgRef→theme); the
+    first one found wins. Without the layout/master fallback, decks whose
+    slides have empty bg (the common case for branded corporate templates)
+    would render with the brand default paper colour even when the master
+    declares a solid yellow / navy background.
     """
-    bgPr = slide.element.find(".//p:cSld/p:bg/p:bgPr", NS)
-    if bgPr is None:
+    for src in [slide, *_layout_master_chain(slide)]:
+        bg = src.element.find(".//p:cSld/p:bg", NS)
+        if bg is None:
+            continue
+        bgPr = bg.find("p:bgPr", NS)
+        if bgPr is not None:
+            color = _resolve_fill(bgPr, theme, palette)
+            if color:
+                return color
+        # <p:bgRef idx="N"><a:schemeClr val="bg1"/></p:bgRef> — referenced
+        # background-fill style from theme1.xml's bgFillStyleLst. The
+        # schemeClr fills the `phClr` placeholder in the referenced style.
+        bgRef = bg.find("p:bgRef", NS)
+        if bgRef is not None:
+            color = _resolve_bg_ref(bgRef, theme, palette)
+            if color:
+                return color
+    return None
+
+
+def _resolve_bg_ref(bgRef, theme: dict[str, str],
+                    palette: dict[str, tuple[int, int, int]]) -> str | None:
+    """Resolve a `<p:bgRef idx="N">` reference against the theme's
+    `bgFillStyleLst`, filling `<a:schemeClr val="phClr"/>` with the
+    schemeClr that the bgRef carries.
+
+    PowerPoint idx encoding: 1001 = bgFillStyleLst[0], 1002 = [1], etc.
+    Only `<a:solidFill>` entries are inlined; gradient/blip refs fall
+    through (no DSL primitive for those yet at the bg level).
+    """
+    scheme = bgRef.find("a:schemeClr", NS)
+    if scheme is None or not scheme.get("val"):
         return None
-    return _resolve_fill(bgPr, theme, palette)
+    scheme_key = scheme.get("val")
+    # Resolve scheme → hex via the theme dict captured by load_theme_scheme.
+    # Some keys are aliases: `bg1`→`lt1`, `bg2`→`lt2`, `tx1`→`dk1`, `tx2`→`dk2`.
+    alias = {"bg1": "lt1", "bg2": "lt2", "tx1": "dk1", "tx2": "dk2"}
+    hex_val = theme.get(scheme_key) or theme.get(alias.get(scheme_key, scheme_key))
+    if not hex_val:
+        return None
+    try:
+        rgb = (int(hex_val[1:3], 16), int(hex_val[3:5], 16), int(hex_val[5:7], 16))
+    except (ValueError, IndexError):
+        return None
+    return nearest_token(rgb, palette) if palette else f"#{hex_val[1:].upper()}"
 
 
 def _walk(node, offset, shapes, slide, cmap, theme, palette):
