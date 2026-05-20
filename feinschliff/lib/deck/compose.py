@@ -77,7 +77,44 @@ class Deck:
         """Read *path* as slide DSL and return a :class:`Deck`."""
         return cls.from_dsl_text(path.read_text(encoding="utf-8"), brand=brand)
 
-    # ── properties ────────────────────────────────────────────────────────
+    @classmethod
+    def from_brief(cls, brief_path: Path, brand: "BrandPack") -> "Deck":
+        """Build a :class:`Deck` from a deck plan YAML (the "brief").
+
+        Reads a plan YAML in the standard ``feinschliff deck build`` format
+        (``brand:``, ``slides: [{layout:, content:}, …]``) and constructs a
+        typed :class:`~lib.dsl.ast.Document` via
+        :func:`lib.deck.orchestrate.compose_from_brief`.
+
+        Unlike the full ``deck build`` pipeline, slot interpolation
+        (``{{ slot_name }}`` → content values) is **not** applied — layout
+        placeholders are preserved as-is.  Use :meth:`build` to emit the PPTX.
+
+        Parameters
+        ----------
+        brief_path:
+            Path to a deck plan YAML.
+        brand:
+            Brand pack applied during expansion and emit.
+
+        Returns
+        -------
+        Deck
+            A :class:`Deck` whose ``document`` contains one
+            :class:`~lib.dsl.ast.Slide` per slide in the brief.
+
+        Raises
+        ------
+        FileNotFoundError
+            When *brief_path* or a referenced layout DSL file cannot be found.
+        ValueError
+            When the plan YAML is missing the ``slides`` key.
+        """
+        from lib.deck.orchestrate import compose_from_brief
+        doc = compose_from_brief(brief_path, brand)
+        return cls(brand=brand, document=doc)
+
+    # ── properties ────────────────────────────────────────────────────────────
 
     @property
     def diagnostics(self) -> "DiagnosticBag":
