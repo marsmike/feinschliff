@@ -7,16 +7,16 @@ This module introduces first-class types for the diagnostic layer:
 - :class:`Defect` — immutable defect record
 - :class:`DiagnosticBag` — ordered, filterable collection of Defects
 
-``lib.defects`` re-exports these types for backwards compatibility; existing
-imports of ``from feinschliff.defects import Defect, DefectKind, Severity`` continue
-to work unchanged.
+``feinschliff.defects`` re-exports these types for backwards compatibility;
+existing imports of ``from feinschliff.defects import Defect, DefectKind, Severity``
+continue to work unchanged.
 
 The Severity and DefectKind enums in this module are designed to be additive
-supersets of the values in ``lib.defects``.  The existing ``Severity`` in
-``lib.defects`` uses (FATAL / WARN / INFO) while this module uses the more
+supersets of the values in ``feinschliff.defects``.  The existing ``Severity`` in
+``feinschliff.defects`` uses (FATAL / WARN / INFO) while this module uses the more
 conventional (ERROR / WARNING / INFO).  Both modules co-exist during the
 migration; ``DiagnosticBag`` uses the new Severity.  The legacy ``Defect``
-dataclass in ``lib.defects`` retains its own Severity enum for backwards
+dataclass in ``feinschliff.defects`` retains its own Severity enum for backwards
 compatibility.
 """
 from __future__ import annotations
@@ -36,7 +36,7 @@ class Severity(str, Enum):
 class DefectKind(str, Enum):
     """All known defect categories.
 
-    Superset of the kinds in ``lib.defects.DefectKind``.  New kinds added
+    Superset of the kinds in ``feinschliff.defects.DefectKind``.  New kinds added
     here should be documented with a comment describing the check.
     """
     # --- Geometry (layout_validator) ---
@@ -55,7 +55,7 @@ class DefectKind(str, Enum):
 
     # --- Diagram ---
     DIAGRAM_INVALID_PRIMITIVE = "diagram-invalid-file"    # bad diagram DSL / invalid file
-    DIAGRAM_STRUCTURAL = "diagram-shape-overlap"          # structural layout defect in diagram  # legacy name: DIAGRAM_SHAPE_OVERLAP (lib.defects)
+    DIAGRAM_STRUCTURAL = "diagram-shape-overlap"          # structural layout defect in diagram  # legacy name: DIAGRAM_SHAPE_OVERLAP (feinschliff.defects)
     DIAGRAM_OVERFLOW = "diagram-overflow"                 # diagram spills outside its slot
     DIAGRAM_TEXT_TOO_SMALL = "diagram-text-too-small"     # text below legibility threshold
     DIAGRAM_COLOR_MISMATCH = "diagram-color-mismatch"     # colour not in brand palette

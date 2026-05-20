@@ -15,7 +15,7 @@ independently testable and reusable outside the CLI:
 - :func:`patch_set_hash` — stable hash of an autofix patch set for
   oscillation detection.
 - :func:`compose_from_brief` — read a deck plan YAML (the "brief") and
-  return a typed :class:`~lib.dsl.ast.Document`.
+  return a typed :class:`~feinschliff.dsl.ast.Document`.
 
 ``cli/deck.py`` delegates to these functions; callers outside the CLI
 can import them directly.
@@ -72,7 +72,7 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
     Returns
     -------
     dict
-        Keyword-argument dict accepted by :func:`lib.layout_picker.pick_layout`.
+        Keyword-argument dict accepted by :func:`feinschliff.layout_picker.pick_layout`.
     """
     role = slide.get("role") or slide.get("purpose") or (
         DIAGRAM_KIND_TO_ROLE.get(str(slide.get("diagram_kind") or ""))
@@ -98,7 +98,7 @@ def resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
 
     Checks brand-local first (``<brand_root>/layouts/<name>.slide.dsl``),
     then falls back to the toolkit pool via
-    :func:`lib.layout_discovery.find_layout`.
+    :func:`feinschliff.layout_discovery.find_layout`.
 
     Parameters
     ----------
@@ -346,13 +346,13 @@ def build_refurbished_deck(
 # ── compose_from_brief ────────────────────────────────────────────────────────
 
 def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
-    """Build a typed :class:`~lib.dsl.ast.Document` from a deck plan YAML.
+    """Build a typed :class:`~feinschliff.dsl.ast.Document` from a deck plan YAML.
 
     Reads a plan YAML (the "brief") in the standard ``feinschliff deck build``
     format — ``brand:``, ``slides: [{layout:, content:}, …]`` — resolves each
     slide's layout DSL file via :func:`resolve_layout_path`, parses it into a
-    typed :class:`~lib.dsl.ast.Slide`, and assembles all slides into a single
-    :class:`~lib.dsl.ast.Document`.
+    typed :class:`~feinschliff.dsl.ast.Slide`, and assembles all slides into a single
+    :class:`~feinschliff.dsl.ast.Document`.
 
     .. note::
         Slot interpolation (``{{ slot_name }}`` → content values) is **not**
@@ -366,14 +366,14 @@ def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
         Path to a deck plan YAML (``brand:``, ``slides:`` with ``layout:``
         and optional ``content:`` keys).
     brand:
-        A :class:`~lib.brand.pack.BrandPack` instance.  Its ``root``
+        A :class:`~feinschliff.brand.pack.BrandPack` instance.  Its ``root``
         attribute supplies the brand directory for layout resolution.
 
     Returns
     -------
     Document
-        A typed :class:`~lib.dsl.ast.Document` with one
-        :class:`~lib.dsl.ast.Slide` per entry in ``plan.slides``.
+        A typed :class:`~feinschliff.dsl.ast.Document` with one
+        :class:`~feinschliff.dsl.ast.Slide` per entry in ``plan.slides``.
 
     Raises
     ------

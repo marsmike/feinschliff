@@ -456,11 +456,11 @@ def _layout_name(layout_rel: str) -> str:
 
 def _defect_slide_index(d: object) -> int:
     """Extract slide_index from either a legacy or new-style Defect."""
-    # Legacy lib.defects.Defect has .slide_index directly.
+    # Legacy feinschliff.defects.Defect has .slide_index directly.
     si = getattr(d, "slide_index", None)
     if si is not None:
         return int(si)
-    # New lib.diagnostics.Defect stores it in .extra["slide_index"].
+    # New feinschliff.diagnostics.Defect stores it in .extra["slide_index"].
     extra = getattr(d, "extra", None) or {}
     return int(extra.get("slide_index", 0))
 
@@ -481,8 +481,8 @@ def plan_fixes(
 ) -> list[FixPatch]:
     """Translate *defects* into deterministic patches.
 
-    Accepts either a list of legacy ``lib.defects.Defect`` objects or a
-    ``DiagnosticBag`` (``lib.diagnostics``).  Both are supported via duck-
+    Accepts either a list of legacy ``feinschliff.defects.Defect`` objects or a
+    ``DiagnosticBag`` (``feinschliff.diagnostics``).  Both are supported via duck-
     typing so callers can migrate to ``validate()`` without also updating
     the downstream ``plan_fixes`` call.
 

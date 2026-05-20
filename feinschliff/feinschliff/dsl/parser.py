@@ -435,13 +435,13 @@ def parse_file(path: Path) -> tuple[list[DSLNode], list[CompoundDef]]:
 # ---------------------------------------------------------------------------
 
 def parse_document(text: str, *, source: str | None = None) -> "Document":
-    """Parse DSL text and return a typed :class:`~lib.dsl.ast.Document`.
+    """Parse DSL text and return a typed :class:`~feinschliff.dsl.ast.Document`.
 
     Wraps :func:`parse_lines` and converts DSL nodes to the typed AST.
     A single-file layout produces a ``Document`` with one ``Slide``.
 
     The layout name is inferred from any ``theme`` node; other nodes are
-    mapped to :class:`~lib.dsl.ast.Element` objects.  The ``source``
+    mapped to :class:`~feinschliff.dsl.ast.Element` objects.  The ``source``
     parameter flows into ``Slide.meta['source']`` for traceability.
 
     Parameters
@@ -454,7 +454,7 @@ def parse_document(text: str, *, source: str | None = None) -> "Document":
     Returns
     -------
     Document
-        A typed :class:`~lib.dsl.ast.Document` wrapping the parsed nodes.
+        A typed :class:`~feinschliff.dsl.ast.Document` wrapping the parsed nodes.
     """
     from feinschliff.dsl.ast import Document, Slide, Element, ElementKind
 

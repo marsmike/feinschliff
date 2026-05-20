@@ -3,7 +3,7 @@
 
 Reads `<brand>/verify-map.yaml`, then for each `<layout-name>: <slide-no>`
 pair calls the hybrid PPTX+SVG decompiler
-(`lib.dsl.pptx_svg_decompile.derive`) and writes
+(`feinschliff_builder.decompile.pptx_svg_decompile.derive`) and writes
 `<brand>/layouts/<layout-name>.slide.dsl`. Existing layout files are
 snapshotted into `<brand>/layouts.bak/` before being overwritten.
 

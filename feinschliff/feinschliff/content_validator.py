@@ -487,7 +487,7 @@ def validate_content(
     title-length + action-verb-leading checks only.
 
     `slot_budgets` is an optional dict mapping normalised slot paths to
-    :class:`~lib.slot_budget.SlotBudget` objects. When supplied, each string
+    :class:`~feinschliff.slot_budget.SlotBudget` objects. When supplied, each string
     slot value in `ctx` is checked against its budget via
     ``check_slot_overflow``; this fires the ``slot-overflow`` defect class
     before any render budget is spent.

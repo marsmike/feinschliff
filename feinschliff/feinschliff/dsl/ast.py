@@ -9,8 +9,8 @@ of a slide deck:
 - :class:`Document` — the full deck AST
 
 The ``to_dict`` / ``from_dict`` round-trip is designed to be compatible
-with the shape produced by ``lib.dsl.parser.parse()`` after normalisation.
-New code should use :func:`lib.dsl.parser.parse_document` to get a
+with the shape produced by ``feinschliff.dsl.parser.parse()`` after normalisation.
+New code should use :func:`feinschliff.dsl.parser.parse_document` to get a
 ``Document`` directly.
 """
 from __future__ import annotations

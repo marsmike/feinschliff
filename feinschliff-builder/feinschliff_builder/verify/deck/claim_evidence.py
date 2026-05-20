@@ -224,7 +224,7 @@ def write_report(
     """Write a markdown claim-evidence report to *path*.
 
     The header matches the style of ``storyline_report.md``
-    (see :mod:`lib.verify.deck.storyline`).
+    (see :mod:`feinschliff_builder.verify.deck.storyline`).
 
     Returns the overall verdict: ``"clean"`` if every result is clean,
     ``"dirty"`` if any result is dirty.

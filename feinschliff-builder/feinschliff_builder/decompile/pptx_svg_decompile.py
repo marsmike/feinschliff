@@ -749,7 +749,7 @@ def _resolve_solid(sf: etree._Element, theme: dict[str, str], palette: dict[str,
 
 # Map brand-pack tokens (the full feinschliff vocabulary) onto the SVG
 # DSL's 17-name semantic vocabulary (defined in skills/svg/references/
-# dsl-reference.md, resolved through lib.diagrams.brand_bridge). Tokens
+# dsl-reference.md, resolved through feinschliff.diagrams.brand_bridge). Tokens
 # that have no direct counterpart fall back to the nearest neutral so
 # the SVG block builds — at worst we lose a shade of grey, never the
 # shape itself.

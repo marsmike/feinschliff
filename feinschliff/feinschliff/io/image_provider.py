@@ -11,7 +11,7 @@ discovery loop live here. Built-in providers ship in :mod:`lib.providers`
 and out-of-tree providers live in plugins under
 ``~/.claude/plugins/.../feinschliff_providers/``.
 
-Discovery mirrors :mod:`lib.brand_discovery`: bundled → plugin → env →
+Discovery mirrors :mod:`feinschliff.brand_discovery`: bundled → plugin → env →
 cwd-dev → user. Each ``.py`` file under those roots is imported as a
 synthetic module so registrations land in :data:`_REGISTRY` via the
 ``@register_provider`` decorator. Broken plugins are logged and skipped —
@@ -92,8 +92,8 @@ class ImageProvider(ABC):
 
         Default no-op implementation: returns an empty list so providers
         that do not override this method never emit preflight defects.
-        Subclasses may override to call :func:`lib.image_preflight.preflight_image`
-        and return any emitted :class:`~lib.defects.Defect` records.
+        Subclasses may override to call :func:`feinschliff.io.image_preflight.preflight_image`
+        and return any emitted :class:`~feinschliff.defects.Defect` records.
 
         Parameters
         ----------
@@ -166,7 +166,7 @@ def get_provider(name: str, config: dict | None = None) -> ImageProvider:
 
 
 # ---------------------------------------------------------------------------
-# Discovery — mirrors lib.brand_discovery's directory-scan idiom.
+# Discovery — mirrors feinschliff.brand_discovery's directory-scan idiom.
 # ---------------------------------------------------------------------------
 
 

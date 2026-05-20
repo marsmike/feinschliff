@@ -289,7 +289,7 @@ class EmitContext:
     missing_assets: list[dict] = field(default_factory=list)
     # Active image provider for resolving `picture query:"..."` nodes
     # (Task 7). String forward-ref keeps module import cheap and avoids any
-    # circular-import risk between `lib.dsl.pptx_emit` and `lib.io.image_provider`.
+    # circular-import risk between `feinschliff.dsl.pptx_emit` and `feinschliff.io.image_provider`.
     # Defaults to None so existing callers that never set it keep working.
     image_provider: "ImageProvider | None" = None
     # Deck output directory — used by the picture-query path to write the
@@ -1912,7 +1912,7 @@ def emit_pptx_from_document(
     *,
     image_provider: "ImageProvider | None" = None,
 ) -> Path:
-    """Emit a PPTX file from a typed :class:`~lib.dsl.ast.Document`.
+    """Emit a PPTX file from a typed :class:`~feinschliff.dsl.ast.Document`.
 
     Delegates to :func:`build_presentation` (single-slide) or
     :func:`build_multi_slide` (multi-slide) via DSLNode reconstruction.
