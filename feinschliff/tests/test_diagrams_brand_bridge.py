@@ -9,7 +9,9 @@ from lib.diagrams.brand_bridge import (
     SEMANTIC_NAMES,
     BrandBridgeError,
     resolve,
+    resolve_with_pack,
 )
+from lib.brand import BrandPack
 
 
 def _brand_dir(name: str) -> Path:
@@ -158,3 +160,21 @@ def test_brand_resolution_default_to_feinschliff(monkeypatch):
         deck_context=None,
     )
     assert out.name == "feinschliff"
+
+
+# ---------------------------------------------------------------------------
+# resolve_with_pack — typed BrandPack entry point
+# ---------------------------------------------------------------------------
+
+def test_resolve_with_pack_returns_same_as_resolve():
+    """resolve_with_pack delegates to resolve and returns the same hex."""
+    pack = BrandPack.load(_brand_dir("feinschliff"))
+    via_pack = resolve_with_pack("primary", pack)
+    via_path = resolve("primary", _brand_dir("feinschliff"))
+    assert via_pack == via_path
+
+
+def test_resolve_with_pack_raises_on_unknown_name():
+    pack = BrandPack.load(_brand_dir("feinschliff"))
+    with pytest.raises(BrandBridgeError):
+        resolve_with_pack("totally-unknown-token-xyz", pack)

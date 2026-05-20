@@ -18,9 +18,12 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
 from lib.jsonwalk import deep_merge as _deep_merge, walk as _json_walk
+
+if TYPE_CHECKING:
+    from lib.brand import BrandPack
 
 # 17 semantic names, fixed. Adding to this list is a coordinated change
 # across brand_bridge, brand packs, and DSL references.
@@ -104,6 +107,28 @@ _LITERAL_RE: Final = re.compile(r"^(#[0-9a-fA-F]{3,8}|rgba?\(|hsla?\()")
 
 class BrandBridgeError(ValueError):
     """Raised when a diagram DSL color cannot be resolved."""
+
+
+def resolve_with_pack(name: str, pack: "BrandPack") -> str:
+    """Resolve a semantic color name using a :class:`~lib.brand.BrandPack`.
+
+    Typed entry point for new code. Delegates to the existing
+    :func:`resolve` implementation so all validation and fallback logic
+    stays in one place.
+
+    Parameters
+    ----------
+    name:
+        Semantic color name, e.g. ``'primary'``, ``'paper'``.
+    pack:
+        BrandPack whose ``root`` directory contains ``tokens.json``.
+
+    Raises
+    ------
+    BrandBridgeError
+        On literal hex/rgb/hsl, unknown semantic name, or missing token.
+    """
+    return resolve(name, pack.root)
 
 
 def resolve(name: str, brand_dir: Path) -> str:
