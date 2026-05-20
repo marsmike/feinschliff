@@ -1299,16 +1299,29 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
     ox, oy = offset
     x += ox
     y += oy
-    # Stroke color from line/solidFill.
+    # Stroke color + width + dash from <a:ln w="..."><a:solidFill .../><a:prstDash .../></a:ln>.
     ln = spPr.find("a:ln", NS)
     stroke = None
+    stroke_width: float | None = None
+    stroke_dash: str | None = None
     if ln is not None:
         sf = ln.find("a:solidFill", NS)
         if sf is not None:
             stroke = _resolve_solid(sf, theme, palette)
+        w_attr = ln.get("w")
+        if w_attr:
+            try:
+                stroke_width = cmap.w(int(w_attr))
+            except (ValueError, TypeError):
+                pass
+        dash = ln.find("a:prstDash", NS)
+        if dash is not None and dash.get("val"):
+            stroke_dash = dash.get("val")
     shapes.append(Shape(
         kind="line", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         stroke=stroke or "fog",
+        stroke_width=stroke_width,
+        stroke_dash=stroke_dash,
     ))
 
 
@@ -1816,6 +1829,95 @@ def _style_for(pt: float, text: str, is_footer: bool) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Demo-placeholder text patterns. Templates ship slides with literal
+# guidance text so the user can see what each slot is for; we suppress
+# them on decompile so the round-trip render shows an empty slot
+# instead of the prompt.
+#
+# Exact phrases (case-insensitive, stripped). Add a phrase here whenever
+# a new corporate template surfaces a new prompt variant.
+_PLACEHOLDER_EXACT: frozenset[str] = frozenset(map(str.lower, [
+    "headline", "subheadline", "sub-headline", "sub headline",
+    "placeholder", "title", "subtitle", "sub-title",
+    "presentation title", "chapter title", "section title", "slide title",
+    "welcome!", "welcome", "thank you!", "thank you",
+    "lorem ipsum",
+    "body text", "body copy",
+    "caption", "footnote",
+    "click here to add text", "click to add text",
+    "this text can be replaced with your own text",
+    "this text can be replaced",
+    "your text here", "insert text here",
+    # PowerPoint outline-level prompts (default for body placeholders) —
+    # English + German since BSH/Bosch templates ship localised.
+    "click to edit master title style",
+    "click to edit master text styles",
+    "second level", "third level", "fourth level", "fifth level",
+    "text hinzufügen", "text hinzufuegen",
+    "zweite ebene", "dritte ebene", "vierte ebene", "fünfte ebene", "fuenfte ebene",
+    "klicken sie, um einen titel hinzuzufügen",
+    "klicken sie, um titel hinzuzufügen",
+    # Bosch-specific common prompts surfaced from the Design Kit Blue.
+    "add text", "add title", "add headline", "add subheadline",
+]))
+
+# Prefix patterns — first few words of the text run lower-cased.
+_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
+    "click to edit",
+    "lorem ipsum",
+    "this text can be replaced",
+    "click here to add",
+    "tap to add",
+    "double-click to edit",
+)
+
+# Mail-merge / template-variable tokens (Bosch convention, also seen on
+# other corporate brands): wholly-token strings like `%classification%`
+# or chained `%a%%b%%c%`. PowerPoint replaces these at the org level;
+# our renderer has no such facility, so they emit literally.
+_TEMPLATE_VAR_RE = __import__("re").compile(r"^(%[A-Za-z][A-Za-z0-9_-]*%)+$")
+
+
+def _is_placeholder_line(line: str) -> bool:
+    norm = line.strip().lower().rstrip(".!?:;,")
+    if not norm:
+        return True   # blank line counts as placeholder noise
+    if norm in _PLACEHOLDER_EXACT:
+        return True
+    if any(norm.startswith(p) for p in _PLACEHOLDER_PREFIXES):
+        return True
+    if _TEMPLATE_VAR_RE.match(line.strip()):
+        return True
+    return False
+
+
+def _is_placeholder_text(text_runs: list["TextRun"]) -> bool:
+    """Return True iff the concatenated run text is recognizable demo /
+    template-prompt copy that should NOT survive the decompile round-trip.
+
+    Suppression triggers on any of:
+      * the WHOLE text (linebreaks collapsed to spaces) matches an exact
+        prompt or a known prefix — catches `"This text can be replaced\\nwith your own text."` where the source linebreaks for layout
+        reasons but the whole string is still one prompt
+      * every non-blank line matches an individual prompt pattern —
+        catches `"Headline\\nSubheadline\\nBody"` where each line is its
+        own prompt stacked in one placeholder
+    """
+    if not text_runs:
+        return False
+    raw = "".join(r.text or "" for r in text_runs).strip()
+    if not raw:
+        return False
+    # Collapse line breaks + duplicate whitespace, then check.
+    flat = " ".join(raw.split())
+    if _is_placeholder_line(flat):
+        return True
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    if lines and all(_is_placeholder_line(ln) for ln in lines):
+        return True
+    return False
+
+
 def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
              placeholder_rel: str = PLACEHOLDER_REL,
@@ -1852,6 +1954,15 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 ph_type=s.ph_type, ph_idx=s.ph_idx, valign=s.valign,
                 padding=s.padding,
             ))
+    # Drop demo-placeholder text. Corporate templates ship slides with
+    # literal guidance text inside placeholders ("Headline", "Subheadline",
+    # "Click to edit Master title", "%classification%" mail-merge tokens,
+    # "This text can be replaced with your own text.") so the user knows
+    # what each slot is for. We don't want those strings showing up in
+    # the rendered round-trip — keeps the layout chrome / geometry but
+    # drops the prompt text so the slot reads as empty in the brand
+    # template render. See `_is_placeholder_text` for the patterns.
+    texts = [t for t in texts if not _is_placeholder_text(t.text_runs)]
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
@@ -1955,11 +2066,18 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             f'path:"{{{{ {slot} | default(\\"{default_path}\\") }}}}" cover:true'
         )
 
-    # Lines.
+    # Lines. Stroke-width preserves the source `<a:ln w="...">` value so
+    # a 3pt horizontal divider survives the round-trip — the previous
+    # `stroke-width:1` hardcode flattened every line to a hairline and
+    # made decorative dividers invisible.
     for ln in lines:
         x1, y1 = ln.x, ln.y
         x2, y2 = ln.x + ln.w, ln.y + ln.h
-        out.append(f"line {x1},{y1} {x2},{y2} stroke:{ln.stroke or 'fog'} stroke-width:1")
+        sw = ln.stroke_width if ln.stroke_width is not None and ln.stroke_width > 0 else 1
+        attrs = f"stroke:{ln.stroke or 'fog'} stroke-width:{sw:g}"
+        if ln.stroke_dash:
+            attrs += f" dash:{ln.stroke_dash}"
+        out.append(f"line {x1},{y1} {x2},{y2} {attrs}")
 
     if rects or pics or lines or ovals or custs:
         out.append("")
