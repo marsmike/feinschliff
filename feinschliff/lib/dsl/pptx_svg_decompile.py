@@ -1903,10 +1903,19 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
             is_overlay = overlay_el is not None and overlay_el.get("val") in ("1", "true")
             lp = legend_el.find(f"{{{CHART_NS}}}legendPos")
             if not is_overlay:
-                if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
-                    legend_pos = lp.get("val")
-                else:
-                    legend_pos = "r"  # PowerPoint default when legend present
+                # Collapse PowerPoint's 8-position legend space ("l", "r",
+                # "t", "b", "tr", "tl", "br", "bl") down to the dominant
+                # axis. Pie sizing only cares whether the legend lives
+                # on the left/right (reserving horizontal space) or
+                # top/bottom (vertical) — corner positions like "tr" act
+                # as right-side legends for sizing.
+                raw = lp.get("val") if lp is not None else "r"
+                if raw in ("l", "tl", "bl"):
+                    legend_pos = "l"
+                elif raw in ("t", "b"):
+                    legend_pos = raw
+                else:  # "r", "tr", "br", or unknown — treat as right
+                    legend_pos = "r"
 
     # Data label flags — <c:dLbls><c:showPercent val="1"/> or
     # <c:dLbls><c:showVal val="1"/>. Mutually exclusive in practice;
