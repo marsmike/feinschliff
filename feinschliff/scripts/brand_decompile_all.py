@@ -80,6 +80,62 @@ def main() -> int:
     mapping = yaml.safe_load(verify_map.read_text(encoding="utf-8"))["layouts"]
     requested = set(args.only) if args.only else None
 
+    # Capture the source PPTX's physical slide size and record it in the
+    # brand pack's tokens.json. The emitter (lib/dsl/pptx_emit.py) honours
+    # `slide.width_emu` / `slide.height_emu` and scales EMU_PER_PX +
+    # PX_TO_PT off them, so font sizes and shape positions render at the
+    # SAME physical scale as the source — without this, an emit at the
+    # toolkit default 13.33" wide renders a 42pt source title at ~28pt
+    # because the px↔pt conversion bakes in a different DPI.
+    import json as _json
+    from pptx import Presentation as _Pres
+    src_pres = _Pres(str(source_pptx))
+    src_w_emu = int(src_pres.slide_width)
+    src_h_emu = int(src_pres.slide_height)
+    if tokens_path.is_file():
+        try:
+            tokens_data = _json.loads(tokens_path.read_text(encoding="utf-8"))
+        except _json.JSONDecodeError:
+            tokens_data = {}
+    else:
+        tokens_data = {}
+    slide_block = tokens_data.setdefault("slide", {"$type": "dimension"})
+    slide_block["width_emu"] = {"$value": str(src_w_emu),
+                                "$description": "Source PPTX slide width in EMU — drives emitter scaling."}
+    slide_block["height_emu"] = {"$value": str(src_h_emu),
+                                 "$description": "Source PPTX slide height in EMU — drives emitter scaling."}
+
+    # Detect source theme fonts (majorFont = display/title, minorFont = body)
+    # and write them as the brand's font-family tokens. Without this the
+    # emit falls back to the parent brand's font (typically Noto Sans for
+    # feinschliff), which has heavier strokes than e.g. Calibri — visible
+    # as systematic bold-weight mismatch in the redline even when source
+    # and render share the SAME pt + weight.
+    import zipfile as _zf, re as _re
+    try:
+        with _zf.ZipFile(str(source_pptx)) as _z:
+            theme_xml = _z.read("ppt/theme/theme1.xml").decode("utf-8")
+        majors = _re.findall(r'<a:majorFont>.*?<a:latin[^/]+typeface="([^"]+)"', theme_xml, _re.DOTALL)
+        minors = _re.findall(r'<a:minorFont>.*?<a:latin[^/]+typeface="([^"]+)"', theme_xml, _re.DOTALL)
+        display_font = majors[0] if majors else None
+        body_font = minors[0] if minors else None
+        if display_font or body_font:
+            ff_block = tokens_data.setdefault("font-family", {"$type": "fontFamily"})
+            if display_font:
+                ff_block["display"] = {"$value": [display_font, "Helvetica Neue", "Arial", "sans-serif"],
+                                       "$description": f"Source theme majorFont: {display_font}"}
+            if body_font:
+                ff_block["body"] = {"$value": [body_font, "Helvetica Neue", "Arial", "sans-serif"],
+                                    "$description": f"Source theme minorFont: {body_font}"}
+            print(f"  source fonts: display={display_font!r} body={body_font!r} → tokens.json font-family")
+    except (KeyError, _zf.BadZipFile, IndexError):
+        pass
+
+    tokens_path.write_text(_json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n",
+                           encoding="utf-8")
+    print(f"  source slide size: {src_w_emu/914400:.2f}in × {src_h_emu/914400:.2f}in "
+          f"({src_w_emu} × {src_h_emu} EMU) → tokens.json slide.width_emu/height_emu")
+
     layouts_dir = brand_pack / "layouts"
     backup_dir = brand_pack / "layouts.bak"
     if not args.dry_run:

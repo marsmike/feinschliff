@@ -330,7 +330,8 @@ def parse_lines(text: str, *, source: str | None = None) -> tuple[list[DSLNode],
     while i < len(lines):
         raw = lines[i]
         i += 1
-        stripped = raw.split("#", 1)[0].rstrip()
+        m = _COMMENT_RE.search(raw)
+        stripped = (raw[:m.start()] if m else raw).rstrip()
         if not stripped.strip():
             continue
 
@@ -439,6 +440,14 @@ _WH_RE   = re.compile(r"^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)$")
 # Guards against false-positives like quoted positional strings that contain
 # a colon (e.g. `"foo: bar"` would otherwise be split on the colon).
 _KV_RE = re.compile(r"^[A-Za-z_][\w-]*:")
+
+# Comment marker: `#` only starts a comment when at start-of-line (after any
+# leading whitespace) or preceded by whitespace. Inline `#` inside an
+# attribute value like `stroke:#222640` must pass through unchanged — the
+# hybrid decompiler emits raw hex when a palette match is unavailable, and
+# treating `#hex` as a comment marker truncated those values to empty
+# strings, which crashed the build with a cryptic missing-token KeyError.
+_COMMENT_RE = re.compile(r"(?:^|(?<=\s))#")
 
 
 def parse_xy(s: str) -> tuple[float, float]:
