@@ -7,8 +7,18 @@
   "plugins": [
     {
       "name": "feinschliff",
-      "description": "Brand-pluggable design system — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. Ships with the feinschliff default brand pack (indigo + Noto Sans, MIT).",
+      "description": "Brand-pluggable design system — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. Core deck/diagram generator. Ships with the feinschliff, blank, and claude brand packs.",
       "source": "./feinschliff"
+    },
+    {
+      "name": "feinschliff-builder",
+      "description": "Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). Requires feinschliff.",
+      "source": "./feinschliff-builder"
+    },
+    {
+      "name": "feinschliff-extra",
+      "description": "Extra brand packs for feinschliff: 10 additional themes including catppuccin, nord, gruvbox, solarized, and more.",
+      "source": "./feinschliff-extra"
     }
   ]
 }
