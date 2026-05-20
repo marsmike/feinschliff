@@ -19,19 +19,30 @@ Two defect classes are detected:
 Usage::
 
     from pathlib import Path
-    from lib.verify.static import static_verify
+    from lib.verify.static import static_verify, validate
 
+    # Legacy API (list of Defect):
     defects = static_verify(plan, brand_dir=Path("brands/feinschliff"))
-    for d in defects:
-        print(d)
+
+    # New typed API (DiagnosticBag):
+    from lib.brand import BrandPack
+    pack = BrandPack.load(Path("brands/feinschliff"))
+    bag = validate(plan, brand=pack)
+    if bag.has_errors():
+        print(f"{len(bag)} error(s)")
 """
 from __future__ import annotations
 
 import re
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from lib.defects import Defect, DefectKind, Severity
+
+if TYPE_CHECKING:
+    from lib.brand import BrandPack
+    from lib.diagnostics import DiagnosticBag
 
 # Slot interpolation RE — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
@@ -375,3 +386,74 @@ def static_verify(
                     ))
 
     return defects
+
+
+# ---------------------------------------------------------------------------
+# Typed DiagnosticBag entry point
+# ---------------------------------------------------------------------------
+
+def validate(
+    plan: dict,
+    brand: "BrandPack",
+    bag: "DiagnosticBag | None" = None,
+    *,
+    plan_dir: Path | None = None,
+) -> "DiagnosticBag":
+    """Inspect a plan dict for static geometry defects, returning a DiagnosticBag.
+
+    Typed entry point that wraps :func:`static_verify` and maps its legacy
+    ``Defect`` objects to ``lib.diagnostics.Defect`` objects in a
+    ``DiagnosticBag``.
+
+    Parameters
+    ----------
+    plan:
+        The loaded plan.yaml dict.
+    brand:
+        Active brand pack.
+    bag:
+        Optional existing bag to accumulate into.  When None, a fresh
+        ``DiagnosticBag()`` is created.
+    plan_dir:
+        Directory for resolving relative layout paths.
+
+    Returns
+    -------
+    DiagnosticBag
+        The (possibly pre-populated) bag with newly found defects appended.
+    """
+    from lib.diagnostics import (
+        DiagnosticBag as _Bag,
+        Defect as _NewDefect,
+        DefectKind as _NewKind,
+        Severity as _NewSev,
+    )
+
+    if bag is None:
+        bag = _Bag()
+
+    # Run the existing static_verify to get legacy Defect objects.
+    legacy_defects = static_verify(plan, brand_dir=brand.root, plan_dir=plan_dir)
+
+    # Map legacy Severity (FATAL/WARN/INFO) → new Severity (ERROR/WARNING/INFO).
+    _SEV_MAP = {
+        "fatal": _NewSev.ERROR,
+        "warn": _NewSev.WARNING,
+        "info": _NewSev.INFO,
+    }
+
+    for ld in legacy_defects:
+        try:
+            new_kind = _NewKind(ld.kind.value)
+        except ValueError:
+            new_kind = _NewKind.INTERNAL
+        new_sev = _SEV_MAP.get(ld.severity.value, _NewSev.WARNING)
+        bag.add(_NewDefect(
+            kind=new_kind,
+            severity=new_sev,
+            message=ld.message,
+            location=f"slide {ld.slide_index}" if ld.slide_index else None,
+            extra=dict(ld.meta) if ld.meta else {},
+        ))
+
+    return bag

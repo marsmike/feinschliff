@@ -11,11 +11,16 @@ import subprocess
 import sys
 from pathlib import Path
 
+from lib.verify.static import static_verify, validate
+from lib.brand import BrandPack
+from lib.diagnostics import DiagnosticBag, Severity
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRANDS_DIR = REPO_ROOT / "brands"
 BRAND_DIR = REPO_ROOT / "brands" / "feinschliff"
 LAYOUTS_DIR = REPO_ROOT / "layouts"
+BRAND_PACK = BrandPack.load(BRAND_DIR)
 
 
 # ---------------------------------------------------------------------------
@@ -420,6 +425,50 @@ def test_plan_dir_resolves_layout_relative_to_plan_file(tmp_path):
     assert defects == [], (
         f"Expected no defects when plan_dir resolves a custom layout; got: {defects}"
     )
+
+
+# ---------------------------------------------------------------------------
+# validate() — typed DiagnosticBag entry point
+# ---------------------------------------------------------------------------
+
+def _layout_name(layouts_dir: Path) -> str | None:
+    """Return the stem of the first bundled layout, or None."""
+    f = next(layouts_dir.glob("*.slide.dsl"), None)
+    return f.stem if f else None
+
+
+def test_validate_returns_diagnostic_bag():
+    """validate() returns a DiagnosticBag, not a list."""
+    name = _layout_name(LAYOUTS_DIR)
+    if not name:
+        import pytest; pytest.skip("no bundled layouts")
+    plan = _make_plan(f"layouts/{name}.slide.dsl",
+                      {"title": "T", "eyebrow": "E", "body": "B"})
+    result = validate(plan, BRAND_PACK, plan_dir=REPO_ROOT)
+    assert isinstance(result, DiagnosticBag)
+
+
+def test_validate_accumulates_into_existing_bag():
+    """When an existing bag is supplied, validate appends to it and returns it."""
+    name = _layout_name(LAYOUTS_DIR)
+    if not name:
+        import pytest; pytest.skip("no bundled layouts")
+    plan = _make_plan(f"layouts/{name}.slide.dsl", {"title": "T"})
+    existing = DiagnosticBag()
+    result = validate(plan, BRAND_PACK, existing, plan_dir=REPO_ROOT)
+    assert result is existing  # same object returned
+
+
+def test_validate_defects_have_valid_severity():
+    """All defects in the bag have a recognised Severity value."""
+    name = _layout_name(LAYOUTS_DIR)
+    if not name:
+        import pytest; pytest.skip("no bundled layouts")
+    plan = _make_plan(f"layouts/{name}.slide.dsl", {})
+    bag = validate(plan, BRAND_PACK, plan_dir=REPO_ROOT)
+    assert isinstance(bag, DiagnosticBag)
+    for defect in bag:
+        assert defect.severity in (Severity.ERROR, Severity.WARNING, Severity.INFO)
 
 
 # ---------------------------------------------------------------------------
