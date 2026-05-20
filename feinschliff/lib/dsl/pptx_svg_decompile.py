@@ -2004,43 +2004,83 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     else:
         axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
 
-    # Plot-area extents inside the frame (EMU). Match PowerPoint defaults:
-    # ~7% left for y-axis labels, ~12% top for cat labels, ~22% bottom for legend.
-    plot_x = x0 + int(fw * 0.07)
-    plot_y = y0 + int(fh * 0.12)
-    plot_w = int(fw * 0.91)
-    plot_h = int(fh * 0.66)
+    # Axis visibility — `<c:valAx><c:delete val="1"/>` and `<c:catAx>
+    # <c:delete val="1"/>` hide the respective axis at render time. Many
+    # showcase charts use this for a clean look: bars/segments alone, no
+    # tick labels or category strings. Reading the flag from the source
+    # XML is much better than always emitting ticks (and then mismatching
+    # source pixels at every tick position).
+    val_axis_hidden = False
+    cat_axis_hidden = False
+    for ax in root.findall(f".//{{{CHART_NS}}}valAx"):
+        d = ax.find(f"{{{CHART_NS}}}delete")
+        if d is not None and d.get("val") in ("1", "true"):
+            val_axis_hidden = True
+            break
+    for ax in root.findall(f".//{{{CHART_NS}}}catAx"):
+        d = ax.find(f"{{{CHART_NS}}}delete")
+        if d is not None and d.get("val") in ("1", "true"):
+            cat_axis_hidden = True
+            break
 
-    # Y-axis numeric labels on the left.
-    n_ticks = axis_max + 1
-    for i in range(n_ticks):
-        v = axis_max - i  # top→bottom
-        ty = plot_y + int(plot_h * i / axis_max)
-        shapes.append(Shape(
-            kind="text",
-            x=cmap.x(x0 + int(fw * 0.005)),
-            y=cmap.y(ty - 180000),
-            w=cmap.w(int(fw * 0.05)),
-            h=cmap.h(360000),
-            text_runs=[TextRun(text=str(v), pt=14)],
-        ))
+    # Data-label flags — `<c:dLbls>` controls whether value/category/series
+    # text gets drawn next to each bar. PowerPoint's structure puts this
+    # on the bar chart element itself (and optionally per-series). Read
+    # the top-level flags only for now; missing flags default to PPT's
+    # behaviour (no labels unless set).
+    def _dlbl_flag(parent, name: str) -> bool:
+        el = parent.find(f"{{{CHART_NS}}}dLbls/{{{CHART_NS}}}{name}")
+        return el is not None and el.get("val") in ("1", "true")
+    show_val_labels = _dlbl_flag(bar, "showVal")
+    show_cat_labels = _dlbl_flag(bar, "showCatName")
+
+    # Plot-area extents inside the frame (EMU). When the axes are hidden
+    # the plot can fill the frame edge-to-edge; otherwise reserve
+    # PowerPoint's typical insets for tick/category labels.
+    if val_axis_hidden and cat_axis_hidden:
+        plot_x = x0
+        plot_y = y0
+        plot_w = fw
+        plot_h = fh
+    else:
+        plot_x = x0 + int(fw * 0.07) if not val_axis_hidden else x0
+        plot_y = y0 + int(fh * 0.12) if not cat_axis_hidden else y0
+        plot_w = int(fw * (1.0 - 0.07 - 0.02)) if not val_axis_hidden else fw
+        plot_h = int(fh * (1.0 - 0.12 - 0.22)) if not cat_axis_hidden else int(fh * (1.0 - 0.22))
+
+    # Y-axis numeric labels — only when the value axis isn't hidden.
+    if not val_axis_hidden:
+        n_ticks = axis_max + 1
+        for i in range(n_ticks):
+            v = axis_max - i  # top→bottom
+            ty = plot_y + int(plot_h * i / axis_max)
+            shapes.append(Shape(
+                kind="text",
+                x=cmap.x(x0 + int(fw * 0.005)),
+                y=cmap.y(ty - 180000),
+                w=cmap.w(int(fw * 0.05)),
+                h=cmap.h(360000),
+                text_runs=[TextRun(text=str(v), pt=14)],
+            ))
 
     # Skip gridlines: source has barely-visible hairlines; rendering them at
     # 0.75pt over a 1240px-wide plot adds heavy diff pixels and emit_dsl
     # orders lines after rects, so they paint OVER the bars producing stripes.
 
-    # Category labels above each group.
+    # Category labels above each group — only when the category axis
+    # isn't hidden AND the source explicitly enables them via dLbls.
     cat_w = plot_w // n_cats if n_cats else plot_w
-    for ci in range(n_cats):
-        cx = plot_x + ci * cat_w + cat_w // 4
-        shapes.append(Shape(
-            kind="text",
-            x=cmap.x(cx),
-            y=cmap.y(plot_y - int(fh * 0.07)),
-            w=cmap.w(cat_w // 2),
-            h=cmap.h(int(fh * 0.06)),
-            text_runs=[TextRun(text=cats[ci] if ci < len(cats) else "", pt=14)],
-        ))
+    if not cat_axis_hidden:
+        for ci in range(n_cats):
+            cx = plot_x + ci * cat_w + cat_w // 4
+            shapes.append(Shape(
+                kind="text",
+                x=cmap.x(cx),
+                y=cmap.y(plot_y - int(fh * 0.07)),
+                w=cmap.w(cat_w // 2),
+                h=cmap.h(int(fh * 0.06)),
+                text_runs=[TextRun(text=cats[ci] if ci < len(cats) else "", pt=14)],
+            ))
 
     # Bars: each category has n_series side-by-side bars. PowerPoint sizes
     # them via `<c:gapWidth val="N"/>` where N is the inter-group gap as a
@@ -2108,16 +2148,17 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                         w=cmap.w(bw_), h=cmap.h(bar_h),
                         fill=color,
                     ))
-                    label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
-                    label = label.replace(".", ",")
-                    shapes.append(Shape(
-                        kind="text",
-                        x=cmap.x(bx_ + bw_ + 50000),
-                        y=cmap.y(by_),
-                        w=cmap.w(int(fw * 0.08)),
-                        h=cmap.h(int(bar_h)),
-                        text_runs=[TextRun(text=label, pt=14)],
-                    ))
+                    if show_val_labels:
+                        label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                        label = label.replace(".", ",")
+                        shapes.append(Shape(
+                            kind="text",
+                            x=cmap.x(bx_ + bw_ + 50000),
+                            y=cmap.y(by_),
+                            w=cmap.w(int(fw * 0.08)),
+                            h=cmap.h(int(bar_h)),
+                            text_runs=[TextRun(text=label, pt=14)],
+                        ))
     else:
         bar_w = int(cat_w / (n_series + gap_pct / 100))
         group_w = bar_w * n_series
@@ -2134,17 +2175,18 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                     w=cmap.w(bar_w), h=cmap.h(bh),
                     fill=color,
                 ))
-                # Value label above the bar.
-                label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
-                label = label.replace(".", ",")
-                shapes.append(Shape(
-                    kind="text",
-                    x=cmap.x(bx - bar_w // 2),
-                    y=cmap.y(by - 400000),
-                    w=cmap.w(bar_w * 2),
-                    h=cmap.h(360000),
-                    text_runs=[TextRun(text=label, pt=14)],
-                ))
+                # Value label above the bar — only when source enables it.
+                if show_val_labels:
+                    label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                    label = label.replace(".", ",")
+                    shapes.append(Shape(
+                        kind="text",
+                        x=cmap.x(bx - bar_w // 2),
+                        y=cmap.y(by - 400000),
+                        w=cmap.w(bar_w * 2),
+                        h=cmap.h(360000),
+                        text_runs=[TextRun(text=label, pt=14)],
+                    ))
 
     # Legend at bottom-left.
     legend_y = y0 + fh - int(fh * 0.12)
