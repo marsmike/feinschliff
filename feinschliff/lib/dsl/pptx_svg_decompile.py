@@ -1486,18 +1486,33 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
     # only r/l (column-style legend with one row per category — the
     # dominant case for pies); t/b are rare on small pies and fall back
     # to right-side. Search at chart-space level since legend lives on
-    # the chart root, not inside pie_el.
+    # the chart root, not inside pie_el. When the chart has NO `<c:legend>`
+    # element at all, the pie should fill its frame (no legend slot to
+    # reserve). The previous code defaulted to "r" even when no legend
+    # element existed, which made pies on legend-less charts (showcase
+    # decks where every slice is labelled inline with `<c:showPercent>`)
+    # render at ~50% of their source size.
     chart_root = pie_el
     while chart_root is not None and chart_root.tag != f"{{{CHART_NS}}}chartSpace":
         parent = chart_root.getparent()
         if parent is None:
             break
         chart_root = parent
-    legend_pos = "r"
+    legend_pos: str | None = None
     if chart_root is not None:
-        lp = chart_root.find(f".//{{{CHART_NS}}}legend/{{{CHART_NS}}}legendPos")
-        if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
-            legend_pos = lp.get("val")
+        legend_el = chart_root.find(f".//{{{CHART_NS}}}legend")
+        if legend_el is not None:
+            # Overlay flag: when the legend is set to overlay the plot area
+            # (`<c:overlay val="1"/>`), no horizontal slot is reserved for
+            # it — treat as legend-less for sizing purposes.
+            overlay_el = legend_el.find(f"{{{CHART_NS}}}overlay")
+            is_overlay = overlay_el is not None and overlay_el.get("val") in ("1", "true")
+            lp = legend_el.find(f"{{{CHART_NS}}}legendPos")
+            if not is_overlay:
+                if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
+                    legend_pos = lp.get("val")
+                else:
+                    legend_pos = "r"  # PowerPoint default when legend present
 
     # Data label flags — <c:dLbls><c:showPercent val="1"/> or
     # <c:dLbls><c:showVal val="1"/>. Mutually exclusive in practice;
@@ -1539,6 +1554,21 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
     # labels around the circumference.
     r_px = min(pie_w_px, pie_h_px) * 0.36
 
+    # Doughnut hole: `<c:holeSize val="N"/>` on `<c:doughnutChart>` where
+    # N is 10..90 = inner-radius percentage of outer radius. Default 50
+    # when the element is missing on a doughnutChart; pieChart has no
+    # hole. `pie_el.tag` localname distinguishes the two.
+    inner_r_px = 0.0
+    if etree.QName(pie_el).localname == "doughnutChart":
+        hole_pct = 50
+        hs = pie_el.find(f"{{{CHART_NS}}}holeSize")
+        if hs is not None and hs.get("val"):
+            try:
+                hole_pct = max(10, min(90, int(hs.get("val"))))
+            except (TypeError, ValueError):
+                pass
+        inner_r_px = r_px * (hole_pct / 100.0)
+
     # Start at 12 o'clock (-π/2), sweep clockwise. PowerPoint pies follow
     # this convention; matching it preserves slice-to-color correspondence
     # against the source.
@@ -1555,14 +1585,26 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
         x2 = cx_px + r_px * math.cos(angle_end)
         y2 = cy_px + r_px * math.sin(angle_end)
         large_arc = 1 if sweep > math.pi else 0
-        # SVG arc: A rx,ry x-axis-rotation large-arc-flag sweep-flag x,y
-        # sweep-flag=1 (clockwise) matches our positive-angle direction in
-        # screen-space (y grows down).
-        d = (
-            f"M {cx_px:.1f},{cy_px:.1f} "
-            f"L {x1:.1f},{y1:.1f} "
-            f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
-        )
+        if inner_r_px > 0:
+            # Annular sector — outer arc forward + inner arc reversed.
+            ix1 = cx_px + inner_r_px * math.cos(angle_start)
+            iy1 = cy_px + inner_r_px * math.sin(angle_start)
+            ix2 = cx_px + inner_r_px * math.cos(angle_end)
+            iy2 = cy_px + inner_r_px * math.sin(angle_end)
+            d = (
+                f"M {x1:.1f},{y1:.1f} "
+                f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} "
+                f"L {ix2:.1f},{iy2:.1f} "
+                f"A {inner_r_px:.1f},{inner_r_px:.1f} 0 {large_arc},0 {ix1:.1f},{iy1:.1f} "
+                f"Z"
+            )
+        else:
+            # Pie wedge — apex at centre.
+            d = (
+                f"M {cx_px:.1f},{cy_px:.1f} "
+                f"L {x1:.1f},{y1:.1f} "
+                f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
+            )
         fill_token = slice_colors.get(i) or f"chart-series-{(i % 6) + 1}"
         shapes.append(Shape(
             kind="shape",
@@ -1663,6 +1705,16 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     if bar is None:
         return
 
+    # Bar orientation: <c:barDir val="bar"/> = horizontal bars (categories
+    # stack vertically, values extend rightward); val="col" (default) =
+    # vertical columns. The previous code always emitted columns, so any
+    # horizontal-bar source slide rendered with bars rotated 90° — visible
+    # as vertical stripes where the source had horizontal bars.
+    bar_dir_el = bar.find(f"{{{CHART_NS}}}barDir")
+    horizontal_bars = (
+        bar_dir_el is not None and bar_dir_el.get("val") == "bar"
+    )
+
     series = []
     for ser in bar.findall(f"{{{CHART_NS}}}ser"):
         name_el = ser.find(f".//{{{CHART_NS}}}tx//{{{CHART_NS}}}v")
@@ -1746,32 +1798,63 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             gap_pct = float(gw_el.get("val"))
         except (TypeError, ValueError):
             pass
-    bar_w = int(cat_w / (n_series + gap_pct / 100))
-    group_w = bar_w * n_series
-    group_inset = (cat_w - group_w) // 2
-    for si, (name, vals, _, ser_color) in enumerate(series):
-        color = ser_color or f"chart-series-{(si % 6) + 1}"
-        for ci, v in enumerate(vals):
-            bx = plot_x + ci * cat_w + group_inset + si * bar_w
-            bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
-            by = plot_y + plot_h - bh
-            shapes.append(Shape(
-                kind="rect",
-                x=cmap.x(bx), y=cmap.y(by),
-                w=cmap.w(bar_w), h=cmap.h(bh),
-                fill=color,
-            ))
-            # Value label above the bar.
-            label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
-            label = label.replace(".", ",")
-            shapes.append(Shape(
-                kind="text",
-                x=cmap.x(bx - bar_w // 2),
-                y=cmap.y(by - 400000),
-                w=cmap.w(bar_w * 2),
-                h=cmap.h(360000),
-                text_runs=[TextRun(text=label, pt=14)],
-            ))
+    if horizontal_bars:
+        # Horizontal layout: category axis runs vertically (rows), value
+        # axis runs horizontally. Each category gets a row of height
+        # `cat_h`; bars within stack by series and extend rightward.
+        cat_h = plot_h // n_cats if n_cats else plot_h
+        bar_h = int(cat_h / (n_series + gap_pct / 100))
+        group_h = bar_h * n_series
+        group_inset_v = (cat_h - group_h) // 2
+        for si, (name, vals, _, ser_color) in enumerate(series):
+            color = ser_color or f"chart-series-{(si % 6) + 1}"
+            for ci, v in enumerate(vals):
+                by_ = plot_y + ci * cat_h + group_inset_v + si * bar_h
+                bw_ = int(plot_w * v / axis_max) if axis_max > 0 else 0
+                bx_ = plot_x
+                shapes.append(Shape(
+                    kind="rect",
+                    x=cmap.x(bx_), y=cmap.y(by_),
+                    w=cmap.w(bw_), h=cmap.h(bar_h),
+                    fill=color,
+                ))
+                label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                label = label.replace(".", ",")
+                shapes.append(Shape(
+                    kind="text",
+                    x=cmap.x(bx_ + bw_ + 50000),
+                    y=cmap.y(by_),
+                    w=cmap.w(int(fw * 0.08)),
+                    h=cmap.h(int(bar_h)),
+                    text_runs=[TextRun(text=label, pt=14)],
+                ))
+    else:
+        bar_w = int(cat_w / (n_series + gap_pct / 100))
+        group_w = bar_w * n_series
+        group_inset = (cat_w - group_w) // 2
+        for si, (name, vals, _, ser_color) in enumerate(series):
+            color = ser_color or f"chart-series-{(si % 6) + 1}"
+            for ci, v in enumerate(vals):
+                bx = plot_x + ci * cat_w + group_inset + si * bar_w
+                bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
+                by = plot_y + plot_h - bh
+                shapes.append(Shape(
+                    kind="rect",
+                    x=cmap.x(bx), y=cmap.y(by),
+                    w=cmap.w(bar_w), h=cmap.h(bh),
+                    fill=color,
+                ))
+                # Value label above the bar.
+                label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                label = label.replace(".", ",")
+                shapes.append(Shape(
+                    kind="text",
+                    x=cmap.x(bx - bar_w // 2),
+                    y=cmap.y(by - 400000),
+                    w=cmap.w(bar_w * 2),
+                    h=cmap.h(360000),
+                    text_runs=[TextRun(text=label, pt=14)],
+                ))
 
     # Legend at bottom-left.
     legend_y = y0 + fh - int(fh * 0.12)
