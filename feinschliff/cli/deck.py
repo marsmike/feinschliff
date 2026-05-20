@@ -780,7 +780,7 @@ def cmd_build(args) -> int:
 
 
 def cmd_pick(args) -> int:
-    from lib.layout_picker import pick_layout
+    from lib.deck.picker import LayoutPicker
 
     if args.signals == "-":
         raw = sys.stdin.read()
@@ -788,25 +788,13 @@ def cmd_pick(args) -> int:
         raw = Path(args.signals).read_text()
     signals = yaml.safe_load(raw) or {}
 
-    candidates = pick_layout(
-        role=signals.get("role"),
-        concept_count=signals.get("concept_count"),
-        data_quantity=signals.get("data_quantity"),
-        comparison=signals.get("comparison"),
-        narrative_role=signals.get("narrative_role"),
-        narrative_act=signals.get("narrative_act"),
-        time_axis_role=signals.get("time_axis_role"),
-        audience_mode=signals.get("audience_mode"),
-        top_k=args.top_k,
-    )
+    picker = LayoutPicker(top_k=args.top_k)
+    candidates = picker.candidates(signals)
     if not candidates:
         print("deck: no candidate layouts matched the signals", file=sys.stderr)
         return 1
     for c in candidates:
-        rationale = c["rationale"]
-        if isinstance(rationale, list):
-            rationale = ", ".join(rationale)
-        print(f"{c['score']:5.2f}  {c['layout']:<24}  {rationale}")
+        print(f"{c.score:5.2f}  {c.layout_name:<24}  {c.reason}")
     return 0
 
 
