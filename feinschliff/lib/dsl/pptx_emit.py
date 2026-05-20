@@ -51,6 +51,8 @@ from .tokens import Tokens
 
 if TYPE_CHECKING:
     from ..image_provider import ImageHit, ImageProvider
+    from lib.brand import BrandPack
+    from lib.dsl.ast import Document, Element
 
 
 class DSLError(Exception):
@@ -1901,6 +1903,98 @@ def _unpack_slide_payload(
         f"build_multi_slide: slide payload must be a 3- or 4-tuple "
         f"(nodes, tokens, asset_root[, notes]); got len={len(entry)}"
     )
+
+
+def emit_pptx_from_document(
+    doc: "Document",
+    pack: "BrandPack",
+    out_path: Path,
+    *,
+    image_provider: "ImageProvider | None" = None,
+) -> Path:
+    """Emit a PPTX file from a typed :class:`~lib.dsl.ast.Document`.
+
+    Delegates to :func:`build_presentation` (single-slide) or
+    :func:`build_multi_slide` (multi-slide) via DSLNode reconstruction.
+
+    Parameters
+    ----------
+    doc:
+        Typed Document AST. Each slide is emitted as one PPTX slide.
+    pack:
+        BrandPack used to load tokens and resolve asset paths.
+    out_path:
+        Destination ``.pptx`` path (created or overwritten).
+    image_provider:
+        Optional image provider for ``query:`` picture slots.
+
+    Returns
+    -------
+    Path
+        The written ``out_path``.
+    """
+    from lib.dsl.tokens import load_tokens
+
+    tokens = load_tokens(pack.root)
+    asset_root = pack.root / "assets" if (pack.root / "assets").is_dir() else None
+
+    # Convert Document slides → DSLNode lists for the existing emitter.
+    slide_payloads: list[tuple] = []
+    for slide in doc.slides:
+        nodes = _elements_to_nodes(slide.elements)
+        slide_payloads.append((nodes, tokens, asset_root, slide.notes))
+
+    if not slide_payloads:
+        raise ValueError("emit_pptx_from_document: document has no slides")
+
+    if len(slide_payloads) == 1:
+        nodes, tok, a_root, notes = slide_payloads[0]
+        prs = build_presentation(
+            nodes, tok,
+            asset_root=a_root,
+            image_provider=image_provider,
+            notes=notes,
+        )
+    else:
+        prs = build_multi_slide(
+            slide_payloads,
+            image_provider=image_provider,
+        )
+
+    prs.save(str(out_path))
+    return out_path
+
+
+def _elements_to_nodes(elements: "list[Element]") -> list[DSLNode]:
+    """Reconstruct DSLNode objects from typed Element AST.
+
+    Each Element stores the original DSL kind in ``props['_dsl_kind']``.
+    Position args and keyword args are recovered from props.
+    """
+    nodes: list[DSLNode] = []
+    for el in elements:
+        props = el.props
+        kind = props.get("_dsl_kind") or el.kind.value
+        pos_args = list(props.get("pos_args") or [])
+        kw: dict = {
+            k: v for k, v in props.items()
+            if k not in ("pos_args", "label", "source", "line_no",
+                         "_dsl_kind", "compound_name")
+        }
+        label = props.get("label")
+        source = props.get("source")
+        line_no = int(props.get("line_no") or 0)
+        children_nodes = _elements_to_nodes(el.children) if el.children else None
+        nodes.append(DSLNode(
+            kind=kind,
+            pos_args=pos_args,
+            kw_args=kw,
+            label=label,
+            line_no=line_no,
+            source=source,
+            body=children_nodes,
+        ))
+    return nodes
 
 
 def build_multi_slide(
