@@ -6,12 +6,30 @@ a `kind` drawn from `DefectKind` and a `severity` drawn from `Severity`.
 and verifies to exit non-zero by default; CLI flags like
 `--allow-diagram-warnings` and `--allow-missing-assets` shave individual
 kinds off that set per invocation.
+
+Re-exports from ``lib.diagnostics``:
+
+- :class:`~lib.diagnostics.DiagnosticBag` — typed collection wrapper
+
+Note: ``Severity`` and ``DefectKind`` in this module are the LEGACY enums
+used throughout the existing codebase (FATAL/WARN/INFO values, slide_index
+on Defect, etc.) and differ from the ``Severity``/``DefectKind`` in
+``lib.diagnostics`` which follow conventional ERROR/WARNING/INFO naming.
+Both modules coexist during the migration.
 """
 from __future__ import annotations
 
 import dataclasses
 from enum import Enum
 from typing import Any
+
+# Re-export DiagnosticBag so existing callers can import it from either module.
+from lib.diagnostics import DiagnosticBag  # noqa: F401
+
+__all__ = [
+    "Severity", "DefectKind", "Defect", "fatal_kinds", "format_defect",
+    "DiagnosticBag",
+]
 
 
 class Severity(str, Enum):
