@@ -134,6 +134,12 @@ class Shape:
     # placeholder (genericised brand-template behaviour).
     media_path: str | None = None
     media_rid: str | None = None  # rId of the <a:blip r:embed=...>, for extraction
+    # When True, `emit_dsl` skips the placeholder-text filter for this
+    # text shape. Set for text emitted from inside a `<a:tbl>` cell, so
+    # phrases like "Placeholder text" that the filter would normally
+    # drop are kept — table cells are the actual rendered content, not
+    # layout-level demo prompts.
+    skip_placeholder_filter: bool = False
     # Resolved python-pptx Part for the embedded image, captured at walk
     # time so the rId is looked up against the part that actually owns it
     # (slide vs. layout vs. master). Without this, layout-inherited
@@ -1811,6 +1817,7 @@ def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
                     kind="text", x=cmap.x(x_cursor + cw // 20), y=cmap.y(y_cursor + row_h // 4),
                     w=cmap.w(cw - cw // 10), h=cmap.h(row_h),
                     text_runs=runs,
+                    skip_placeholder_filter=True,
                 ))
             x_cursor += cw
         y_cursor += row_h
@@ -2749,6 +2756,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # the whole shape gets dropped.
     filtered: list[Shape] = []
     for t in texts:
+        if t.skip_placeholder_filter:
+            # Table cell text — pass through unfiltered. The table cell
+            # IS the content the source renders; suppressing "Placeholder
+            # text" / "This text can be replaced…" here strips visible
+            # source content rather than layout-level demo prompts.
+            filtered.append(t)
+            continue
         if _is_placeholder_text(t.text_runs):
             continue
         stripped = _strip_placeholder_paragraphs(t.text_runs)
