@@ -6,10 +6,12 @@ import pytest
 from lib.dsl.parser import (
     CompoundDef,
     DSLNode,
+    parse_document,
     parse_lines,
     parse_wh,
     parse_xy,
 )
+from lib.dsl.ast import Document, Element, ElementKind, Slide
 
 
 def test_parses_minimal_text_line():
@@ -144,3 +146,75 @@ def test_parse_xy_rejects_malformed():
         parse_xy("not-a-coord")
     with pytest.raises(ValueError):
         parse_wh("1920,1080")
+
+
+# ---------------------------------------------------------------------------
+# parse_document
+# ---------------------------------------------------------------------------
+
+def test_parse_document_returns_document():
+    dsl = 'canvas 1920x1080\ntext 100,100 "Hello"\n'
+    doc = parse_document(dsl)
+    assert isinstance(doc, Document)
+    assert doc.version == 1
+
+
+def test_parse_document_creates_one_slide():
+    dsl = 'canvas 1920x1080\ntext 100,100 "X"\n'
+    doc = parse_document(dsl)
+    assert len(doc.slides) == 1
+    assert isinstance(doc.slides[0], Slide)
+
+
+def test_parse_document_canvas_goes_to_meta():
+    dsl = "canvas 1920x1080\n"
+    doc = parse_document(dsl)
+    assert doc.slides[0].meta.get("canvas") == {"size": "1920x1080"}
+
+
+def test_parse_document_theme_becomes_layout():
+    dsl = "canvas 1920x1080\ntheme feinschliff\n"
+    doc = parse_document(dsl)
+    assert doc.slides[0].layout == "feinschliff"
+
+
+def test_parse_document_text_node_becomes_element():
+    dsl = 'text 100,100 style:title "Title"\n'
+    doc = parse_document(dsl)
+    elements = doc.slides[0].elements
+    assert len(elements) == 1
+    assert elements[0].kind is ElementKind.TEXT
+
+
+def test_parse_document_rect_becomes_shape():
+    dsl = "rect 0,0 1920x100 fill:accent\n"
+    doc = parse_document(dsl)
+    el = doc.slides[0].elements[0]
+    assert el.kind is ElementKind.SHAPE
+
+
+def test_parse_document_picture_becomes_image():
+    dsl = "picture 100,100 760x520 path:hero.png\n"
+    doc = parse_document(dsl)
+    el = doc.slides[0].elements[0]
+    assert el.kind is ElementKind.IMAGE
+
+
+def test_parse_document_unknown_becomes_compound():
+    dsl = "footer page:4\n"
+    doc = parse_document(dsl)
+    el = doc.slides[0].elements[0]
+    assert el.kind is ElementKind.COMPOUND
+
+
+def test_parse_document_source_in_meta():
+    dsl = "text 0,0 \"x\"\n"
+    doc = parse_document(dsl, source="my-layout.slide.dsl")
+    assert doc.slides[0].meta.get("source") == "my-layout.slide.dsl"
+
+
+def test_parse_document_element_props_contain_label():
+    dsl = 'text 100,200 style:title "My Title"\n'
+    doc = parse_document(dsl)
+    el = doc.slides[0].elements[0]
+    assert el.props.get("label") == "My Title"

@@ -431,6 +431,125 @@ def parse_file(path: Path) -> tuple[list[DSLNode], list[CompoundDef]]:
 
 
 # ---------------------------------------------------------------------------
+# Typed Document entry points
+# ---------------------------------------------------------------------------
+
+def parse_document(text: str, *, source: str | None = None) -> "Document":
+    """Parse DSL text and return a typed :class:`~lib.dsl.ast.Document`.
+
+    Wraps :func:`parse_lines` and converts DSL nodes to the typed AST.
+    A single-file layout produces a ``Document`` with one ``Slide``.
+
+    The layout name is inferred from any ``theme`` node; other nodes are
+    mapped to :class:`~lib.dsl.ast.Element` objects.  The ``source``
+    parameter flows into ``Slide.meta['source']`` for traceability.
+
+    Parameters
+    ----------
+    text:
+        Raw DSL source text.
+    source:
+        Optional filename for error messages.
+
+    Returns
+    -------
+    Document
+        A typed :class:`~lib.dsl.ast.Document` wrapping the parsed nodes.
+    """
+    from lib.dsl.ast import Document, Slide, Element, ElementKind
+
+    nodes, _compounds = parse_lines(text, source=source)
+
+    # Extract layout/theme name and canvas from directives.
+    layout_name = ""
+    canvas: dict = {}
+    elements: list[Element] = []
+
+    for node in nodes:
+        if node.kind == "canvas":
+            # e.g. canvas 1920x1080
+            if node.pos_args:
+                canvas = {"size": node.pos_args[0]}
+            continue
+        if node.kind == "theme":
+            # e.g. theme feinschliff
+            if node.pos_args:
+                layout_name = node.pos_args[0]
+            continue
+        elements.append(_node_to_element(node))
+
+    meta: dict = {}
+    if canvas:
+        meta["canvas"] = canvas
+    if source:
+        meta["source"] = source
+
+    slide = Slide(layout=layout_name, elements=elements, meta=meta)
+    return Document(version=1, slides=[slide])
+
+
+def parse_document_file(path: Path) -> "Document":
+    """Parse a DSL file and return a typed Document.
+
+    Convenience wrapper around :func:`parse_document` that reads the file
+    and passes its path as ``source``.
+    """
+    return parse_document(path.read_text(), source=str(path))
+
+
+# Mapping from DSL node kind string → ElementKind
+_KIND_MAP: dict[str, str] = {
+    "text":       "text",
+    "picture":    "image",
+    "rect":       "shape",
+    "shape":      "shape",
+    "line":       "shape",
+    "polyline":   "shape",
+    "svg":        "diagram",
+    "excalidraw": "diagram",
+    "_for":       "group",
+}
+
+
+def _node_to_element(node: DSLNode) -> "Element":
+    """Convert a DSLNode to a typed Element.
+
+    Unknown node kinds (unresolved compound calls) map to
+    ``ElementKind.COMPOUND``.
+    """
+    from lib.dsl.ast import Element, ElementKind
+
+    kind_str = _KIND_MAP.get(node.kind, "compound")
+    kind = ElementKind(kind_str)
+
+    # Build props from the DSLNode fields.
+    props: dict = {}
+    if node.pos_args:
+        props["pos_args"] = list(node.pos_args)
+    if node.kw_args:
+        props.update(node.kw_args)
+    if node.label is not None:
+        props["label"] = node.label
+    if node.source:
+        props["source"] = node.source
+    if node.line_no:
+        props["line_no"] = node.line_no
+    # Store the original DSL kind so round-tripping can recover it.
+    props["_dsl_kind"] = node.kind
+
+    # For compound calls, store the compound name.
+    if kind is ElementKind.COMPOUND:
+        props["compound_name"] = node.kind
+
+    # Recurse into for-block bodies.
+    children: list = []
+    if node.body:
+        children = [_node_to_element(child) for child in node.body]
+
+    return Element(kind=kind, props=props, children=children)
+
+
+# ---------------------------------------------------------------------------
 # Position parsing helpers (used by expander + emitter)
 # ---------------------------------------------------------------------------
 
