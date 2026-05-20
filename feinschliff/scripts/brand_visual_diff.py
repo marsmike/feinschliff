@@ -148,6 +148,49 @@ def _ghost_overlay(src: np.ndarray, ren: np.ndarray,
     return Image.fromarray(blended)
 
 
+def _render_with_noise(ren: np.ndarray, diff_mask: np.ndarray) -> Image.Image:
+    """Render image with red pixels painted wherever it diverges from source.
+
+    Single-layer view — the rendered slide as the base, red ink on every pixel
+    the diff scorer counted as a mismatch. Lets a reviewer see "where the
+    render is wrong" without the three-image ghosting of `_ghost_overlay`.
+    """
+    out = ren.copy()
+    out[diff_mask > DIFF_THRESHOLD] = [255, 32, 32]
+    return Image.fromarray(out)
+
+
+def _redline_diff(src: np.ndarray, ren: np.ndarray) -> Image.Image:
+    """Two-tone diff: source ink in BLUE, render ink in RED, overlap in PURPLE.
+
+    Classic film/print redline. White background, every source-darker-than-mid
+    pixel tints blue, every render-darker-than-mid pixel tints red. Where both
+    layers have ink at the same place the channels add to purple — instantly
+    distinguishing "source only" (blue ghost = thing we should have drawn but
+    didn't), "render only" (red ghost = thing we drew that source doesn't have),
+    and "matching content" (purple = both layers agree on ink position).
+    """
+    src_lum = np.dot(src[..., :3], [0.299, 0.587, 0.114])
+    ren_lum = np.dot(ren[..., :3], [0.299, 0.587, 0.114])
+    # Ink intensity = how dark the pixel is, normalised 0..1. Use a soft floor
+    # so the brightest backgrounds don't add residual tint.
+    src_ink = np.clip((220.0 - src_lum) / 220.0, 0.0, 1.0)
+    ren_ink = np.clip((220.0 - ren_lum) / 220.0, 0.0, 1.0)
+    h, w = src_lum.shape
+    out = np.full((h, w, 3), 250, dtype=np.uint8)
+    # Subtract source ink from R+G channels (leaves blue), render ink from G+B
+    # (leaves red). Overlap subtracts G from both → purple.
+    out[..., 0] = np.clip(250 - src_ink * 220, 0, 255).astype(np.uint8)  # source pulls R
+    out[..., 1] = np.clip(250 - src_ink * 220 - ren_ink * 220, 0, 255).astype(np.uint8)  # both pull G
+    out[..., 2] = np.clip(250 - ren_ink * 220, 0, 255).astype(np.uint8)  # render pulls B
+    # Correction: above subtracts source ink from R channel — we want the
+    # opposite (source = blue, so subtract from R+G, leave B). Recompute clean:
+    out[..., 0] = np.clip(250 - src_ink * 220, 0, 255).astype(np.uint8)
+    out[..., 1] = np.clip(250 - src_ink * 220 - ren_ink * 220, 0, 255).astype(np.uint8)
+    out[..., 2] = np.clip(250 - ren_ink * 220, 0, 255).astype(np.uint8)
+    return Image.fromarray(out)
+
+
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--brand-pack", type=Path, required=True,
@@ -204,6 +247,17 @@ def main() -> int:
             args.output_dir / f"{prefix}_overlay.png", format="PNG", optimize=False)
         _ghost_overlay(src, ren, diff).save(
             args.output_dir / f"{prefix}_mask.png", format="PNG", optimize=False)
+        # Single-layer "render with red where it diverges" — clearer signal
+        # for both reviewers and sub-agents than the three-image ghost view.
+        # Consumed by the iteration loop's per-layout improvement prompts.
+        _render_with_noise(ren, diff).save(
+            args.output_dir / f"{prefix}_noise.png", format="PNG", optimize=False)
+        # Redline view: source ink in blue, render ink in red, overlap in
+        # purple. Lets a reviewer see at a glance "thing we should have
+        # drawn but didn't" (blue ghost) vs "thing we drew that doesn't
+        # belong" (red ghost) vs "matching content" (purple).
+        _redline_diff(src, ren).save(
+            args.output_dir / f"{prefix}_redline.png", format="PNG", optimize=False)
 
         ssim_s = f"{metrics['ssim']:.3f}" if metrics["ssim"] is not None else "—"
         print(f"{layout:<28}{slide_no:<7}"

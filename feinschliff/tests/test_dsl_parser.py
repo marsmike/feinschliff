@@ -44,6 +44,40 @@ def test_parses_if_kwarg():
     assert nodes[0].kw_args.get("if") == "show_me"
 
 
+def test_hex_color_in_attribute_value_is_not_a_comment():
+    # `#` inside an attribute value (no whitespace before it) must NOT
+    # be treated as a comment marker. The hybrid decompiler emits raw
+    # hex like `stroke:#222640` when no palette match exists; previously
+    # the parser truncated this to `stroke:` and the build died with a
+    # cryptic empty-token KeyError.
+    nodes, _ = parse_lines("line 0,0 1,1080 stroke:#222640 stroke-width:1")
+    n = nodes[0]
+    assert n.kind == "line"
+    assert n.kw_args.get("stroke") == "#222640"
+    assert n.kw_args.get("stroke-width") == "1"
+
+
+def test_trailing_inline_comment_still_stripped():
+    # A real inline comment (preceded by whitespace) should still strip.
+    nodes, _ = parse_lines("line 0,0 1,1080 stroke:#222640  # this is a real comment")
+    n = nodes[0]
+    assert n.kw_args.get("stroke") == "#222640"
+    assert "this" not in n.kw_args
+    assert "comment" not in n.kw_args
+
+
+def test_leading_comment_line_is_skipped():
+    nodes, _ = parse_lines("# comment line\ntext 0,0 200x40 \"x\"")
+    assert len(nodes) == 1
+    assert nodes[0].kind == "text"
+
+
+def test_indented_comment_line_is_skipped():
+    nodes, _ = parse_lines("   # indented comment\ntext 0,0 200x40 \"x\"")
+    assert len(nodes) == 1
+    assert nodes[0].kind == "text"
+
+
 def test_parses_compound_definition_with_indented_body():
     src = (
         "compound footer(page, date):\n"

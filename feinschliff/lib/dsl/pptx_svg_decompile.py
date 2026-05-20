@@ -91,6 +91,23 @@ class Shape:
     is_picture: bool = False      # True for <p:pic> or ph type="pic"
     ph_type: str | None = None    # 'title','body','subTitle','pic','ftr','sldNum',...
     ph_idx: str | None = None
+    # Border width in design-px. Captured from `<a:ln w="...">` (EMU); when
+    # None the emitter uses its default hairline width.
+    stroke_width: float | None = None
+    # Source bodyPr `anchor` attribute — controls text vertical position
+    # within the shape bbox. "ctr" centers (PowerPoint default for many
+    # text frames); "b" bottoms; "t" or absent = top. Without this the DSL
+    # always emits top-anchored text, so source content that's vertically
+    # centered in its frame renders shifted up by half the frame height.
+    valign: str | None = None
+    # Text-frame internal insets as (l, t, r, b) in design-px. Source carries
+    # these on `<a:bodyPr lIns="..." tIns="..." rIns="..." bIns="...">` in EMU.
+    # When absent on source, defaults to PowerPoint's published 91440 / 45720
+    # EMU (= ~7.2px / ~3.6px at 13.33" canvas scale). Captured per-text so
+    # decompiled DSL renders at the exact source text position; without this,
+    # my emitter zeroed all four and shifted every text by ~9-19 px versus
+    # source — visible as the persistent blue/red ghost offsets in the redline.
+    padding: tuple[float, float, float, float] | None = None
     # When image_extract_dir is passed to derive(), pictures are extracted
     # from the source PPTX and this holds the brand-pack-relative path the
     # DSL's `default:` should resolve to. None falls back to the generic
@@ -113,6 +130,7 @@ class TextRun:
     bold: bool = False
     italic: bool = False
     color: str | None = None  # token name
+    align: str | None = None  # paragraph alignment: "center" | "right" | "justify" | None
 
 
 # ---------------------------------------------------------------------------
@@ -121,7 +139,21 @@ class TextRun:
 
 
 def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
-    data = json.loads(tokens_path.read_text(encoding="utf-8"))
+    # Walk the brand-pack `extends:` chain when DESIGN.md declares one, so a
+    # child pack that only carries local overrides still gets the parent's
+    # palette for nearest-colour matching. Falls back to reading just the
+    # immediate file when there's no DESIGN.md or the parent can't be
+    # resolved (e.g. out-of-tree packs whose parent lives elsewhere).
+    brand_root = tokens_path.parent
+    data = None
+    if (brand_root / "DESIGN.md").is_file():
+        try:
+            from lib.dsl.tokens import load_tokens
+            data = load_tokens(brand_root).raw
+        except (FileNotFoundError, ValueError):
+            data = None
+    if data is None:
+        data = json.loads(tokens_path.read_text(encoding="utf-8"))
     palette: dict[str, tuple[int, int, int]] = {}
     colors = data.get("color") or data.get("colors") or {}
 
@@ -240,6 +272,38 @@ class CanvasMap:
 # ---------------------------------------------------------------------------
 
 
+def _split_runs_by_color(runs: list["TextRun"]) -> list[list["TextRun"]]:
+    """Group runs into consecutive same-color blocks (paragraphs).
+
+    Newline markers (`text="\\n"`) act as paragraph separators — they don't
+    own a colour, so they're attached to the *preceding* block. Returns a
+    single-element list when all content shares one colour (the caller can
+    cheap-check len(blocks) and skip splitting in the common case).
+    """
+    blocks: list[list[TextRun]] = []
+    current: list[TextRun] = []
+    current_color: str | None = None
+    for r in runs:
+        rc = r.color if (r.text and r.text != "\n") else None
+        if rc is None:
+            # Newline marker or coloured-less run — append to current block.
+            if current:
+                current.append(r)
+            continue
+        if current_color is None:
+            current_color = rc
+            current.append(r)
+        elif rc == current_color:
+            current.append(r)
+        else:
+            blocks.append(current)
+            current = [r]
+            current_color = rc
+    if current:
+        blocks.append(current)
+    return blocks
+
+
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return a token name, or None if no fill."""
     if spPr is None:
@@ -339,6 +403,20 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
             d = pPr.find("a:defRPr", NS)
             if d is not None and d.get("sz"):
                 default_sz = int(d.get("sz"))
+        # Paragraph-level alignment (`<a:pPr algn="ctr|r|just">`). Source
+        # frequently centers KPI numbers + their labels within a card; the
+        # emitter's default `align:left` shifts them left of source. Stored
+        # on each TextRun in this paragraph so emit_dsl can lift the
+        # majority-vote into a per-text `align:` kwarg.
+        para_align = None
+        if pPr is not None:
+            algn = pPr.get("algn")
+            if algn == "ctr":
+                para_align = "center"
+            elif algn == "r":
+                para_align = "right"
+            elif algn == "just":
+                para_align = "justify"
         for r in para.findall("a:r", NS):
             rPr = r.find("a:rPr", NS)
             t = r.find("a:t", NS)
@@ -363,7 +441,7 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
                 # carry the literal text, not a `text-transform` directive.
                 if rPr.get("cap") == "all":
                     text = text.upper()
-            para_runs.append(TextRun(text=text, pt=sz / 100, bold=bold, italic=italic, color=color))
+            para_runs.append(TextRun(text=text, pt=sz / 100, bold=bold, italic=italic, color=color, align=para_align))
         if para_runs:
             # Insert a newline marker between paragraphs so emit_dsl can preserve
             # line breaks. Without this, "Headline" + "Lorem ipsum…" paragraphs
@@ -580,6 +658,23 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
     return shapes
 
 
+def extract_slide_bg_fill(slide, theme: dict[str, str],
+                          palette: dict[str, tuple[int, int, int]]) -> str | None:
+    """Return the slide's background solid-fill colour as a token / hex.
+
+    PowerPoint stores slide-level backgrounds at `<p:cSld><p:bg><p:bgPr>`,
+    sibling to the shape tree. The hybrid decompiler used to walk only
+    `p:spTree`, so dark slide backgrounds were silently dropped and the
+    rebuild defaulted to the brand's paper colour — every white-on-dark
+    text turned invisible. Returns None when the slide has no explicit
+    background fill (the build will fall through to the brand default).
+    """
+    bgPr = slide.element.find(".//p:cSld/p:bg/p:bgPr", NS)
+    if bgPr is None:
+        return None
+    return _resolve_fill(bgPr, theme, palette)
+
+
 def _walk(node, offset, shapes, slide, cmap, theme, palette):
     ox, oy = offset
     for ch in node:
@@ -629,14 +724,56 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     runs = _text_runs(ch, theme, palette)
     fill = _resolve_fill(spPr, theme, palette)
     kind = _shape_geometry_kind(spPr)
-    # Stroke (line) colour, if any — captured for stroke-only geometry
-    # (e.g. a callout-circle drawn around a bullet item with no fill).
+    # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
+    # this the rendered text lands at frame-top even when source centers
+    # it, which is the dominant cause of the redline "two ghost positions"
+    # pattern: source content at frame center, render content at frame top.
+    valign: str | None = None
+    padding_emu: tuple[int, int, int, int] | None = None
+    txBody = ch.find(".//p:txBody", NS) or ch.find(".//a:txBody", NS)
+    if txBody is not None:
+        bodyPr = txBody.find("a:bodyPr", NS)
+        if bodyPr is not None:
+            anc = bodyPr.get("anchor")
+            if anc == "ctr":
+                valign = "middle"
+            elif anc == "b":
+                valign = "bottom"
+            # Insets — l/t/r/b. Source omits = PowerPoint defaults
+            # (91440 / 45720 EMU). Capture whatever's there so decompile
+            # preserves exact text position, including the default insets.
+            left = int(bodyPr.get("lIns") or 91440)
+            top = int(bodyPr.get("tIns") or 45720)
+            right = int(bodyPr.get("rIns") or 91440)
+            bottom = int(bodyPr.get("bIns") or 45720)
+            padding_emu = (left, top, right, bottom)
+    # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
+    padding_px: tuple[float, float, float, float] | None = None
+    if padding_emu is not None:
+        left, top, right, bottom = padding_emu
+        padding_px = (cmap.w(left), cmap.h(top), cmap.w(right), cmap.h(bottom))
+    # Stroke (line) colour + width. PowerPoint stores stroke width in EMU
+    # on `<a:ln w="...">` (default ~9525 EMU = 0.75pt = 1px hairline). We
+    # convert to design-px so the emitter's `stroke-width:N` reads in the
+    # same unit as the rest of the DSL. Without width capture, borders
+    # would render as 1px hairlines regardless of source.
     stroke = None
+    stroke_width: float | None = None
     ln = spPr.find("a:ln", NS) if spPr is not None else None
     if ln is not None:
         sf = ln.find("a:solidFill", NS)
         if sf is not None:
             stroke = _resolve_solid(sf, theme, palette)
+        w_attr = ln.get("w")
+        if w_attr:
+            try:
+                w_emu = int(w_attr)
+                # Width is uniform in EMU (1pt = 12700); converting via the
+                # horizontal scale keeps it consistent with the rest of the
+                # design-px coordinate system on this canvas.
+                stroke_width = cmap.w(w_emu)
+            except (ValueError, TypeError):
+                pass
 
     # Picture-typed placeholder → picture shape (no actual <p:pic>).
     if ph_type == "pic":
@@ -648,9 +785,41 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
 
     # Pure-text shape (placeholder, label, etc.) — no rect, just text.
     if runs and fill is None and kind == "rect":
+        # Multi-paragraph colour split: when a text shape carries paragraphs
+        # in different colours (typical of a cyan headline above silver body
+        # bullets), emit one DSL `text` primitive per consecutive same-colour
+        # block at calculated y-offsets, instead of collapsing them into a
+        # single primitive whose first-run colour overrides the rest.
+        blocks = _split_runs_by_color(runs)
+        if len(blocks) > 1:
+            frame_x_px = cmap.x(x)
+            frame_y_px = cmap.y(y)
+            frame_w_px = cmap.w(w)
+            # Cursor-style y placement: each block consumes its own height
+            # based on its primary pt (line-height factor 1.25 captures
+            # standard slide leading without over-spacing tight headlines).
+            cursor = frame_y_px
+            for block_runs in blocks:
+                block_pts = [r.pt for r in block_runs if r.text and r.text != "\n"]
+                primary_pt = max(block_pts) if block_pts else 12
+                line_count = sum(1 for r in block_runs if r.text and r.text != "\n")
+                block_h_px = max(int(round(primary_pt * (4 / 3) * 1.25 * max(line_count, 1))), 24)
+                # Split blocks always anchor top so the next block starts at
+                # the bottom of the previous one — using the parent shape's
+                # valign:middle would re-center each split block and overlap
+                # neighbours.
+                shapes.append(Shape(
+                    kind="text", x=frame_x_px, y=cursor,
+                    w=frame_w_px, h=block_h_px,
+                    text_runs=block_runs, ph_type=ph_type, ph_idx=ph_idx,
+                    valign=None, padding=padding_px,
+                ))
+                cursor += block_h_px
+            return
         shapes.append(Shape(
             kind="text", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-            text_runs=runs, ph_type=ph_type, ph_idx=ph_idx,
+            text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, valign=valign,
+            padding=padding_px,
         ))
         return
 
@@ -664,7 +833,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-        fill=fill, stroke=stroke, text_runs=runs,
+        fill=fill, stroke=stroke, stroke_width=stroke_width, text_runs=runs,
         ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
     ))
 
@@ -956,37 +1125,31 @@ _NUM_RE = re.compile(r"^\s*\d{1,2}\.\s*$")
 
 
 def _style_for(pt: float, text: str, is_footer: bool) -> str:
-    # Empirically tuned against a ~60-slide source: PowerPoint/LibreOffice
-    # text rendering at 1920×1080 stays close to the authored pt (no 2.22×
-    # scaling visible). Mapping picks the nearest feinschliff baseline
-    # style by pt: display=150 · title=50 · sub=38 · agenda-t=28 · body=22.
+    # Map source pt → nearest available style bundle (by emitted px). The
+    # standard feinschliff bundles emit these px sizes:
+    #   body-sm=16  ·  body=26  ·  sub=44  ·  title-l=80  ·  huge=120  ·  display=160
+    # A DSL `text style:sub` round-trips through python-pptx as ≈33pt on the
+    # rendered slide (px*0.75). So matching SOURCE pt to BUNDLE px directly
+    # (1pt ≈ 1.333px) lands closer to source than the prior bucketing,
+    # which mapped any pt ≥ 28 to title-l and over-sized 32pt slide titles
+    # by almost 2×. Boundaries below are midpoints between adjacent bundle
+    # px values, expressed as source pt.
     if _NUM_RE.match(text):
         return "agenda-num"
     if is_footer:
         return "footer"
-    if pt >= 60:
+    px = pt * 1.333
+    if px >= 140:                              # 140+ px (≈ 105pt+) → display
         return "display"
-    if pt >= 40:
-        return "title"
-    if pt >= 28:
+    if px >= 100:                              # 100-140 px (≈ 75-105pt) → huge
+        return "huge"
+    if px >= 62:                               # 62-100 px (≈ 47-75pt) → title-l
         return "title-l"
-    if pt >= 22:
-        return "agenda-t"
-    if pt >= 18:
-        # Multi-paragraph or long-form text at the default 18pt fallback is
-        # usually body copy (PPT often inherits a smaller body size from the
-        # layout master that we cannot read). Title placeholders are short
-        # single-line phrases — keep those as "sub".
-        if pt <= 18.01 and ("\n" in text or len(text) > 70):
-            return "body"
+    if px >= 35:                               # 35-62 px (≈ 26-47pt) → sub
         return "sub"
-    if pt >= 13:
-        # Source 14-16pt (table column headers, bar-chart body, chart axis
-        # labels at ~10-11pt that PowerPoint chart engine renders larger than
-        # nominal) → body 22px.
+    if px >= 21:                               # 21-35 px (≈ 16-26pt) → body
         return "body"
-    # Source 12pt or smaller (dense table cells, fine print) → body-sm 16px.
-    return "body-sm"
+    return "body-sm"                           # <21 px → body-sm (16 px)
 
 
 # ---------------------------------------------------------------------------
@@ -996,7 +1159,8 @@ def _style_for(pt: float, text: str, is_footer: bool) -> str:
 
 def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
-             placeholder_rel: str = PLACEHOLDER_REL) -> str:
+             placeholder_rel: str = PLACEHOLDER_REL,
+             bg_fill: str | None = None) -> str:
     out: list[str] = [
         "# auto-derived from PPTX+SVG hybrid — review before use",
         f"# layout: {layout_name}",
@@ -1004,6 +1168,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         f"theme {theme_name}",
         "",
     ]
+
+    # Slide-level background fill (from <p:cSld><p:bg>) emits first as a
+    # full-canvas rect. PowerPoint draws this *under* every shape, so the
+    # DSL ordering matches the source z-order. Without this, dark slides
+    # rebuild on the brand's paper default and white text disappears.
+    if bg_fill:
+        out.append(f"rect 0,0 {cmap.cw}x{cmap.ch} fill:{bg_fill}")
 
     # Pre-split into geometry-first, text-last, footer-last.
     rects = [s for s in shapes if s.kind == "rect" and s.fill]
@@ -1019,14 +1190,22 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             # geometry shape that also carries text — emit shape now, defer text
             texts.append(Shape(
                 kind="text", x=s.x, y=s.y, w=s.w, h=s.h, text_runs=s.text_runs,
-                ph_type=s.ph_type, ph_idx=s.ph_idx,
+                ph_type=s.ph_type, ph_idx=s.ph_idx, valign=s.valign,
+                padding=s.padding,
             ))
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
-    # Backgrounds first (large area).
+    # Backgrounds first (large area). Append stroke + stroke-width when the
+    # source shape carries an `<a:ln>` border — without this every framed
+    # rect (cards, badges, callouts) loses its outline in the render.
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
-        out.append(f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}")
+        line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
+        if r.stroke:
+            line += f" stroke:{r.stroke}"
+            if r.stroke_width is not None and r.stroke_width > 0:
+                line += f" stroke-width:{r.stroke_width:g}"
+        out.append(line)
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring
     # sectors, etc.). When we recovered an SVG `d` string from the source
@@ -1066,9 +1245,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # so the DSL always builds.
     for o in ovals:
         if o.fill is None and o.stroke:
-            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval stroke:{o.stroke}")
+            line = f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval stroke:{o.stroke}"
         else:
-            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}")
+            line = f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}"
+            if o.stroke:
+                line += f" stroke:{o.stroke}"
+        if o.stroke_width is not None and o.stroke_width > 0:
+            line += f" stroke-width:{o.stroke_width:g}"
+        out.append(line)
 
     # Pictures — default to the brand's generic placeholder (so a derived
     # layout works as a reusable template) OR, when derive() was called
@@ -1133,7 +1317,12 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         full = re.sub(r" *\n *", "\n", full)
         if not full:
             continue
-        pt = max((r.pt for r in t.text_runs), default=18)
+        # Exclude paragraph-break marker runs (text == "\n") from the size
+        # vote — those runs inherit the body-level default size (often 18pt)
+        # which would otherwise drown out the actual text-content size when
+        # two 13pt paragraphs share a single shape.
+        content_pts = [r.pt for r in t.text_runs if r.text and r.text != "\n"]
+        pt = max(content_pts) if content_pts else max((r.pt for r in t.text_runs), default=18)
         style = _style_for(pt, full, is_footer=False)
         text = full.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
         mw = max(80, t.w)
@@ -1149,8 +1338,59 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         color_attr = (
             f" color:{run_color}" if run_color and run_color != style_default else ""
         )
+        # Per-run weight override. `<a:rPr b="1">` rides on the source run;
+        # the size-based classifier picks a bundle whose default weight may
+        # not match (e.g. source 60pt bold maps to `huge` which is
+        # weight:light by token convention). Without this, the rendered
+        # text loses its emphasis even though the source explicitly carried
+        # the bold flag. Emit only when source ≠ bundle default to keep
+        # decompile output stable for the common case.
+        source_bold = any(r.bold for r in t.text_runs)
+        bundle_weight = STYLE_BUNDLES.get(style, {}).get("weight")
+        weight_attr = ""
+        if source_bold and bundle_weight not in ("bold", "semibold", "black"):
+            weight_attr = " weight:bold"
+        elif (not source_bold) and bundle_weight == "bold":
+            # Source author explicitly chose regular against a bold-default
+            # bundle — preserve that. `regular` is the most common name in
+            # `font-weight` tokens; brands that use a different label can
+            # override per-layout.
+            weight_attr = " weight:regular"
+        # Per-run size override. The classifier rounds source pt to the
+        # nearest bundle, but the bundle steps are coarse (16/26/44/80 px)
+        # and the emitted pt depends on the brand's slide physical width
+        # (via `_PX_TO_PT`). Emit the source pt verbatim so renders match
+        # source physical pt regardless of slide scale.
+        # exactly. Stable for the common case (no emit when bundle is close).
+        # Always emit `size:<pt>pt` from the source pt. The toolkit's style
+        # bundles use design-px (`body=26px`, `sub=44px`, ...) which only
+        # round-trip to the right rendered pt at the 13.33"-wide slide
+        # convention (`_PX_TO_PT=0.5`). When the brand pack inherits a
+        # different physical slide size from the source PPTX (`slide.width_emu`
+        # in tokens.json), the emitter's `_PX_TO_PT` shifts and the same
+        # px-valued bundles render at a different pt — which silently
+        # shrinks every untagged text. Locking each run to its source pt
+        # makes physical font sizes faithful regardless of slide scale.
+        size_attr = f" size:{pt:g}pt"
+        valign_attr = f" valign:{t.valign}" if t.valign else ""
+        # Horizontal align — pick the first non-None align from the runs.
+        # PPTX stores it per-paragraph; for a single emitted `text` primitive
+        # the first paragraph's alignment wins (consistent with how we pick
+        # color + size from the first content run).
+        run_aligns = [r.align for r in t.text_runs if r.align]
+        run_align = run_aligns[0] if run_aligns else None
+        align_attr = f" align:{run_align}" if run_align else ""
+        padding_attr = ""
+        if t.padding is not None:
+            left, top, right, bottom = t.padding
+            # Compact form `padding:N` when all four insets are equal,
+            # `padding:L,T,R,B` otherwise — keeps the common-case DSL short.
+            if left == right and top == bottom and left == top:
+                padding_attr = f" padding:{left:g}"
+            else:
+                padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
         out.append(
-            f'text {t.x},{t.y} style:{style}{color_attr} '
+            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'
         )
 
@@ -1271,6 +1511,7 @@ def derive(
     cmap = CanvasMap(cx, cy, canvas_w, canvas_h)
 
     shapes = walk_slide(slide, cmap, theme, palette)
+    bg_fill = extract_slide_bg_fill(slide, theme, palette)
     _ = pdf_path  # reserved for SVG cross-check, off by default
 
     if image_extract_dir is not None:
@@ -1297,7 +1538,8 @@ def derive(
 
     return emit_dsl(shapes, cmap, layout_name,
                     theme_name=theme_name,
-                    placeholder_rel=placeholder_rel)
+                    placeholder_rel=placeholder_rel,
+                    bg_fill=bg_fill)
 
 
 def main() -> int:

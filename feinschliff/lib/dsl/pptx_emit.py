@@ -19,12 +19,14 @@ Primitives implemented:
 from __future__ import annotations
 
 import atexit
+import functools
 import hashlib
 import io
 import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import urllib.error
@@ -62,10 +64,138 @@ class DSLError(Exception):
     """
 
 
-# 1920 design-px → 12,192,000 EMU (PowerPoint widescreen). Hence 6350 EMU/px.
-_EMU_PER_PX = 6350           # 914400 EMU/in × (1/144 in/px) — for 1920×1080 slides at 96 DPI
-_PX_TO_PT = 0.5              # design-px → typographic pt (2 design-px = 1pt at 1920-wide / 960pt PPT slide)
+# Single source of truth for the legacy 13.33"×7.5" widescreen baseline used
+# by brand packs that don't declare an explicit physical slide size. Source-
+# decompiled brand packs (brand_decompile_all.py writes `slide.width_emu` /
+# `slide.height_emu` to tokens.json) override this via `_configure_slide_scale`.
+# 13.333" × 914400 EMU/in = 12192000 EMU wide.
+_LEGACY_SLIDE_WIDTH_EMU = 12_192_000
+_LEGACY_CANVAS_W = 1920
+
+
+@functools.lru_cache(maxsize=1)
+def _installed_fonts() -> set[str]:
+    """Set of font family names installed on this system, lowercased.
+
+    Sources, in order:
+      1. `fc-list` (Linux/macOS via homebrew fontconfig)
+      2. macOS Microsoft Office app bundles (Calibri + family ships inside
+         /Applications/Microsoft *.app/Contents/Resources/DFonts/ — those
+         fonts are scoped to the host app and don't register with
+         fontconfig, so a Calibri-using source PPTX appears uninstalled).
+
+    Falls back to an empty set on systems without fontconfig — in which
+    case `_assert_font_available` becomes a no-op (we can't block the
+    build on a check we can't run reliably).
+    """
+    import shutil
+    import subprocess
+    fams: set[str] = set()
+    fc = shutil.which("fc-list")
+    if fc:
+        try:
+            out = subprocess.check_output([fc, ":", "family"], timeout=5).decode("utf-8", "ignore")
+            for line in out.splitlines():
+                for fam in line.split(","):
+                    fams.add(fam.strip().lower())
+        except (subprocess.SubprocessError, OSError):
+            pass
+    fams |= _office_bundle_fonts()
+    return fams
+
+
+def _office_bundle_fonts() -> set[str]:
+    """Family names bundled with macOS Microsoft Office (Calibri etc).
+
+    These ship inside the .app bundle and don't register with fontconfig,
+    but `python-pptx` writes them as the font name and LibreOffice can
+    pick them up via the shared font cache when they've been registered
+    once. We surface them to the availability check so the build doesn't
+    spuriously hard-fail on `Calibri` when Office is installed.
+    """
+    from pathlib import Path
+    fams: set[str] = set()
+    candidates = [
+        "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts",
+        "/Applications/Microsoft Word.app/Contents/Resources/DFonts",
+        "/Applications/Microsoft Excel.app/Contents/Resources/DFonts",
+    ]
+    # Filename → family-name map for the Office font set. PowerPoint stores
+    # Calibri across multiple files (Calibri.ttf, calibril.ttf for Light,
+    # Calibrib.ttf for Bold, etc); collapse all variants to the family name
+    # that the source theme would reference.
+    name_for: dict[str, str] = {
+        "calibri.ttf": "Calibri", "calibrib.ttf": "Calibri",
+        "calibrii.ttf": "Calibri", "calibriz.ttf": "Calibri",
+        "calibril.ttf": "Calibri Light", "calibrili.ttf": "Calibri Light",
+        "cambria.ttc": "Cambria", "cambriab.ttf": "Cambria",
+        "candara.ttf": "Candara", "consola.ttf": "Consolas",
+        "constan.ttf": "Constantia", "corbel.ttf": "Corbel",
+    }
+    for c in candidates:
+        d = Path(c)
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            fam = name_for.get(f.name.lower())
+            if fam:
+                fams.add(fam.lower())
+    return fams
+
+
+def _assert_font_available(family: str, brand_name: str) -> None:
+    """Check whether the brand's primary font is installed on the system.
+
+    Behaviour gated by env var ``FEINSCHLIFF_STRICT_FONTS``:
+
+    - ``=1`` → hard-fail with DSLError (source-faithful rendering: a missing
+      font means glyph metrics + stroke weights will differ from the
+      authoring tool's render, invalidating any pixel-level comparison).
+    - unset / ``=0`` → soft-warn to stderr but let the build proceed (lets
+      CI and toolkit-internal tests build against brand packs whose
+      canonical fonts may not be present on every runner).
+
+    Decompile sets the brand's tokens.json font-family to the source theme
+    font, so source-faithful pipelines should run with the strict env set.
+    """
+    installed = _installed_fonts()
+    if not installed:
+        return  # fc-list unavailable — can't verify; defer to the renderer.
+    if family.lower() in installed:
+        return
+    msg = (
+        f"brand '{brand_name}': required font '{family}' is not installed. "
+        f"Install it (`brew install --cask font-{family.lower().replace(' ', '-')}` "
+        f"on macOS, or copy the .ttf into ~/.fonts on Linux + run `fc-cache -f`) "
+        f"then re-run. Substituting another family would invalidate source-"
+        f"matched rendering."
+    )
+    if os.environ.get("FEINSCHLIFF_STRICT_FONTS") == "1":
+        raise DSLError(msg)
+    print(f"WARN: {msg}", file=sys.stderr)
+
+EMU_PER_PT = 12700           # PowerPoint standard: 1pt = 12700 EMU (914400 / 72).
+_EMU_PER_PX = _LEGACY_SLIDE_WIDTH_EMU / _LEGACY_CANVAS_W   # 6350 — default fallback
+_PX_TO_PT = _EMU_PER_PX / EMU_PER_PT                       # 0.5  — default fallback
 _STROKE_PX_TO_PT = 0.75      # CSS px → pt for stroke widths (96/72 inverse rounded)
+
+
+def _configure_slide_scale(tokens: "Tokens", canvas_w: int) -> None:
+    """Recompute EMU_PER_PX + PX_TO_PT from tokens.json's slide.width_emu.
+
+    Idempotent + global — called once per build before any shape is emitted.
+    When tokens.slide.width_emu is absent, falls back to the legacy 13.33"
+    baseline. Sourced-from-PPTX brand packs (decompile writes width_emu)
+    automatically render at the source's physical slide size.
+    """
+    global _EMU_PER_PX, _PX_TO_PT
+    try:
+        width_emu = tokens.slide("width_emu") or _LEGACY_SLIDE_WIDTH_EMU
+    except Exception:
+        width_emu = _LEGACY_SLIDE_WIDTH_EMU
+    cw = canvas_w or _LEGACY_CANVAS_W
+    _EMU_PER_PX = width_emu / cw
+    _PX_TO_PT = _EMU_PER_PX / EMU_PER_PT
 _DEFAULT_PADDING_X = 100     # fallback right/left margin if brand has no slide.padding-x token
 
 # Defense-in-depth: if interpolation somehow left a `{{ … }}` placeholder in
@@ -248,6 +378,41 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         from dataclasses import replace as _replace
         style = _replace(style, color_hex=ctx.tokens.color(color_override),
                          color_role=color_override)
+    # `weight:<token>` overrides the style's default font weight without
+    # forcing the author to switch style bundles. Lets a single layout pair
+    # display-size with bold (or huge with regular), which the predefined
+    # bundles don't express (huge/display are light-only, title-l is
+    # bold-only). Token must exist in tokens.json.font-weight.
+    weight_override = node.kw_args.get("weight")
+    if weight_override:
+        from dataclasses import replace as _replace
+        style = _replace(style, weight=ctx.tokens.font_weight(weight_override))
+    # `size:<N>px` or `size:<N>pt` or `size:<token-name>` lets a single text
+    # primitive escape its style bundle's fixed size. Critical for matching
+    # source decks whose pt sizes fall between the bundle steps (16/26/44/80
+    # /120/160 px) — without it, the decompiler has to round to the nearest
+    # bundle and a 42pt source title renders at the 44px sub bundle ≈ 33pt,
+    # noticeably small. Numeric forms accepted: "32pt", "56px", or bare int
+    # treated as px.
+    size_override = node.kw_args.get("size")
+    if size_override:
+        from dataclasses import replace as _replace
+        raw = size_override.strip().lower()
+        if raw.endswith("pt"):
+            # `pt` → design-px uses the SAME conversion the emitter rounds-
+            # trip with (Pt(_px_to_pt(size_px)) downstream). Using the CSS
+            # convention (pt × 4/3) here bakes a 96-DPI assumption and
+            # halves the rendered font when the slide is sized for a
+            # different DPI — e.g. 42pt → 56px → 21pt on a 10" slide.
+            size_px = float(raw[:-2]) / _PX_TO_PT
+        elif raw.endswith("px"):
+            size_px = float(raw[:-2])
+        else:
+            try:
+                size_px = float(raw)
+            except ValueError:
+                size_px = ctx.tokens.font_size_px(raw)
+        style = _replace(style, size_px=size_px)
     # Hierarchy stepping: indent:N steps size/weight/color N times.
     try:
         indent_level = int(node.kw_args.get("indent", "0"))
@@ -364,8 +529,27 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         box.name = f"feinschliff-title-{style_name}"
     tf = box.text_frame
     tf.word_wrap = True
-    tf.margin_left = tf.margin_right = 0
-    tf.margin_top = tf.margin_bottom = 0
+    # Text-frame insets: source PPTX bodyPr carries `lIns/tIns/rIns/bIns`
+    # (EMU). When the decompiler captures them they ride through as
+    # `padding:` kwarg. Zeroing here when nothing is set bakes "render at
+    # frame edge" which mismatches PowerPoint's default 91440/45720 insets
+    # (~19px / ~9px at the source slide scale) and shifts text by exactly
+    # those amounts versus source. Honour explicit padding; otherwise leave
+    # python-pptx defaults (which mirror PowerPoint's authoring defaults).
+    padding = node.kw_args.get("padding")
+    if padding is not None:
+        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
+        parts = [p.strip() for p in str(padding).split(",")]
+        if len(parts) == 1:
+            left = top = right = bottom = float(parts[0])
+        elif len(parts) == 4:
+            left, top, right, bottom = (float(p) for p in parts)
+        else:
+            left = top = right = bottom = 0.0
+        tf.margin_left = _px(left)
+        tf.margin_right = _px(right)
+        tf.margin_top = _px(top)
+        tf.margin_bottom = _px(bottom)
     valign = node.kw_args.get("valign", "top")
     if valign == "middle":
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
@@ -1505,6 +1689,16 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
     leaves the slide without a notes slide.
     """
     cw, ch = _slide_canvas(nodes)
+    _configure_slide_scale(tokens, cw)
+    # Source-faithful rendering requires the brand's primary fonts to be
+    # installed; substitution by LibreOffice/PowerPoint changes glyph metrics
+    # and weights, which the user has called out as breaking exact match.
+    for fam_key in ("display", "body"):
+        try:
+            family = tokens.font_family(fam_key)[0]
+        except (KeyError, IndexError):
+            continue
+        _assert_font_available(family, tokens.brand_name)
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
@@ -1562,8 +1756,9 @@ def build_multi_slide(
     """
     if not slides:
         raise ValueError("build_multi_slide: no slides provided")
-    first_nodes, _, _, _ = _unpack_slide_payload(slides[0])
+    first_nodes, first_tokens, _, _ = _unpack_slide_payload(slides[0])
     cw, ch = _slide_canvas(first_nodes)
+    _configure_slide_scale(first_tokens, cw)
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
