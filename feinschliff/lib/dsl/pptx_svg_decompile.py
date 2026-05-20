@@ -245,6 +245,15 @@ def load_theme_scheme(pres: Presentation) -> dict[str, str]:
                         out[key] = "#" + srgb.get("val").upper()
                     elif sys_ is not None:
                         out[key] = "#" + (sys_.get("lastClr") or "000000").upper()
+                # PowerPoint default clrMap aliases — these slots are
+                # always present and resolve to the matching scheme entry.
+                # Without them, a shape fill of `schemeClr val="bg2"` (used
+                # widely in corporate templates that put the slide bg in a
+                # layout rect rather than `<p:bg>`) falls through unmapped.
+                for alias, real in (("bg1", "lt1"), ("bg2", "lt2"),
+                                    ("tx1", "dk1"), ("tx2", "dk2")):
+                    if alias not in out and real in out:
+                        out[alias] = out[real]
                 break
     except Exception:
         pass
@@ -359,9 +368,30 @@ def _resolve_gradient(spPr: etree._Element, theme: dict[str, str],
 
 
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
-    """Return a token name, or None if no fill."""
+    """Return a token name, or None if no fill.
+
+    Handles `<a:grpFill/>` by walking up to the nearest `<p:grpSp>` ancestor
+    and resolving its `grpSpPr/solidFill`. Without this, custGeom shapes that
+    declare `<a:grpFill/>` (the SARTORIUS logo glyphs on the slide master)
+    render unfilled instead of inheriting the group's solid colour.
+    """
     if spPr is None:
         return None
+    gf = spPr.find("a:grpFill", NS)
+    if gf is not None:
+        # Walk up to find the enclosing <p:grpSp> and resolve its fill.
+        anc = spPr.getparent()
+        while anc is not None:
+            tag = etree.QName(anc).localname
+            if tag == "grpSp":
+                grpSpPr = anc.find("p:grpSpPr", NS)
+                if grpSpPr is not None:
+                    grp_color = _resolve_fill(grpSpPr, theme, palette)
+                    if grp_color:
+                        return grp_color
+                anc = anc.getparent()
+                continue
+            anc = anc.getparent()
     sf = spPr.find("a:solidFill", NS)
     if sf is None:
         return None
@@ -414,8 +444,17 @@ def _placeholder_info(node: etree._Element) -> tuple[str | None, str | None]:
 
 
 def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> tuple[int, int, int, int] | None:
-    """Walk slide layout + master to resolve an inherited placeholder bbox."""
-    for parent in (slide.slide_layout, slide.slide_layout.slide_master):
+    """Walk slide layout + master to resolve an inherited placeholder bbox.
+
+    Accepts a Slide, SlideLayout, or SlideMaster — when the caller is
+    already a layout/master (because walk_slide now recurses through the
+    inheritance chain), there's no further parent to walk so this just
+    no-ops out.
+    """
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    parents = [p for p in (layout, master) if p is not None]
+    for parent in parents:
         root = parent.element
         for sp in root.iter("{%s}sp" % NS["p"]):
             ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
@@ -540,6 +579,8 @@ _BRAND_TO_SVG_COLOR: dict[str, str] = {
     "accent-hover":   "accent",
     "highlight":      "accent",
     "ink":            "ink",
+    "black":          "ink",
+    "white":          "paper",
     "graphite":       "neutral-strong",
     "steel":          "neutral",
     "silver":         "neutral-soft",
@@ -706,31 +747,195 @@ def _shape_geometry_kind(spPr: etree._Element) -> str:
 
 
 def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> list[Shape]:
+    """Walk the slide's spTree; also collect shapes inherited from the
+    slide layout + master that aren't already represented on the slide.
+
+    A typical PowerPoint slide carries only its unique content (a title
+    placeholder, the body text). All decorative chrome — corporate logo,
+    page-number bar, branded background blocks — lives on the slide's
+    layout and master. Without this inheritance walk, the decompile of
+    a Sartorius-style deck emits ~10% of what the source renders.
+
+    Layout/master shapes that are placeholder fills already provided by
+    the slide itself (same ph_idx) are skipped — slide content wins.
+    Everything else is added at the front of the shape list so it draws
+    behind slide-level content.
+    """
     shapes: list[Shape] = []
     spTree = slide.element.find(".//p:cSld/p:spTree", NS)
     _walk(spTree, (0, 0), shapes, slide, cmap, theme, palette)
-    return shapes
+    # A slide-level placeholder only "owns" its idx when it actually
+    # carries content (text, fill, or geometry) — empty placeholders
+    # (common pattern: <p:ph idx="N"/> + empty <p:spPr/>) inherit
+    # EVERYTHING from the layout, including the layout's fill/size.
+    # Filtering by content here lets the layout walk re-add the rich
+    # version of those placeholders below.
+    def _has_content(sh: Shape) -> bool:
+        if sh.fill or sh.stroke or sh.gradient or sh.svg_path_d:
+            return True
+        if sh.is_picture:
+            return True
+        if any(r.text and r.text.strip() and r.text != "\n" for r in sh.text_runs):
+            return True
+        return False
+
+    slide_ph_idxs = {s.ph_idx for s in shapes if s.ph_idx and _has_content(s)}
+    # Filter out the empty placeholders themselves — the layout version
+    # will provide the actual content.
+    shapes = [s for s in shapes if not (s.ph_idx and not _has_content(s))]
+    inherited: list[Shape] = []
+    layout_master_chain = _layout_master_chain(slide)
+    for src in layout_master_chain:
+        chain_spTree = src.element.find(".//p:cSld/p:spTree", NS)
+        if chain_spTree is None:
+            continue
+        chain_shapes: list[Shape] = []
+        _walk(chain_spTree, (0, 0), chain_shapes, src, cmap, theme, palette)
+        for s in chain_shapes:
+            # Skip placeholder shapes the slide already owns with content.
+            if s.ph_idx and s.ph_idx in slide_ph_idxs:
+                continue
+            # Skip pure page-number / footer placeholders by type when the
+            # slide hasn't overridden them — these are pp:fld things that
+            # the source-deck renderer fills at slide time; decompiling
+            # them from the master emits literal "<#>" tokens that pollute
+            # the output. (sldNum/ftr/dt placeholders all carry ph_type.)
+            if s.ph_type in ("sldNum", "ftr", "dt") and not s.text_runs:
+                continue
+            # Inherited PICTURE placeholders with no real media binary
+            # (no media_rid) are shells the slide should fill but didn't.
+            # PowerPoint renders them as empty; the build's missing-asset
+            # fallback paints them as white rectangles which inflate the
+            # diff visibly. Skip them so the rendered output matches
+            # PowerPoint's "absent" behaviour.
+            if s.is_picture and not s.media_rid:
+                continue
+            # Skip layout placeholders whose only text is template
+            # prompt copy ("Hier Zitat einfügen.", "Überschrift 1, TT
+            # Norms Pro, 28 pt", etc) — these are author hints that
+            # PowerPoint suppresses at render time when the slide's
+            # version is empty. We can't easily distinguish prompt from
+            # real content, but layouts mark prompts with
+            # `<p:nvPr hasCustomPrompt="1">` — drop just the text on
+            # those, keep the fill/geometry so the layout still emits
+            # its visual frame.
+            # Inherited PLACEHOLDER text is template prompt copy that
+            # PowerPoint never renders ("Überschrift 1, TT Norms Pro",
+            # "Diagramm durch Klicken …", "Click to edit Master title").
+            # The slide's placeholder either overrides it (filtered above
+            # via slide_ph_idxs) or is empty — in which case PowerPoint
+            # shows nothing. Drop the text but keep fill / geometry so
+            # the layout's visual frame (yellow rect, black square)
+            # still emits. Non-placeholder layout/master shapes (logo
+            # glyphs, decorative rects) pass through untouched.
+            if s.ph_type and s.text_runs:
+                s.text_runs = []
+                if not _has_content(s):
+                    continue
+            inherited.append(s)
+            if s.ph_idx:
+                slide_ph_idxs.add(s.ph_idx)
+    # Inherited chrome draws behind slide content.
+    return inherited + shapes
+
+
+def _is_custom_prompt(src, ph_idx: str | None) -> bool:
+    """True when the layout's placeholder for `ph_idx` carries the
+    `hasCustomPrompt="1"` marker. Those text bodies hold the template
+    instruction shown in PowerPoint while the slide placeholder is empty;
+    they're suppressed at render time and must not be emitted into the
+    DSL or they leak as visible template copy in derived slides.
+    """
+    if ph_idx is None:
+        return False
+    for sp in src.element.iter("{%s}sp" % NS["p"]):
+        ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+        if ph is None or ph.get("idx") != ph_idx:
+            continue
+        nvPr = sp.find(".//p:nvSpPr/p:nvPr", NS)
+        if nvPr is not None and ph.get("hasCustomPrompt") == "1":
+            return True
+    return False
+
+
+def _layout_master_chain(slide) -> list:
+    """Return [layout, master] for a slide (best-effort, never raises)."""
+    chain = []
+    try:
+        layout = slide.slide_layout
+        if layout is not None:
+            chain.append(layout)
+            master = layout.slide_master
+            if master is not None:
+                chain.append(master)
+    except Exception:
+        pass
+    return chain
 
 
 def extract_slide_bg_fill(slide, theme: dict[str, str],
                           palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return the slide's background solid-fill colour as a token / hex.
 
-    PowerPoint stores slide-level backgrounds at `<p:cSld><p:bg><p:bgPr>`,
-    sibling to the shape tree. The hybrid decompiler used to walk only
-    `p:spTree`, so dark slide backgrounds were silently dropped and the
-    rebuild defaulted to the brand's paper colour — every white-on-dark
-    text turned invisible. Returns None when the slide has no explicit
-    background fill (the build will fall through to the brand default).
+    Walks the inheritance chain: slide → layout → master. Each level can
+    carry an explicit `<p:cSld><p:bg>` (solidFill or bgRef→theme); the
+    first one found wins. Without the layout/master fallback, decks whose
+    slides have empty bg (the common case for branded corporate templates)
+    would render with the brand default paper colour even when the master
+    declares a solid yellow / navy background.
     """
-    bgPr = slide.element.find(".//p:cSld/p:bg/p:bgPr", NS)
-    if bgPr is None:
+    for src in [slide, *_layout_master_chain(slide)]:
+        bg = src.element.find(".//p:cSld/p:bg", NS)
+        if bg is None:
+            continue
+        bgPr = bg.find("p:bgPr", NS)
+        if bgPr is not None:
+            color = _resolve_fill(bgPr, theme, palette)
+            if color:
+                return color
+        # <p:bgRef idx="N"><a:schemeClr val="bg1"/></p:bgRef> — referenced
+        # background-fill style from theme1.xml's bgFillStyleLst. The
+        # schemeClr fills the `phClr` placeholder in the referenced style.
+        bgRef = bg.find("p:bgRef", NS)
+        if bgRef is not None:
+            color = _resolve_bg_ref(bgRef, theme, palette)
+            if color:
+                return color
+    return None
+
+
+def _resolve_bg_ref(bgRef, theme: dict[str, str],
+                    palette: dict[str, tuple[int, int, int]]) -> str | None:
+    """Resolve a `<p:bgRef idx="N">` reference against the theme's
+    `bgFillStyleLst`, filling `<a:schemeClr val="phClr"/>` with the
+    schemeClr that the bgRef carries.
+
+    PowerPoint idx encoding: 1001 = bgFillStyleLst[0], 1002 = [1], etc.
+    Only `<a:solidFill>` entries are inlined; gradient/blip refs fall
+    through (no DSL primitive for those yet at the bg level).
+    """
+    scheme = bgRef.find("a:schemeClr", NS)
+    if scheme is None or not scheme.get("val"):
         return None
-    return _resolve_fill(bgPr, theme, palette)
+    scheme_key = scheme.get("val")
+    # Resolve scheme → hex via the theme dict captured by load_theme_scheme.
+    # Some keys are aliases: `bg1`→`lt1`, `bg2`→`lt2`, `tx1`→`dk1`, `tx2`→`dk2`.
+    alias = {"bg1": "lt1", "bg2": "lt2", "tx1": "dk1", "tx2": "dk2"}
+    hex_val = theme.get(scheme_key) or theme.get(alias.get(scheme_key, scheme_key))
+    if not hex_val:
+        return None
+    try:
+        rgb = (int(hex_val[1:3], 16), int(hex_val[3:5], 16), int(hex_val[5:7], 16))
+    except (ValueError, IndexError):
+        return None
+    return nearest_token(rgb, palette) if palette else f"#{hex_val[1:].upper()}"
 
 
 def _walk(node, offset, shapes, slide, cmap, theme, palette):
-    ox, oy = offset
+    # offset is either a 2-tuple (ox, oy) or an 8-tuple carrying a scaled-
+    # group affine — the latter is unpacked by `_shape_bbox`. We only need
+    # ox/oy here to forward to nested non-scaled groups.
+    ox, oy = offset[:2]
     for ch in node:
         tag = etree.QName(ch).localname
         if tag == "sp":
@@ -742,16 +947,51 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
         elif tag == "graphicFrame":
             _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette)
         elif tag == "grpSp":
-            # Walk children with the group's offset added.
+            # Walk children with the group's offset added. Scaled groups
+            # (ext != chExt — typical for master-level logo bundles
+            # dropped into smaller slots) are skipped because the walker
+            # only carries a pure translation offset; emitting their
+            # children at unscaled coords would land them off-canvas.
             grp_xfrm = ch.find("p:grpSpPr/a:xfrm", NS)
             child_off = (ox, oy)
             if grp_xfrm is not None:
                 off = grp_xfrm.find("a:off", NS)
+                ext = grp_xfrm.find("a:ext", NS)
                 chOff = grp_xfrm.find("a:chOff", NS)
-                if off is not None and chOff is not None:
-                    dx = int(off.get("x")) - int(chOff.get("x"))
-                    dy = int(off.get("y")) - int(chOff.get("y"))
-                    child_off = (ox + dx, oy + dy)
+                chExt = grp_xfrm.find("a:chExt", NS)
+                if (off is not None and ext is not None
+                        and chOff is not None and chExt is not None):
+                    try:
+                        ox_emu = int(off.get("x"))
+                        oy_emu = int(off.get("y"))
+                        cx = int(ext.get("cx"))
+                        cy = int(ext.get("cy"))
+                        chcx = int(chExt.get("cx"))
+                        chcy = int(chExt.get("cy"))
+                        chox = int(chOff.get("x"))
+                        choy = int(chOff.get("y"))
+                        if chcx > 0 and chcy > 0:
+                            sx = cx / chcx
+                            sy = cy / chcy
+                            # Scaled group: thread a 6-tuple offset that
+                            # _shape_bbox unpacks and applies as an EMU-level
+                            # affine. Translation-only groups stay as 2-tuple
+                            # for backward compat.
+                            if abs(sx - 1.0) > 0.001 or abs(sy - 1.0) > 0.001:
+                                child_off = (ox, oy, ox_emu, oy_emu, chox, choy, sx, sy)
+                                _walk(ch, child_off, shapes, slide, cmap, theme, palette)
+                                continue
+                        # Pure translation fallthrough.
+                        child_off = (ox + ox_emu - chox, oy + oy_emu - choy)
+                    except (ValueError, TypeError):
+                        pass
+                elif off is not None and chOff is not None:
+                    try:
+                        dx = int(off.get("x")) - int(chOff.get("x"))
+                        dy = int(off.get("y")) - int(chOff.get("y"))
+                        child_off = (ox + dx, oy + dy)
+                    except (ValueError, TypeError):
+                        pass
             _walk(ch, child_off, shapes, slide, cmap, theme, palette)
 
 
@@ -764,8 +1004,21 @@ def _shape_bbox(ch, offset, slide):
     if xfrm is None:
         return None
     x, y, w, h = xfrm
-    ox, oy = offset
-    return x + ox, y + oy, w, h
+    # Offset shapes:
+    #   2-tuple (ox, oy)      — translation-only ancestor group(s)
+    #   8-tuple (ox, oy, ax, ay, chox, choy, sx, sy)
+    #                         — current shape lives inside a scaled group;
+    #                           apply the EMU-level affine before adding
+    #                           any outer translation.
+    if len(offset) == 2:
+        ox, oy = offset
+        return x + ox, y + oy, w, h
+    ox, oy, ax, ay, chox, choy, sx, sy = offset
+    x_emu = ax + (x - chox) * sx
+    y_emu = ay + (y - choy) * sy
+    w_emu = w * sx
+    h_emu = h * sy
+    return x_emu + ox, y_emu + oy, w_emu, h_emu
 
 
 def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
@@ -1209,11 +1462,16 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             kind="text",
             x=cmap.x(lx + swatch_w + 50000),
             y=cmap.y(legend_y),
-            w=cmap.w(int(fw * 0.04)),
+            # Legend label width must fit "Data N" at 14pt without
+            # wrapping; the previous 4% gave ~31 design-px which forced
+            # multi-line "Da\nta\n1" — visibly wrong on every chart
+            # legend. 10% fits the common case comfortably + leaves
+            # room for short multi-word series names.
+            w=cmap.w(int(fw * 0.10)),
             h=cmap.h(int(fh * 0.04)),
             text_runs=[TextRun(text=name or "", pt=14)],
         ))
-        lx += int(fw * 0.06)
+        lx += int(fw * 0.12)
 
 
 # ---------------------------------------------------------------------------
