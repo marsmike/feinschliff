@@ -1856,8 +1856,15 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
     # <c:idx val="N"/> identifying the slice index plus an optional
     # <c:spPr><a:solidFill> with that slice's brand color. Falls back to
     # the chart-series-N ramp by index when absent.
+    #
+    # We resolve dPt fills via `palette={}` so the source's exact hex
+    # propagates through unchanged. Going through the brand-token
+    # nearest_token collapses two close source hues to the same token
+    # ("accent"), which then renders identically — defeating the whole
+    # purpose of per-slice colours. Same rationale as the custGeom
+    # palette-bypass added earlier.
     slice_colors: dict[int, str] = {}
-    if theme is not None and palette is not None:
+    if theme is not None:
         for dpt in ser.findall(f"{{{CHART_NS}}}dPt"):
             idx_el = dpt.find(f"{{{CHART_NS}}}idx")
             sp_pr = dpt.find(f"{{{CHART_NS}}}spPr")
@@ -1867,7 +1874,7 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
                 idx = int(idx_el.get("val") or "-1")
             except (TypeError, ValueError):
                 continue
-            color = _resolve_fill(sp_pr, theme, palette)
+            color = _resolve_fill(sp_pr, theme, palette={})
             if color and idx >= 0:
                 slice_colors[idx] = color
 
@@ -1975,7 +1982,18 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=No
     # Start at 12 o'clock (-π/2), sweep clockwise. PowerPoint pies follow
     # this convention; matching it preserves slice-to-color correspondence
     # against the source.
+    #
+    # `<c:firstSliceAng val="N"/>` rotates the start clockwise by N
+    # degrees (0..360). Sources rarely use it but when they do (corporate
+    # decks rotating the highlighted slice into a fixed position), the
+    # entire slice-to-colour ordering shifts.
     angle_start = -math.pi / 2
+    first_ang_el = pie_el.find(f"{{{CHART_NS}}}firstSliceAng")
+    if first_ang_el is not None and first_ang_el.get("val"):
+        try:
+            angle_start += math.radians(float(first_ang_el.get("val")))
+        except (TypeError, ValueError):
+            pass
 
     for i, v in enumerate(values):
         if v <= 0:
@@ -2133,18 +2151,17 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         name = name_el.text if name_el is not None else "?"
         vals = [float(v.text) for v in ser.findall(f".//{{{CHART_NS}}}val//{{{CHART_NS}}}pt/{{{CHART_NS}}}v")]
         cats = [v.text for v in ser.findall(f".//{{{CHART_NS}}}cat//{{{CHART_NS}}}pt/{{{CHART_NS}}}v")]
-        # Per-series fill colour from <c:ser><c:spPr><a:solidFill>. Falls
-        # back to None so the caller knows to use the chart-series-N ramp
-        # by index instead. Reads either scheme or srgb fills via the
-        # existing solid-fill resolver.
+        # Per-series fill colour. Resolve via empty palette so the source
+        # hex propagates verbatim — going through nearest_token collapses
+        # two close source hues to the same brand token, losing the
+        # series-to-series colour distinction on stacked / clustered
+        # bar charts.
         sp_pr = ser.find(f"{{{CHART_NS}}}spPr")
-        ser_color = _resolve_fill(sp_pr, theme, palette) if sp_pr is not None else None
+        ser_color = _resolve_fill(sp_pr, theme, palette={}) if sp_pr is not None else None
         # Per-data-point colours from `<c:dPt>` overrides. Showcase decks
         # often colour alternating bars different hues to highlight a
         # specific category — that information lives in dPt only, not on
-        # the series. Without this lookup every bar in the series renders
-        # the series colour, losing the highlight pattern. Mirrors the
-        # equivalent handling in `_emit_pie_chart`.
+        # the series. Same palette={} bypass.
         bar_colors: dict[int, str] = {}
         for dpt in ser.findall(f"{{{CHART_NS}}}dPt"):
             idx_el = dpt.find(f"{{{CHART_NS}}}idx")
@@ -2155,7 +2172,7 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                 idx = int(idx_el.get("val") or "-1")
             except (TypeError, ValueError):
                 continue
-            color = _resolve_fill(dpt_sp, theme, palette)
+            color = _resolve_fill(dpt_sp, theme, palette={})
             if color and idx >= 0:
                 bar_colors[idx] = color
         series.append((name, vals, cats, ser_color, bar_colors))
@@ -2319,6 +2336,20 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                         w=cmap.w(seg_w), h=cmap.h(bar_h),
                         fill=color,
                     ))
+                    # Value labels for stacked / percentStacked horizontal
+                    # bars — emit ONLY when source has `<c:showVal val="1"/>`.
+                    # Label sits in the middle of its segment.
+                    if show_val_labels and seg_w > 200000:
+                        label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                        label = label.replace(".", ",")
+                        shapes.append(Shape(
+                            kind="text",
+                            x=cmap.x(cursor_x + seg_w // 2 - 100000),
+                            y=cmap.y(row_y),
+                            w=cmap.w(200000),
+                            h=cmap.h(int(bar_h)),
+                            text_runs=[TextRun(text=label, pt=12)],
+                        ))
                     cursor_x += seg_w
         else:
             bar_h = int(cat_h / (n_series + gap_pct / 100))
