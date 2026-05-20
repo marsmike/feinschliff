@@ -96,7 +96,7 @@ class UnsplashProvider(ImageProvider):
         """Run palette + crop-risk preflight on a resolved image.
 
         Loads the image from ``image_path``, calls
-        :func:`lib.io.image_preflight.preflight_image`, and returns any
+        :func:`feinschliff.io.image_preflight.preflight_image`, and returns any
         emitted defects. Never raises — errors are surfaced as
         :class:`RuntimeWarning` and an empty list is returned so builds
         are not blocked by an unexpected preflight failure.

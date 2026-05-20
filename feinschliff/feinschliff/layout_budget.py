@@ -26,7 +26,7 @@ from collections import Counter
 from feinschliff.layout_picker import pick_layout
 
 # Maximum bonus a never-used layout receives. Calibrated against the
-# affinity weights in `lib.layout_picker.pick_layout` (canonical source
+# affinity weights in `feinschliff.layout_picker.pick_layout` (canonical source
 # of all scoring components — role / concept / data / narrative /
 # comparison / audience / narrative_act / time_axis_role / diagram_kind
 # / diagram_complexity / when_not_to_use). A +1.5 bonus is large enough
@@ -39,7 +39,7 @@ _MAX_BUDGET_BONUS = 1.5
 # coverage benefit (nothing else competes), and could in pathological
 # cases push the picker away from a structural choice the deck needs.
 #
-# Related but distinct from `lib.layout_picker._VARIETY_EXEMPT`. That
+# Related but distinct from `feinschliff.layout_picker._VARIETY_EXEMPT`. That
 # set covers everything the picker's adjacent-slide variety penalty
 # should skip (also includes title slides + chapter variants).
 # `_SINGLETON_LAYOUTS` is a strict subset: chapter-orange / chapter-ink
@@ -80,7 +80,7 @@ def plan_deck_layouts(
     ----------
     slide_signals
         One dict per slide, in deck order. Each dict carries the kwargs
-        accepted by `lib.layout_picker.pick_layout` (`role`,
+        accepted by `feinschliff.layout_picker.pick_layout` (`role`,
         `concept_count`, `data_quantity`, `comparison`, `narrative_role`,
         `narrative_act`, `time_axis_role`, `audience_mode`,
         `diagram_kind`). Missing keys are treated as `None`.

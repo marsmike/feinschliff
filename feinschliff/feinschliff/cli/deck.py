@@ -154,7 +154,7 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_build.add_argument(
         "--strict-static",
         action="store_true",
-        help="Run the pre-render static geometry verifier (lib.verify.static) "
+        help="Run the pre-render static geometry verifier (feinschliff_builder.verify.static) "
              "before compile. Aborts with exit 1 and prints defects when any "
              "slot-overflow or empty-placeholder issues are detected. Off by "
              "default — opting in avoids surprising existing automation.",
@@ -504,7 +504,7 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def _patch_set_hash(patches: list) -> str:
-    """Delegate to lib.deck.orchestrate.patch_set_hash."""
+    """Delegate to feinschliff.deck.orchestrate.patch_set_hash."""
     return _patch_set_hash_fn(patches)
 
 
@@ -828,7 +828,7 @@ def _build_primitives_for_layout(
     layout_path: Path, brand: str, content_path: Path | None,
     *, skip_interpolation: bool = False,
 ) -> tuple[list, object]:
-    """Delegate to lib.deck.orchestrate.build_primitives_for_layout."""
+    """Delegate to feinschliff.deck.orchestrate.build_primitives_for_layout."""
     return _build_primitives_for_layout_fn(
         layout_path, brand, content_path,
         skip_interpolation=skip_interpolation,
@@ -1158,7 +1158,7 @@ def cmd_polish(args) -> int:
 
 
 def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path) -> None:
-    """Delegate to lib.deck.orchestrate.build_refurbished_deck."""
+    """Delegate to feinschliff.deck.orchestrate.build_refurbished_deck."""
     _build_refurbished_deck_fn(slides_plan, brand, out_path)
 
 
@@ -1167,7 +1167,7 @@ def cmd_book(args) -> int:
 
     Loads the deck plan + design brief, optionally renders per-slide
     PNG thumbnails from the built .pptx (via the existing
-    `lib.verify.render_pngs.render_slides_to_png` helper), and writes a
+    `feinschliff_builder.verify.render_pngs.render_slides_to_png` helper), and writes a
     multi-page PDF: front matter page + one page per slide.
 
     The brief is the source of truth for deck-level fields (takeaway,
@@ -1414,12 +1414,12 @@ def cmd_timing(args) -> int:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def _signals_from_slide(slide: dict) -> dict:
-    """Delegate to lib.deck.orchestrate.signals_from_slide."""
+    """Delegate to feinschliff.deck.orchestrate.signals_from_slide."""
     return _signals_from_slide_fn(slide)
 
 
 def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
-    """Delegate to lib.deck.orchestrate.resolve_layout_path."""
+    """Delegate to feinschliff.deck.orchestrate.resolve_layout_path."""
     return _resolve_layout_path_fn(brand_root, layout_name)
 
 
@@ -1428,7 +1428,7 @@ def _slot_budgets_for_layout(
     brand_root: Path,
     tokens: "Tokens",
 ) -> dict[str, dict[str, int]]:
-    """Delegate to lib.deck.orchestrate.slot_budgets_for_layout."""
+    """Delegate to feinschliff.deck.orchestrate.slot_budgets_for_layout."""
     return _slot_budgets_for_layout_fn(layout_name, brand_root, tokens)
 
 

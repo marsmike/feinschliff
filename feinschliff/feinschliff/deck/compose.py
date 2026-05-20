@@ -1,7 +1,7 @@
 """Deck composer — typed DSL Document → PPTX.
 
 Provides :class:`Deck`, a thin orchestrator that takes a typed
-:class:`~lib.dsl.ast.Document` and a :class:`~lib.brand.pack.BrandPack`
+:class:`~feinschliff.dsl.ast.Document` and a :class:`~feinschliff.brand.pack.BrandPack`
 and produces a ``.pptx`` file via the typed pipeline:
 
 .. code-block:: text
@@ -47,7 +47,7 @@ class Deck:
         The brand pack used for token resolution and compound loading.
     document:
         The typed Document AST to render.  Obtain via
-        :func:`lib.dsl.parser.parse_document` or construct manually.
+        :func:`feinschliff.dsl.parser.parse_document` or construct manually.
     """
 
     def __init__(self, brand: "BrandPack", document: "Document") -> None:
@@ -83,8 +83,8 @@ class Deck:
 
         Reads a plan YAML in the standard ``feinschliff deck build`` format
         (``brand:``, ``slides: [{layout:, content:}, …]``) and constructs a
-        typed :class:`~lib.dsl.ast.Document` via
-        :func:`lib.deck.orchestrate.compose_from_brief`.
+        typed :class:`~feinschliff.dsl.ast.Document` via
+        :func:`feinschliff.deck.orchestrate.compose_from_brief`.
 
         Unlike the full ``deck build`` pipeline, slot interpolation
         (``{{ slot_name }}`` → content values) is **not** applied — layout
@@ -101,7 +101,7 @@ class Deck:
         -------
         Deck
             A :class:`Deck` whose ``document`` contains one
-            :class:`~lib.dsl.ast.Slide` per slide in the brief.
+            :class:`~feinschliff.dsl.ast.Slide` per slide in the brief.
 
         Raises
         ------
@@ -118,7 +118,7 @@ class Deck:
 
     @property
     def diagnostics(self) -> "DiagnosticBag":
-        """The :class:`~lib.diagnostics.DiagnosticBag` from the last build.
+        """The :class:`~feinschliff.diagnostics.DiagnosticBag` from the last build.
 
         Empty (no errors) before :meth:`build` has been called.
         """
@@ -133,9 +133,9 @@ class Deck:
         """Expand the document and emit a PPTX at *out_path*.
 
         Steps:
-        1. :func:`~lib.dsl.expander.expand_document` — expand compound
+        1. :func:`~feinschliff.dsl.expander.expand_document` — expand compound
            calls into primitive elements using the brand's compounds.
-        2. :func:`~lib.dsl.pptx_emit.emit_pptx_from_document` — render
+        2. :func:`~feinschliff.dsl.pptx_emit.emit_pptx_from_document` — render
            the expanded Document to a ``.pptx`` file.
 
         Parameters

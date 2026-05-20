@@ -110,7 +110,7 @@ class BrandBridgeError(ValueError):
 
 
 def resolve_with_pack(name: str, pack: "BrandPack") -> str:
-    """Resolve a semantic color name using a :class:`~lib.brand.BrandPack`.
+    """Resolve a semantic color name using a :class:`~feinschliff.brand.BrandPack`.
 
     Typed entry point for new code. Delegates to the existing
     :func:`resolve` implementation so all validation and fallback logic

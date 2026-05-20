@@ -294,7 +294,7 @@ def preflight_image(
     slide_index: int,
     thresholds: dict[str, float] | None = None,
 ) -> tuple[ImageScore, list[Defect]]:
-    """Score ``img`` and emit :class:`~lib.defects.Defect` records.
+    """Score ``img`` and emit :class:`~feinschliff.defects.Defect` records.
 
     Parameters
     ----------

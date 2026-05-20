@@ -6,7 +6,7 @@ Every CLI entrypoint that emits a `.pptx` slide flows through
 primitives, all collected defects, and the slide canvas size.
 
 This is the only place `validate_diagrams*` should be called outside of
-unit tests. The returned defects use the `lib.defects.Defect` dataclass —
+unit tests. The returned defects use the `feinschliff.defects.Defect` dataclass —
 caller decides which severities to honor and which to demote.
 """
 from __future__ import annotations

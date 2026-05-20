@@ -1,7 +1,7 @@
 """Pre-render static geometry verify.
 
 Inspects a plan.yaml dict (post-merge, content filled) for geometry defects
-that do NOT require rendering. Returns one :class:`~lib.defects.Defect` per
+that do NOT require rendering. Returns one :class:`~feinschliff.defects.Defect` per
 problem; empty list = clean.
 
 Two defect classes are detected:
@@ -249,8 +249,8 @@ def static_verify(
     Returns
     -------
     list[Defect]
-        One :class:`~lib.defects.Defect` per detected problem.  Empty list
-        means clean.  All defects are :attr:`~lib.defects.Severity.WARN`.
+        One :class:`~feinschliff.defects.Defect` per detected problem.  Empty list
+        means clean.  All defects are :attr:`~feinschliff.defects.Severity.WARN`.
     """
     from feinschliff.dsl.parser import parse_file
     from feinschliff.dsl.tokens import load_tokens
@@ -402,7 +402,7 @@ def validate(
     """Inspect a plan dict for static geometry defects, returning a DiagnosticBag.
 
     Typed entry point that wraps :func:`static_verify` and maps its legacy
-    ``Defect`` objects to ``lib.diagnostics.Defect`` objects in a
+    ``Defect`` objects to ``feinschliff.diagnostics.Defect`` objects in a
     ``DiagnosticBag``.
 
     Parameters

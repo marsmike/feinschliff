@@ -15,8 +15,8 @@ the renderer falls through to Playwright + the real Excalidraw web app
 bundled at `playwright_assets/render_template.html`. That path is heavier
 (~200MB Chromium, ~1.5s cold) but covers every Excalidraw element type.
 
-New code should prefer :func:`lib.diagrams.renderer.choose_renderer` which
-exposes the same dispatch logic as a clean :class:`~lib.diagrams.renderer.Renderer`
+New code should prefer :func:`feinschliff.diagrams.renderer.choose_renderer` which
+exposes the same dispatch logic as a clean :class:`~feinschliff.diagrams.renderer.Renderer`
 Protocol with a pluggable registry.  The ``render()`` function below is the
 legacy entry point kept for backwards compatibility.
 """
@@ -162,7 +162,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser(prog="python -m lib.diagrams.render")
+    parser = argparse.ArgumentParser(prog="python -m feinschliff.diagrams.render")
     parser.add_argument("input", type=Path, help="Path to .svg or .excalidraw source")
     parser.add_argument("-o", "--out", type=Path, help="Output .png path (default: <input>.png)")
     args = parser.parse_args(argv)

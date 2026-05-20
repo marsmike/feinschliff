@@ -15,7 +15,7 @@ from feinschliff.dsl.tokens import load_tokens
 class Brand:
     """Legacy dataclass kept for backwards compatibility.
 
-    New code should use :class:`lib.brand.BrandPack` instead.
+    New code should use :class:`feinschliff.brand.BrandPack` instead.
     ``discover_brands`` now returns ``BrandPack`` objects; this class is
     retained only for external scripts that may still reference it by name.
     """
@@ -196,7 +196,7 @@ def find_brand(name: str) -> BrandPack:
     This is the function `/deck --brand <name>` should call — its error
     message tells the user exactly what to fix.
 
-    Returns a :class:`~lib.brand.BrandPack` (previously returned the legacy
+    Returns a :class:`~feinschliff.brand.BrandPack` (previously returned the legacy
     ``Brand`` dataclass — all attributes used by callers are present on
     ``BrandPack`` with the same names).
     """

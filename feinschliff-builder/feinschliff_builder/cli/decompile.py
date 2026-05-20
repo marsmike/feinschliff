@@ -101,7 +101,7 @@ def cmd_decompile(args) -> int:
 
 def _decompile_with_svg(pptx_path: Path, brand_dir: Path,
                         output_dir: Path, brand_name: str) -> int:
-    """Hybrid backend — uses lib.dsl.pptx_svg_decompile.derive() per slide."""
+    """Hybrid backend — uses feinschliff_builder.decompile.pptx_svg_decompile.derive() per slide."""
     from feinschliff_builder.decompile.pptx_svg_decompile import derive
     from pptx import Presentation
 

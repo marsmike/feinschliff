@@ -1,6 +1,6 @@
 """BrandPack — typed domain object for a feinschliff brand directory.
 
-Replaces the legacy `Brand` dataclass from `lib.brand_discovery`. A BrandPack
+Replaces the legacy `Brand` dataclass from `feinschliff.brand_discovery`. A BrandPack
 loads and caches `tokens.json`, provides token resolution by dotted path, and
 delegates layout/compound discovery to the toolkit's discovery layer.
 

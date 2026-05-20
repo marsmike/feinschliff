@@ -19,7 +19,7 @@ narrative_role  str   optional narrative-role hint (e.g. "so-what",
                      affinity in their profile.
 narrative_act   str   optional SCR-shape hint (situation | complication |
                      resolution) — populated by the storyline gate per
-                     slide. Consumed by lib.verify.deck.narrative_arc
+                     slide. Consumed by feinschliff_builder.verify.deck.narrative_arc
                      and by Phase 4 layouts (recommendation, next-steps).
                      Scored against Phase 4 layouts that declare a
                      `narrative_act` affinity; neutral against legacy

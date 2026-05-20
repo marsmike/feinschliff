@@ -1,7 +1,7 @@
-"""LayoutPicker — OO wrapper around :func:`lib.layout_picker.pick_layout`.
+"""LayoutPicker — OO wrapper around :func:`feinschliff.layout_picker.pick_layout`.
 
 Provides a class-based interface for layout selection, keeping the existing
-:func:`~lib.layout_picker.pick_layout` function as the scoring engine.
+:func:`~feinschliff.layout_picker.pick_layout` function as the scoring engine.
 
 Usage::
 
@@ -55,12 +55,12 @@ class LayoutMatch:
 # ── LayoutPicker ─────────────────────────────────────────────────────────────
 
 class LayoutPicker:
-    """Typed layout picker backed by :func:`lib.layout_picker.pick_layout`.
+    """Typed layout picker backed by :func:`feinschliff.layout_picker.pick_layout`.
 
     Parameters
     ----------
     brand:
-        The :class:`~lib.brand.pack.BrandPack` whose layout pool is
+        The :class:`~feinschliff.brand.pack.BrandPack` whose layout pool is
         searched when resolving :attr:`LayoutMatch.layout_path`.  When
         ``None``, ``layout_path`` in returned matches will also be ``None``.
     top_k:
@@ -112,7 +112,7 @@ class LayoutPicker:
         """Return up to *top_k* ranked :class:`LayoutMatch` instances.
 
         *slot_hint* is the same signal dict accepted by
-        :func:`lib.layout_picker.pick_layout`:
+        :func:`feinschliff.layout_picker.pick_layout`:
 
         .. code-block:: python
 
