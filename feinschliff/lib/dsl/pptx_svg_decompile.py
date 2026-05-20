@@ -900,10 +900,118 @@ def _shape_geometry_kind(spPr: etree._Element) -> str:
             return "line"
         if preset in ("rect", "roundRect"):
             return "rect"
+        # Known presets with a simple closed-polygon geometry get routed
+        # to `shape` so the emitter writes an `svg { path … }` block with
+        # the polygon's `d` string. See `_preset_geom_path` for the table.
+        if preset in _PRESET_PATH_PRESETS:
+            return "shape"
         return "rect"
     if spPr.find("a:custGeom", NS) is not None:
         return "shape"
     return "rect"
+
+
+# Presets whose geometry is a fixed closed polygon (no adjustment values
+# read from <a:avLst>). For each, `_preset_geom_path` returns the SVG `d`
+# string in the shape's local 0..w × 0..h pixel coordinate space.
+_PRESET_PATH_PRESETS: frozenset[str] = frozenset({
+    "triangle", "rtTriangle", "diamond",
+    "parallelogram", "trapezoid",
+    "pentagon", "hexagon", "heptagon", "octagon",
+    "homePlate", "chevron",
+    "rightArrow", "leftArrow", "upArrow", "downArrow",
+})
+
+
+def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
+    """SVG `d` string for the known closed-polygon presets, in local px.
+
+    The shapes use PowerPoint's default unadjusted geometry — the
+    `<a:avLst>` adjustment slider values are ignored. For the simple
+    convex polygons in `_PRESET_PATH_PRESETS` the unadjusted form is
+    visually correct in the vast majority of decks. Arrows use 50%
+    barb / 50% shaft as the PowerPoint default.
+    """
+    if w <= 0 or h <= 0:
+        return None
+    if preset == "triangle":
+        return f"M {w/2:.1f},0 L {w:.1f},{h:.1f} L 0,{h:.1f} Z"
+    if preset == "rtTriangle":
+        return f"M 0,0 L 0,{h:.1f} L {w:.1f},{h:.1f} Z"
+    if preset == "diamond":
+        return (f"M {w/2:.1f},0 L {w:.1f},{h/2:.1f} "
+                f"L {w/2:.1f},{h:.1f} L 0,{h/2:.1f} Z")
+    if preset == "parallelogram":
+        # Default skew = 25% from left.
+        skew = w * 0.25
+        return (f"M {skew:.1f},0 L {w:.1f},0 L {w-skew:.1f},{h:.1f} "
+                f"L 0,{h:.1f} Z")
+    if preset == "trapezoid":
+        # Default top is 75% of bottom, centered.
+        inset = w * 0.125
+        return (f"M {inset:.1f},0 L {w-inset:.1f},0 L {w:.1f},{h:.1f} "
+                f"L 0,{h:.1f} Z")
+    if preset in ("pentagon", "homePlate"):
+        # Five-sided home-plate-style polygon: flat top + rooflike bottom.
+        # PowerPoint's `pentagon` and `homePlate` differ in spec but render
+        # similarly; same convex outline here.
+        mid = h * 0.5
+        return (f"M 0,0 L {w*0.5:.1f},{-mid:.1f} L {w:.1f},0 "
+                f"L {w:.1f},{h:.1f} L 0,{h:.1f} Z") if False else \
+               (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
+                f"L 0,{h*0.5:.1f} Z")
+    if preset == "hexagon":
+        return (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
+                f"L 0,{h*0.5:.1f} Z")
+    if preset == "heptagon":
+        # Regular-ish 7-gon inscribed in the bbox.
+        import math as _m
+        pts = []
+        cx, cy = w / 2, h / 2
+        rx, ry = w / 2, h / 2
+        for i in range(7):
+            ang = -_m.pi / 2 + i * 2 * _m.pi / 7
+            pts.append(f"{cx + rx * _m.cos(ang):.1f},{cy + ry * _m.sin(ang):.1f}")
+        return "M " + " L ".join(pts) + " Z"
+    if preset == "octagon":
+        # Regular octagon — inset 0.2929 of bbox dimension on each corner.
+        c = 0.2929
+        return (f"M {w*c:.1f},0 L {w-w*c:.1f},0 L {w:.1f},{h*c:.1f} "
+                f"L {w:.1f},{h-h*c:.1f} L {w-w*c:.1f},{h:.1f} "
+                f"L {w*c:.1f},{h:.1f} L 0,{h-h*c:.1f} L 0,{h*c:.1f} Z")
+    if preset == "chevron":
+        # Right-pointing chevron (arrow head + notch in tail).
+        return (f"M 0,0 L {w*0.7:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w*0.7:.1f},{h:.1f} L 0,{h:.1f} "
+                f"L {w*0.3:.1f},{h*0.5:.1f} Z")
+    if preset == "rightArrow":
+        # 50% shaft height, 50% arrowhead length.
+        sy0, sy1 = h * 0.25, h * 0.75
+        ax = w * 0.5
+        return (f"M 0,{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                f"L {w:.1f},{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                f"L {ax:.1f},{sy1:.1f} L 0,{sy1:.1f} Z")
+    if preset == "leftArrow":
+        sy0, sy1 = h * 0.25, h * 0.75
+        ax = w * 0.5
+        return (f"M {w:.1f},{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                f"L 0,{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                f"L {ax:.1f},{sy1:.1f} L {w:.1f},{sy1:.1f} Z")
+    if preset == "upArrow":
+        sx0, sx1 = w * 0.25, w * 0.75
+        ay = h * 0.5
+        return (f"M {sx0:.1f},{h:.1f} L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
+                f"L {w*0.5:.1f},0 L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
+                f"L {sx1:.1f},{h:.1f} Z")
+    if preset == "downArrow":
+        sx0, sx1 = w * 0.25, w * 0.75
+        ay = h * 0.5
+        return (f"M {sx0:.1f},0 L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
+                f"L {w*0.5:.1f},{h:.1f} L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
+                f"L {sx1:.1f},0 Z")
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -1362,6 +1470,17 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     svg_d = None
     if kind == "shape":
         svg_d = _custgeom_svg_d(spPr, cmap.w(w), cmap.h(h))
+        if svg_d is None and spPr is not None:
+            # Preset-geom polygon (triangle, diamond, arrow, etc.) — the
+            # source uses `prstGeom prst="…"` with no custGeom, so
+            # _custgeom_svg_d returns None. Synthesize the path from the
+            # preset name so the renderer draws the correct outline
+            # instead of falling back to a bbox-rect.
+            pg = spPr.find("a:prstGeom", NS)
+            if pg is not None:
+                preset = pg.get("prst")
+                if preset:
+                    svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h))
 
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
