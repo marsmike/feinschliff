@@ -1,0 +1,341 @@
+"""Deck orchestration helpers extracted from cli/deck.py.
+
+Business-logic functions that were inline in ``cli/deck.py`` but are
+independently testable and reusable outside the CLI:
+
+- :func:`signals_from_slide` — extract layout-picker signals from a
+  content-plan slide entry.
+- :func:`resolve_layout_path` — find a layout DSL file for a given name
+  in brand-local and toolkit pools.
+- :func:`slot_budgets_for_layout` — compute slot budgets for a layout.
+- :func:`build_primitives_for_layout` — parse + expand a layout DSL file
+  with optional slot filling.
+- :func:`build_refurbished_deck` — build a PPTX from a list of refurbished
+  slide plans (each with a ``{layout, content}`` dict).
+- :func:`patch_set_hash` — stable hash of an autofix patch set for
+  oscillation detection.
+
+``cli/deck.py`` delegates to these functions; callers outside the CLI
+can import them directly.
+"""
+from __future__ import annotations
+
+import hashlib
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from lib.dsl.tokens import Tokens
+
+# ── constants ─────────────────────────────────────────────────────────────────
+
+# Maps `diagram_kind` hints from content_plan into the layout picker's
+# preferred role.
+DIAGRAM_KIND_TO_ROLE: dict[str, str] = {
+    "concept": "content-with-visual",
+    "chart":   "data-quantity",
+    "process": "data-timeline",
+    "compare": "data-comparison",
+}
+
+
+# ── patch_set_hash ────────────────────────────────────────────────────────────
+
+def patch_set_hash(patches: list) -> str:
+    """Stable hash of an autofix patch set — used for oscillation detection.
+
+    Two cycles that would apply identical changes produce the same hash so the
+    autofix loop can detect oscillation and halt before wasting iterations.
+    """
+    items = sorted(
+        (p.slide_index, p.action, str(sorted((p.payload or {}).items())))
+        for p in patches
+    )
+    return hashlib.sha256(repr(items).encode()).hexdigest()
+
+
+# ── signals_from_slide ────────────────────────────────────────────────────────
+
+def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
+    """Extract layout-picker / layout-budget kwargs from a content-plan slide.
+
+    Centralised here so per-slide and deck-wide pickers agree on which
+    fields feed selection.
+
+    Parameters
+    ----------
+    slide:
+        A single entry from the ``slides`` list of a content plan.
+
+    Returns
+    -------
+    dict
+        Keyword-argument dict accepted by :func:`lib.layout_picker.pick_layout`.
+    """
+    role = slide.get("role") or slide.get("purpose") or (
+        DIAGRAM_KIND_TO_ROLE.get(str(slide.get("diagram_kind") or ""))
+        or "content-columns"
+    )
+    return {
+        "role":            role,
+        "concept_count":   slide.get("concept_count"),
+        "data_quantity":   slide.get("data_quantity"),
+        "comparison":      slide.get("comparison"),
+        "narrative_role":  slide.get("narrative_role"),
+        "narrative_act":   slide.get("narrative_act"),
+        "time_axis_role":  slide.get("time_axis_role"),
+        "audience_mode":   slide.get("audience_mode"),
+        "diagram_kind":    slide.get("diagram_kind"),
+    }
+
+
+# ── resolve_layout_path ───────────────────────────────────────────────────────
+
+def resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
+    """Return the DSL path for *layout_name*.
+
+    Checks brand-local first (``<brand_root>/layouts/<name>.slide.dsl``),
+    then falls back to the toolkit pool via
+    :func:`lib.layout_discovery.find_layout`.
+
+    Parameters
+    ----------
+    brand_root:
+        Root directory of the brand pack (e.g. ``brands/feinschliff``).
+    layout_name:
+        Bare layout identifier, e.g. ``"title-orange"``.
+
+    Returns
+    -------
+    Path or None
+        Absolute path to the ``.slide.dsl`` file, or ``None`` when not found.
+    """
+    from lib.layout_discovery import find_layout as _find_layout
+    brand_local = brand_root / "layouts" / f"{layout_name}.slide.dsl"
+    if brand_local.is_file():
+        return brand_local
+    layout = _find_layout(layout_name)
+    return layout.path if layout is not None else None
+
+
+# ── slot_budgets_for_layout ───────────────────────────────────────────────────
+
+def slot_budgets_for_layout(
+    layout_name: str,
+    brand_root: Path,
+    tokens: "Tokens",
+) -> dict[str, dict[str, int]]:
+    """Compute slot budgets for *layout_name*.
+
+    Returns a plain serialisable dict mapping slot names to
+    ``{chars_per_line, max_lines, max_chars}``.  Returns an empty dict
+    and logs a warning on any error so the caller never crashes.
+
+    Parameters
+    ----------
+    layout_name:
+        Bare layout identifier.
+    brand_root:
+        Root directory of the brand pack.
+    tokens:
+        Loaded token set for the brand.
+    """
+    from lib.dsl.parser import parse_file
+    from lib.slot_budget import compute_slot_budgets
+
+    import sys
+
+    layout_path = resolve_layout_path(brand_root, layout_name)
+    if layout_path is None:
+        print(
+            f"deck plan-skeleton: layout {layout_name!r} not found in brand "
+            f"or toolkit; slot_budgets will be empty",
+            file=sys.stderr,
+        )
+        return {}
+    try:
+        nodes, _ = parse_file(layout_path)
+        budgets = compute_slot_budgets(nodes, tokens)
+    except Exception as exc:  # noqa: BLE001
+        print(
+            f"deck plan-skeleton: could not compute slot budgets for "
+            f"{layout_name!r}: {exc}",
+            file=sys.stderr,
+        )
+        return {}
+    return {
+        slot: {
+            "chars_per_line": b.chars_per_line,
+            "max_lines": b.max_lines,
+            "max_chars": b.max_chars,
+        }
+        for slot, b in budgets.items()
+    }
+
+
+# ── build_primitives_for_layout ───────────────────────────────────────────────
+
+def build_primitives_for_layout(
+    layout_path: Path,
+    brand: str,
+    content_path: Path | None,
+    *,
+    skip_interpolation: bool = False,
+) -> tuple[list, Any]:
+    """Parse, expand, and return ``(primitives, tokens)`` for a single layout.
+
+    When *skip_interpolation* is True the slot-filling pass is skipped so
+    ``{{ slot_name }}`` labels are preserved in the primitives.  This is
+    the correct mode for wireframe rendering.
+
+    Parameters
+    ----------
+    layout_path:
+        Path to the ``.slide.dsl`` layout file.
+    brand:
+        Brand identifier (directory name under ``brands/``).
+    content_path:
+        Optional path to a YAML file with slot values.  Ignored when
+        *skip_interpolation* is True.
+    skip_interpolation:
+        When True, skip slot-filling even if *content_path* is provided.
+
+    Returns
+    -------
+    tuple[list, Tokens]
+        ``(primitives, tokens)`` — the expanded node list and the loaded
+        token set for the brand.
+    """
+    import yaml
+
+    from lib.brand_discovery import find_brand
+    from lib.dsl.expander import expand_compounds, interpolate_nodes, load_compounds_for_brand
+    from lib.dsl.parser import parse_file
+    from lib.dsl.tokens import load_tokens
+
+    def _bundled_compounds() -> Path:
+        return Path(__file__).resolve().parents[2] / "compounds"
+
+    brand_dir = find_brand(brand).root
+    tokens = load_tokens(brand_dir)
+    compounds = load_compounds_for_brand(brand_dir, std_dir=_bundled_compounds())
+    layout_nodes, layout_compounds = parse_file(layout_path)
+    for cd in layout_compounds:
+        compounds[cd.name] = cd
+    if skip_interpolation:
+        source_nodes = layout_nodes
+    else:
+        ctx: dict = {}
+        if content_path and content_path.is_file():
+            ctx = yaml.safe_load(content_path.read_text()) or {}
+        source_nodes = interpolate_nodes(layout_nodes, ctx)
+    primitives, _ = expand_compounds(source_nodes, compounds)
+    return primitives, tokens
+
+
+# ── build_refurbished_deck ────────────────────────────────────────────────────
+
+def build_refurbished_deck(
+    slides_plan: list[dict[str, Any]],
+    brand: str,
+    out_path: Path,
+) -> None:
+    """Build a multi-slide PPTX from refurbished slide plan entries.
+
+    Each entry in *slides_plan* is ``{layout: str, content: dict}``.
+    Uses the existing ``build_multi_slide`` pipeline.
+
+    Parameters
+    ----------
+    slides_plan:
+        List of ``{layout, content}`` dicts (as produced by ``cmd_polish``).
+    brand:
+        Brand identifier.
+    out_path:
+        Output ``.pptx`` path.
+
+    Raises
+    ------
+    ValueError
+        When the brand cannot be found.
+    FileNotFoundError
+        When a layout DSL file cannot be resolved.
+    """
+    import tempfile
+
+    from lib.brand_discovery import find_brand
+    from lib.dsl.expander import (
+        expand_compounds, expand_diagram_blocks, interpolate_nodes,
+        load_compounds_for_brand,
+    )
+    from lib.dsl.parser import parse_file
+    from lib.dsl.pptx_emit import build_multi_slide
+    from lib.dsl.tokens import load_tokens
+    from lib.io.image_provider import discover_providers, get_provider
+    from lib.layout_discovery import find_layout as _find_layout
+
+    def _bundled_assets() -> Path:
+        return Path(__file__).resolve().parents[2] / "assets"
+
+    def _bundled_compounds() -> Path:
+        return Path(__file__).resolve().parents[2] / "compounds"
+
+    try:
+        brand_obj = find_brand(brand)
+    except ValueError as e:
+        raise ValueError(f"deck polish: {e}") from None
+    brand_dir = brand_obj.root
+
+    discover_providers()
+    provider = None
+    if brand_obj.image_provider_config:
+        cfg = brand_obj.image_provider_config
+        provider = get_provider(cfg["kind"], cfg.get("config"))
+
+    tokens = load_tokens(brand_dir)
+    compounds = load_compounds_for_brand(brand_dir, std_dir=_bundled_compounds())
+    slides_payload: list[tuple[list, Any, Path]] = []
+
+    with tempfile.TemporaryDirectory() as tmp:
+        diagrams_out = Path(tmp) / "diagrams"
+        diagrams_out.mkdir()
+        for slide_idx, entry in enumerate(slides_plan, start=1):
+            _layout_name = entry["layout"]
+            if _layout_name.endswith(".slide.dsl"):
+                _layout_name = _layout_name[:-len(".slide.dsl")]
+            _ly = _find_layout(_layout_name)
+            if _ly is None:
+                raise FileNotFoundError(
+                    f"deck polish: layout not found: {entry['layout']!r}"
+                )
+            layout_path = _ly.path
+            layout_nodes, layout_compounds = parse_file(layout_path)
+            local_compounds = dict(compounds)
+            for cd in layout_compounds:
+                local_compounds[cd.name] = cd
+            interp = interpolate_nodes(layout_nodes, entry["content"])
+            interp = expand_diagram_blocks(
+                interp,
+                brand_dir=brand_dir,
+                out_dir=diagrams_out,
+                layout_dir=layout_path.parent,
+                slide_index=slide_idx,
+            )
+            primitives, diagnostics = expand_compounds(interp, local_compounds)
+            import sys
+            for d in diagnostics:
+                print(f"deck polish: {d.format()}", file=sys.stderr)
+            notes = entry.get("notes")
+            if notes is not None:
+                slides_payload.append((primitives, tokens, brand_dir / "assets", notes))
+            else:
+                slides_payload.append((primitives, tokens, brand_dir / "assets"))
+
+        prs = build_multi_slide(
+            slides_payload,
+            asset_root_fallback=_bundled_assets(),
+            image_provider=provider,
+            deck_dir=out_path.parent,
+        )
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        prs.save(str(out_path))
