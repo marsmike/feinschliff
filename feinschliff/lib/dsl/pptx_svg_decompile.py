@@ -91,6 +91,9 @@ class Shape:
     is_picture: bool = False      # True for <p:pic> or ph type="pic"
     ph_type: str | None = None    # 'title','body','subTitle','pic','ftr','sldNum',...
     ph_idx: str | None = None
+    # Border width in design-px. Captured from `<a:ln w="...">` (EMU); when
+    # None the emitter uses its default hairline width.
+    stroke_width: float | None = None
     # Source bodyPr `anchor` attribute — controls text vertical position
     # within the shape bbox. "ctr" centers (PowerPoint default for many
     # text frames); "b" bottoms; "t" or absent = top. Without this the DSL
@@ -267,6 +270,38 @@ class CanvasMap:
 # ---------------------------------------------------------------------------
 # Shape walking
 # ---------------------------------------------------------------------------
+
+
+def _split_runs_by_color(runs: list["TextRun"]) -> list[list["TextRun"]]:
+    """Group runs into consecutive same-color blocks (paragraphs).
+
+    Newline markers (`text="\\n"`) act as paragraph separators — they don't
+    own a colour, so they're attached to the *preceding* block. Returns a
+    single-element list when all content shares one colour (the caller can
+    cheap-check len(blocks) and skip splitting in the common case).
+    """
+    blocks: list[list[TextRun]] = []
+    current: list[TextRun] = []
+    current_color: str | None = None
+    for r in runs:
+        rc = r.color if (r.text and r.text != "\n") else None
+        if rc is None:
+            # Newline marker or coloured-less run — append to current block.
+            if current:
+                current.append(r)
+            continue
+        if current_color is None:
+            current_color = rc
+            current.append(r)
+        elif rc == current_color:
+            current.append(r)
+        else:
+            blocks.append(current)
+            current = [r]
+            current_color = rc
+    if current:
+        blocks.append(current)
+    return blocks
 
 
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -717,14 +752,28 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     if padding_emu is not None:
         l, t_ins, r, b = padding_emu
         padding_px = (cmap.w(l), cmap.h(t_ins), cmap.w(r), cmap.h(b))
-    # Stroke (line) colour, if any — captured for stroke-only geometry
-    # (e.g. a callout-circle drawn around a bullet item with no fill).
+    # Stroke (line) colour + width. PowerPoint stores stroke width in EMU
+    # on `<a:ln w="...">` (default ~9525 EMU = 0.75pt = 1px hairline). We
+    # convert to design-px so the emitter's `stroke-width:N` reads in the
+    # same unit as the rest of the DSL. Without width capture, borders
+    # would render as 1px hairlines regardless of source.
     stroke = None
+    stroke_width: float | None = None
     ln = spPr.find("a:ln", NS) if spPr is not None else None
     if ln is not None:
         sf = ln.find("a:solidFill", NS)
         if sf is not None:
             stroke = _resolve_solid(sf, theme, palette)
+        w_attr = ln.get("w")
+        if w_attr:
+            try:
+                w_emu = int(w_attr)
+                # Width is uniform in EMU (1pt = 12700); converting via the
+                # horizontal scale keeps it consistent with the rest of the
+                # design-px coordinate system on this canvas.
+                stroke_width = cmap.w(w_emu)
+            except (ValueError, TypeError):
+                pass
 
     # Picture-typed placeholder → picture shape (no actual <p:pic>).
     if ph_type == "pic":
@@ -736,6 +785,37 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
 
     # Pure-text shape (placeholder, label, etc.) — no rect, just text.
     if runs and fill is None and kind == "rect":
+        # Multi-paragraph colour split: when a text shape carries paragraphs
+        # in different colours (typical of a cyan headline above silver body
+        # bullets), emit one DSL `text` primitive per consecutive same-colour
+        # block at calculated y-offsets, instead of collapsing them into a
+        # single primitive whose first-run colour overrides the rest.
+        blocks = _split_runs_by_color(runs)
+        if len(blocks) > 1:
+            frame_x_px = cmap.x(x)
+            frame_y_px = cmap.y(y)
+            frame_w_px = cmap.w(w)
+            # Cursor-style y placement: each block consumes its own height
+            # based on its primary pt (line-height factor 1.25 captures
+            # standard slide leading without over-spacing tight headlines).
+            cursor = frame_y_px
+            for block_runs in blocks:
+                block_pts = [r.pt for r in block_runs if r.text and r.text != "\n"]
+                primary_pt = max(block_pts) if block_pts else 12
+                line_count = sum(1 for r in block_runs if r.text and r.text != "\n")
+                block_h_px = max(int(round(primary_pt * (4 / 3) * 1.25 * max(line_count, 1))), 24)
+                # Split blocks always anchor top so the next block starts at
+                # the bottom of the previous one — using the parent shape's
+                # valign:middle would re-center each split block and overlap
+                # neighbours.
+                shapes.append(Shape(
+                    kind="text", x=frame_x_px, y=cursor,
+                    w=frame_w_px, h=block_h_px,
+                    text_runs=block_runs, ph_type=ph_type, ph_idx=ph_idx,
+                    valign=None, padding=padding_px,
+                ))
+                cursor += block_h_px
+            return
         shapes.append(Shape(
             kind="text", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
             text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, valign=valign,
@@ -1116,9 +1196,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
-    # Backgrounds first (large area).
+    # Backgrounds first (large area). Append stroke + stroke-width when the
+    # source shape carries an `<a:ln>` border — without this every framed
+    # rect (cards, badges, callouts) loses its outline in the render.
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
-        out.append(f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}")
+        line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
+        if r.stroke:
+            line += f" stroke:{r.stroke}"
+            if r.stroke_width is not None and r.stroke_width > 0:
+                line += f" stroke-width:{r.stroke_width:g}"
+        out.append(line)
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring
     # sectors, etc.). When we recovered an SVG `d` string from the source
@@ -1158,9 +1245,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # so the DSL always builds.
     for o in ovals:
         if o.fill is None and o.stroke:
-            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval stroke:{o.stroke}")
+            line = f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval stroke:{o.stroke}"
         else:
-            out.append(f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}")
+            line = f"shape {o.x},{o.y} {o.w}x{o.h} kind:oval fill:{o.fill or 'fog'}"
+            if o.stroke:
+                line += f" stroke:{o.stroke}"
+        if o.stroke_width is not None and o.stroke_width > 0:
+            line += f" stroke-width:{o.stroke_width:g}"
+        out.append(line)
 
     # Pictures — default to the brand's generic placeholder (so a derived
     # layout works as a reusable template) OR, when derive() was called
