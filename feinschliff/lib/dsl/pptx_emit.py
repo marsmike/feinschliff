@@ -76,23 +76,68 @@ _LEGACY_CANVAS_W = 1920
 def _installed_fonts() -> set[str]:
     """Set of font family names installed on this system, lowercased.
 
-    Built once per process from `fc-list` (Linux/macOS via homebrew
-    fontconfig). Falls back to an empty set on systems without fontconfig
-    — in which case `_assert_font_available` becomes a no-op (we can't
-    block the build on a check we can't run reliably).
+    Sources, in order:
+      1. `fc-list` (Linux/macOS via homebrew fontconfig)
+      2. macOS Microsoft Office app bundles (Calibri + family ships inside
+         /Applications/Microsoft *.app/Contents/Resources/DFonts/ — those
+         fonts are scoped to the host app and don't register with
+         fontconfig, so a Calibri-using source PPTX appears uninstalled).
+
+    Falls back to an empty set on systems without fontconfig — in which
+    case `_assert_font_available` becomes a no-op (we can't block the
+    build on a check we can't run reliably).
     """
     import shutil, subprocess
-    fc = shutil.which("fc-list")
-    if not fc:
-        return set()
-    try:
-        out = subprocess.check_output([fc, ":", "family"], timeout=5).decode("utf-8", "ignore")
-    except (subprocess.SubprocessError, OSError):
-        return set()
     fams: set[str] = set()
-    for line in out.splitlines():
-        for fam in line.split(","):
-            fams.add(fam.strip().lower())
+    fc = shutil.which("fc-list")
+    if fc:
+        try:
+            out = subprocess.check_output([fc, ":", "family"], timeout=5).decode("utf-8", "ignore")
+            for line in out.splitlines():
+                for fam in line.split(","):
+                    fams.add(fam.strip().lower())
+        except (subprocess.SubprocessError, OSError):
+            pass
+    fams |= _office_bundle_fonts()
+    return fams
+
+
+def _office_bundle_fonts() -> set[str]:
+    """Family names bundled with macOS Microsoft Office (Calibri etc).
+
+    These ship inside the .app bundle and don't register with fontconfig,
+    but `python-pptx` writes them as the font name and LibreOffice can
+    pick them up via the shared font cache when they've been registered
+    once. We surface them to the availability check so the build doesn't
+    spuriously hard-fail on `Calibri` when Office is installed.
+    """
+    from pathlib import Path
+    fams: set[str] = set()
+    candidates = [
+        "/Applications/Microsoft PowerPoint.app/Contents/Resources/DFonts",
+        "/Applications/Microsoft Word.app/Contents/Resources/DFonts",
+        "/Applications/Microsoft Excel.app/Contents/Resources/DFonts",
+    ]
+    # Filename → family-name map for the Office font set. PowerPoint stores
+    # Calibri across multiple files (Calibri.ttf, calibril.ttf for Light,
+    # Calibrib.ttf for Bold, etc); collapse all variants to the family name
+    # that the source theme would reference.
+    name_for: dict[str, str] = {
+        "calibri.ttf": "Calibri", "calibrib.ttf": "Calibri",
+        "calibrii.ttf": "Calibri", "calibriz.ttf": "Calibri",
+        "calibril.ttf": "Calibri Light", "calibrili.ttf": "Calibri Light",
+        "cambria.ttc": "Cambria", "cambriab.ttf": "Cambria",
+        "candara.ttf": "Candara", "consola.ttf": "Consolas",
+        "constan.ttf": "Constantia", "corbel.ttf": "Corbel",
+    }
+    for c in candidates:
+        d = Path(c)
+        if not d.is_dir():
+            continue
+        for f in d.iterdir():
+            fam = name_for.get(f.name.lower())
+            if fam:
+                fams.add(fam.lower())
     return fams
 
 
