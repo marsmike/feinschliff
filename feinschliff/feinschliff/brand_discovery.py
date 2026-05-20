@@ -46,7 +46,7 @@ def _plugin_brands_roots() -> list[Path]:
     """`brands/` dirs from installed Claude Code plugins.
 
     Brand packs are intentionally permissive — any plugin can ship a ``brands/``
-    directory (e.g. third-party brand packs, BSH private packs), so no plugin-name
+    directory (e.g. third-party brand packs, private supplier packs), so no plugin-name
     filter is applied here.
 
     Modern plugins land under ``~/.claude/plugins/marketplaces/{marketplace}/{plugin}/``;

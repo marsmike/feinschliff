@@ -1,5 +1,5 @@
 # photo-strip-four — 4 vertical strip-cards, each with a colored accent header,
-# body copy, and a hero photo at the bottom. Modelled on BSH Folie 31/32 pattern.
+# body copy, and a hero photo at the bottom.
 #
 # Slot schema:
 #   logo, pgmeta — header

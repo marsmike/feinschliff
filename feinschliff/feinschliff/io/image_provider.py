@@ -45,7 +45,7 @@ class ImageHit:
     ``python-pptx``.
     """
     url: str
-    license: str          # e.g. "Unsplash License", "internal-bsh"
+    license: str          # e.g. "Unsplash License", "internal-brand"
     attribution: str      # human-readable credit line
     width: int | None     # pixels, when known
     height: int | None
