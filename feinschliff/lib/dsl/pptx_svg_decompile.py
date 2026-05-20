@@ -1841,6 +1841,15 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         bar_dir_el is not None and bar_dir_el.get("val") == "bar"
     )
 
+    # Stacking: <c:grouping val="standard|stacked|percentStacked"/>.
+    # "standard" (default): series sit side-by-side per category.
+    # "stacked": series stack head-to-tail; axis_max = max sum-per-category.
+    # "percentStacked": each category bar is 100%; series segment by share.
+    grouping_el = bar.find(f"{{{CHART_NS}}}grouping")
+    grouping = grouping_el.get("val") if grouping_el is not None else "standard"
+    if grouping not in ("standard", "stacked", "percentStacked", "clustered"):
+        grouping = "standard"
+
     series = []
     for ser in bar.findall(f"{{{CHART_NS}}}ser"):
         name_el = ser.find(f".//{{{CHART_NS}}}tx//{{{CHART_NS}}}v")
@@ -1860,14 +1869,26 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     n_cats = max(len(s[1]) for s in series)
     n_series = len(series)
     cats = series[0][2] if series[0][2] else [f"Cat {i+1}" for i in range(n_cats)]
-    data_max = max((max(s[1]) for s in series if s[1]), default=0)
+    if grouping == "stacked":
+        # Each category's bar = sum of all series values for that category.
+        cat_totals = [sum(s[1][ci] for s in series if ci < len(s[1]))
+                      for ci in range(n_cats)]
+        data_max = max(cat_totals) if cat_totals else 0
+    elif grouping == "percentStacked":
+        # Every category sums to 100% — plot axis is just 100.
+        data_max = 100
+    else:
+        data_max = max((max(s[1]) for s in series if s[1]), default=0)
     # Round axis max up to the next integer above data_max.
     # LibreOffice's auto-axis (the source-PNG ground truth in the verify
     # loop) adds one major-unit of headroom over data_max, so matching its
     # tick count beats the more semantically-correct ceil(data_max) — the
     # struct_diff_ratio improves when ticks line up with the source-PNG
     # rasterisation, not with what PowerPoint would have drawn.
-    axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
+    if grouping == "percentStacked":
+        axis_max = 100
+    else:
+        axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
 
     # Plot-area extents inside the frame (EMU). Match PowerPoint defaults:
     # ~7% left for y-axis labels, ~12% top for cat labels, ~22% bottom for legend.
@@ -1929,31 +1950,60 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
         # axis runs horizontally. Each category gets a row of height
         # `cat_h`; bars within stack by series and extend rightward.
         cat_h = plot_h // n_cats if n_cats else plot_h
-        bar_h = int(cat_h / (n_series + gap_pct / 100))
-        group_h = bar_h * n_series
-        group_inset_v = (cat_h - group_h) // 2
-        for si, (name, vals, _, ser_color) in enumerate(series):
-            color = ser_color or f"chart-series-{(si % 6) + 1}"
-            for ci, v in enumerate(vals):
-                by_ = plot_y + ci * cat_h + group_inset_v + si * bar_h
-                bw_ = int(plot_w * v / axis_max) if axis_max > 0 else 0
-                bx_ = plot_x
-                shapes.append(Shape(
-                    kind="rect",
-                    x=cmap.x(bx_), y=cmap.y(by_),
-                    w=cmap.w(bw_), h=cmap.h(bar_h),
-                    fill=color,
-                ))
-                label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
-                label = label.replace(".", ",")
-                shapes.append(Shape(
-                    kind="text",
-                    x=cmap.x(bx_ + bw_ + 50000),
-                    y=cmap.y(by_),
-                    w=cmap.w(int(fw * 0.08)),
-                    h=cmap.h(int(bar_h)),
-                    text_runs=[TextRun(text=label, pt=14)],
-                ))
+        if grouping in ("stacked", "percentStacked"):
+            # One bar per category, series segments fill it left-to-right.
+            bar_h = int(cat_h / (1 + gap_pct / 100))
+            for ci in range(n_cats):
+                # Per-category total (stacked uses sum, percentStacked
+                # normalises to 100 so each row fills plot_w).
+                if grouping == "percentStacked":
+                    cat_total = sum(s[1][ci] for s in series if ci < len(s[1]))
+                else:
+                    cat_total = data_max
+                cursor_x = plot_x
+                row_y = plot_y + ci * cat_h + (cat_h - bar_h) // 2
+                for si, (name, vals, _, ser_color) in enumerate(series):
+                    if ci >= len(vals):
+                        continue
+                    v = vals[ci]
+                    color = ser_color or f"chart-series-{(si % 6) + 1}"
+                    if grouping == "percentStacked":
+                        seg_w = int(plot_w * (v / cat_total)) if cat_total > 0 else 0
+                    else:
+                        seg_w = int(plot_w * (v / axis_max)) if axis_max > 0 else 0
+                    shapes.append(Shape(
+                        kind="rect",
+                        x=cmap.x(cursor_x), y=cmap.y(row_y),
+                        w=cmap.w(seg_w), h=cmap.h(bar_h),
+                        fill=color,
+                    ))
+                    cursor_x += seg_w
+        else:
+            bar_h = int(cat_h / (n_series + gap_pct / 100))
+            group_h = bar_h * n_series
+            group_inset_v = (cat_h - group_h) // 2
+            for si, (name, vals, _, ser_color) in enumerate(series):
+                color = ser_color or f"chart-series-{(si % 6) + 1}"
+                for ci, v in enumerate(vals):
+                    by_ = plot_y + ci * cat_h + group_inset_v + si * bar_h
+                    bw_ = int(plot_w * v / axis_max) if axis_max > 0 else 0
+                    bx_ = plot_x
+                    shapes.append(Shape(
+                        kind="rect",
+                        x=cmap.x(bx_), y=cmap.y(by_),
+                        w=cmap.w(bw_), h=cmap.h(bar_h),
+                        fill=color,
+                    ))
+                    label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                    label = label.replace(".", ",")
+                    shapes.append(Shape(
+                        kind="text",
+                        x=cmap.x(bx_ + bw_ + 50000),
+                        y=cmap.y(by_),
+                        w=cmap.w(int(fw * 0.08)),
+                        h=cmap.h(int(bar_h)),
+                        text_runs=[TextRun(text=label, pt=14)],
+                    ))
     else:
         bar_w = int(cat_w / (n_series + gap_pct / 100))
         group_w = bar_w * n_series
