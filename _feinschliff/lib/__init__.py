@@ -1,1 +1,0 @@
-"""Feinschliff core library."""
