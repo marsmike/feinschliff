@@ -184,7 +184,7 @@ def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = N
         try:
             discovered = _find_brand(parent)
             candidates.append(discovered.root)
-        except (ValueError, Exception):  # noqa: BLE001
+        except ValueError:
             pass
         parent_dir = next((p for p in candidates if (p / "tokens.json").exists()), None)
         if parent_dir is None:

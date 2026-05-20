@@ -56,16 +56,17 @@ def test_find_layout_finds_bundled(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# Behaviour 2: env override wins (higher priority source wins on first-match)
+# Behaviour 2: priority order — bundled wins over env for same name; env
+# wins when bundled doesn't have the layout (tested separately below)
 # ---------------------------------------------------------------------------
 
-def test_env_override_wins(tmp_path, monkeypatch):
-    """FEINSCHLIFF_LAYOUT_PATH entry is returned before bundled."""
+def test_bundled_wins_over_env(tmp_path, monkeypatch):
+    """Bundled source (priority 1) is returned before env (priority 3) for the same name."""
     bundled = tmp_path / "bundled" / "layouts"
     _write_layout(bundled, "cover")
 
     env_dir = tmp_path / "env-layouts"
-    _write_layout(env_dir, "cover")  # same name, different dir
+    _write_layout(env_dir, "cover")  # same name — bundled should win
 
     monkeypatch.setenv("FEINSCHLIFF_LAYOUT_PATH", str(env_dir))
     monkeypatch.setattr("lib.layout_discovery._bundled_layouts_root", lambda: bundled)
@@ -75,12 +76,26 @@ def test_env_override_wins(tmp_path, monkeypatch):
 
     layout = find_layout("cover")
     assert layout is not None
-    # env comes after bundled in the list but the path found first is bundled;
-    # however the *env source dir* itself doesn't deduplicate names — find_layout
-    # returns the first file found across dirs in priority order.
-    # Bundled is priority 1, env is priority 3.
-    # To test env *wins* we make bundled absent and env present:
-    pass
+    assert layout.path == bundled / "cover.slide.dsl"  # bundled path, not env
+
+
+def test_env_wins_for_layouts_absent_from_bundled(tmp_path, monkeypatch):
+    """Env source wins when the layout is absent from bundled (priority falls through)."""
+    bundled = tmp_path / "bundled" / "layouts"
+    bundled.mkdir(parents=True)  # exists but has no layouts
+
+    env_dir = tmp_path / "env-layouts"
+    _write_layout(env_dir, "env-only-slide")  # only in env
+
+    monkeypatch.setenv("FEINSCHLIFF_LAYOUT_PATH", str(env_dir))
+    monkeypatch.setattr("lib.layout_discovery._bundled_layouts_root", lambda: bundled)
+    monkeypatch.setattr("lib.layout_discovery._user_layouts_root", lambda: tmp_path / "no-such")
+    monkeypatch.setattr("lib.layout_discovery._plugin_layouts_roots", lambda: [])
+    monkeypatch.setattr("lib.layout_discovery._cwd_dev_layouts_roots", lambda: [])
+
+    layout = find_layout("env-only-slide")
+    assert layout is not None
+    assert layout.path == env_dir / "env-only-slide.slide.dsl"
 
 
 def test_env_override_wins_no_bundled(tmp_path, monkeypatch):
