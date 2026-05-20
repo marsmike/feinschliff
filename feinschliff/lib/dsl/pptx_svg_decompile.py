@@ -762,14 +762,7 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
     shapes = [s for s in shapes if not (s.ph_idx and not _has_content(s))]
     inherited: list[Shape] = []
     layout_master_chain = _layout_master_chain(slide)
-    # Master is the LAST entry in the chain (index 1 when both layout +
-    # master are present). Used to suppress master text placeholders that
-    # carry default prompt copy ("Überschrift 1, TT Norms Pro, 28 pt",
-    # "Falls nicht benötigt, …") without a hasCustomPrompt attribute —
-    # PowerPoint hides those at render time when the slide's placeholder
-    # is empty, but our walker would otherwise emit them as visible text.
-    master_index = len(layout_master_chain) - 1
-    for chain_idx, src in enumerate(layout_master_chain):
+    for src in layout_master_chain:
         chain_spTree = src.element.find(".//p:cSld/p:spTree", NS)
         if chain_spTree is None:
             continue
@@ -950,8 +943,10 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
                     child_off = (ox + dx, oy + dy)
                 if ext is not None and chExt is not None:
                     try:
-                        cx = int(ext.get("cx")); cy = int(ext.get("cy"))
-                        chcx = int(chExt.get("cx")); chcy = int(chExt.get("cy"))
+                        cx = int(ext.get("cx"))
+                        cy = int(ext.get("cy"))
+                        chcx = int(chExt.get("cx"))
+                        chcy = int(chExt.get("cy"))
                         # Tolerate ~5% rounding; anything beyond that is a
                         # genuine scale transform we can't reproduce.
                         if chcx > 0 and chcy > 0:
