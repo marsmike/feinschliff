@@ -6,52 +6,59 @@
 
 <p align="center">
   <strong>Brand-pluggable design system for Claude Code</strong><br>
-  Turn DESIGN.md or HTML into brand-perfect PowerPoint decks. The marketplace I run my own work on.
+  Turn DESIGN.md or HTML into brand-perfect PowerPoint decks.
 </p>
 
 [![CI](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml)
 [![Pages](https://github.com/marsmike/feinschliff/actions/workflows/pages.yml/badge.svg)](https://marsmike.github.io/feinschliff/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/marsmike/feinschliff?style=social)](https://github.com/marsmike/feinschliff/stargazers)
-[![Last commit](https://img.shields.io/github/last-commit/marsmike/feinschliff)](https://github.com/marsmike/feinschliff/commits/main)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin%20marketplace-orange)](https://docs.claude.com/claude-code)
 
-🎨 **[Browse the brand gallery →](https://marsmike.github.io/feinschliff/brands/)** — every brand pack rendered against every layout. Click any thumbnail for a carousel view.
+[Browse the brand gallery](https://marsmike.github.io/feinschliff/brands/) — every brand pack rendered against every layout.
 
 ![Feinschliff showcase grid — six slides rendered from the eponymous brand pack](feinschliff/docs/images/hero-grid.png)
 
-## Install
-
-```bash
-# In Claude Code
-/plugin marketplace add marsmike/feinschliff
-```
-
-Then `/deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"` to build your first deck on the default `feinschliff` brand.
-
 ## Plugins
 
-| Plugin | Description |
-|---|---|
-| [`feinschliff`](feinschliff) | Brand-pluggable design system — turn Claude Design HTML into brand-perfect PowerPoint decks. |
+This repo ships three independent Claude Code plugins. Install only what you need.
 
-More plugins released step-by-step. Watch the repo for the next launch.
+| Plugin | Install | Description |
+|---|---|---|
+| [`feinschliff`](feinschliff/) | `/plugin marketplace add marsmike/feinschliff` | Core generator — `/deck`, `/excalidraw`, `/svg` skills + `feinschliff` CLI. Ships with 3 brand packs and 50 layouts. |
+| [`feinschliff-extra`](feinschliff-extra/) | `/plugin marketplace add marsmike/feinschliff-extra` | 10 additional brand packs (light/dark themes, terminal palettes, bold corporate looks). Requires `feinschliff`. |
+| [`feinschliff-builder`](feinschliff-builder/) | `/plugin marketplace add marsmike/feinschliff-builder` | Brand-pack authoring toolkit — compile HTML, decompile PPTX, verify quality, improve brand packs. Requires `feinschliff`. |
 
-## Composition
+## Why separate plugins?
 
-The repo stays light by design: rendered artifacts (per-brand PNGs, PPTX/PDF showcases, gallery HTML) live in R2 and on the Pages build, never in git. What you clone is source + docs.
+Most users only need `feinschliff` — the core generator with the default brand pack.
+`feinschliff-extra` and `feinschliff-builder` are optional add-ons:
 
-| Type | Files | Size | |
-|---|---:|---:|---|
-| Python | 172 | 1.0 MiB | ████████████▎ |
-| Text & markup | 258 | 2.4 MiB | ██████████████████████████████ |
-| Images | 26 | 698 KiB | ████████▊ |
-| Other | 1 | 30 KiB | ▎ |
-| **Total** | **457** | **4.0 MiB** | |
+- **`feinschliff-extra`** is for users who want more brand variety without writing
+  any DSL. Just install and pick a brand.
+- **`feinschliff-builder`** is for brand authors who want to create or tune their
+  own brand pack. It adds six authoring CLI subcommands and two AI-assisted skills.
+
+Splitting them keeps the core plugin lean and avoids installing build tools that
+most end users will never run.
+
+## Quick start
+
+```bash
+/plugin marketplace add marsmike/feinschliff
+/deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"
+```
+
+To use a different brand:
+
+```bash
+/plugin marketplace add marsmike/feinschliff-extra
+FEINSCHLIFF_BRAND=catppuccin-macchiato /deck "..."
+```
 
 ## Contributing
 
-PRs welcome. See the [contributing guide](CONTRIBUTING.md). All commits require a [DCO](https://developercertificate.org/) sign-off (`git commit -s`).
+PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). All commits require a
+[DCO](https://developercertificate.org/) sign-off (`git commit -s`).
 
 ## Author
 
@@ -59,8 +66,5 @@ PRs welcome. See the [contributing guide](CONTRIBUTING.md). All commits require 
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Third-party attribution: [NOTICE.md](NOTICE.md). Security policy: [SECURITY.md](SECURITY.md).
-
-## Star history
-
-⭐ [Track over time on star-history.com](https://www.star-history.com/#marsmike/feinschliff&Date)
+MIT — see [LICENSE](LICENSE). Third-party attribution: [NOTICE.md](NOTICE.md).
+Security policy: [SECURITY.md](SECURITY.md).
