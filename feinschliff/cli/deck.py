@@ -521,16 +521,20 @@ def cmd_build(args) -> int:
 
     # ── Pre-render static geometry verify (--strict-static) ──────────────
     if getattr(args, "strict_static", False):
-        from lib.verify.static import static_verify
-        from lib.defects import format_defect as _fmt_defect
-        _static_defects = static_verify(
-            plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+        from lib.verify.static import validate as _validate_static
+        _static_bag = _validate_static(
+            plan, brand=default_brand_obj, plan_dir=plan_path.parent
         )
-        if _static_defects:
-            for _d in _static_defects:
-                print(f"deck build: static: {_fmt_defect(_d)}", file=sys.stderr)
+        if _static_bag:
+            for _d in _static_bag:
+                _loc = _d.location or "slide ?"
+                print(
+                    f"deck build: static: {_loc}: "
+                    f"[{_d.severity.value.upper()}] {_d.kind.value} — {_d.message}",
+                    file=sys.stderr,
+                )
             print(
-                f"deck build: --strict-static: {len(_static_defects)} static "
+                f"deck build: --strict-static: {len(_static_bag)} static "
                 f"defect(s) found. Fix them or remove --strict-static to skip "
                 f"this gate.",
                 file=sys.stderr,
@@ -539,7 +543,7 @@ def cmd_build(args) -> int:
 
     # ── Auto-fix loop (--autofix) ─────────────────────────────────────────
     if getattr(args, "autofix", False):
-        from lib.verify.static import static_verify as _sv
+        from lib.verify.static import validate as _validate_static_af
         from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
 
         _MAX_AUTOFIX_CYCLES = 3
@@ -547,12 +551,12 @@ def cmd_build(args) -> int:
         _seen_hashes: set[str] = set()
         _oscillation_detected = False
         for _cycle in range(_MAX_AUTOFIX_CYCLES):
-            _static_defects = _sv(
-                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            _static_bag = _validate_static_af(
+                plan, brand=default_brand_obj, plan_dir=plan_path.parent
             )
-            if not _static_defects:
+            if not _static_bag:
                 break
-            _patches = plan_fixes(_static_defects, plan, default_brand_obj.root)
+            _patches = plan_fixes(_static_bag, plan, default_brand_obj.root)
             if not _patches:
                 # No mechanical fix available; leave residuals for compile.
                 break
@@ -579,8 +583,8 @@ def cmd_build(args) -> int:
                     print(f"  {_line}")
         else:
             # Exhausted cycles — check if residuals remain.
-            _residuals = _sv(
-                plan, brand_dir=default_brand_obj.root, plan_dir=plan_path.parent
+            _residuals = _validate_static_af(
+                plan, brand=default_brand_obj, plan_dir=plan_path.parent
             )
             if _residuals:
                 print(
@@ -2090,8 +2094,7 @@ def cmd_verify_static(args) -> int:
       2 — plumbing error (plan not found, brand resolution failure, etc.)
     """
     import json as _json
-    from lib.verify.static import static_verify
-    from lib.defects import format_defect
+    from lib.verify.static import validate as _validate_static
 
     plan_path = Path(args.plan).resolve()
     if not plan_path.is_file():
@@ -2112,23 +2115,39 @@ def cmd_verify_static(args) -> int:
         return 2
 
     try:
-        defects = static_verify(plan, brand_dir=brand_obj.root,
-                                plan_dir=plan_path.parent)
+        bag = _validate_static(plan, brand=brand_obj, plan_dir=plan_path.parent)
     except Exception as exc:  # noqa: BLE001
         print(f"deck verify-static: unexpected error: {exc}", file=sys.stderr)
         return 2
 
     if getattr(args, "json", False):
-        print(_json.dumps([d.to_dict() for d in defects], indent=2,
-                          ensure_ascii=False))
+        # Produce a backward-compatible schema so `deck apply-fixes --defects`
+        # can consume this output: {slide_index, kind, severity, message, meta}.
+        out = []
+        for d in bag:
+            extra = d.extra or {}
+            entry = {
+                "slide_index": extra.get("slide_index", 0),
+                "kind": d.kind.value,
+                "severity": d.severity.value,
+                "message": d.message,
+                "meta": {k: v for k, v in extra.items() if k != "slide_index"},
+            }
+            if d.location is not None:
+                entry["location"] = d.location
+            out.append(entry)
+        print(_json.dumps(out, indent=2, ensure_ascii=False))
     else:
-        if defects:
-            for d in defects:
-                print(format_defect(d))
+        if bag:
+            for d in bag:
+                _loc = d.location or "slide ?"
+                print(
+                    f"{_loc}: [{d.severity.value.upper()}] {d.kind.value} — {d.message}"
+                )
         else:
             print("verify-static: clean — no defects found")
 
-    return 1 if defects else 0
+    return 1 if bag else 0
 
 
 def cmd_apply_fixes(args) -> int:

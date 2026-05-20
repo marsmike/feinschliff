@@ -448,12 +448,15 @@ def validate(
         except ValueError:
             new_kind = _NewKind.INTERNAL
         new_sev = _SEV_MAP.get(ld.severity.value, _NewSev.WARNING)
+        extra: dict = dict(ld.meta) if ld.meta else {}
+        if ld.slide_index:
+            extra.setdefault("slide_index", ld.slide_index)
         bag.add(_NewDefect(
             kind=new_kind,
             severity=new_sev,
             message=ld.message,
             location=f"slide {ld.slide_index}" if ld.slide_index else None,
-            extra=dict(ld.meta) if ld.meta else {},
+            extra=extra,
         ))
 
     return bag
