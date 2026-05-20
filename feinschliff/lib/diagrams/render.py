@@ -14,6 +14,11 @@ elements the Python translator can't represent (freedraw / image / frame),
 the renderer falls through to Playwright + the real Excalidraw web app
 bundled at `playwright_assets/render_template.html`. That path is heavier
 (~200MB Chromium, ~1.5s cold) but covers every Excalidraw element type.
+
+New code should prefer :func:`lib.diagrams.renderer.choose_renderer` which
+exposes the same dispatch logic as a clean :class:`~lib.diagrams.renderer.Renderer`
+Protocol with a pluggable registry.  The ``render()`` function below is the
+legacy entry point kept for backwards compatibility.
 """
 from __future__ import annotations
 
