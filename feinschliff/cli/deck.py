@@ -38,13 +38,21 @@ Plan schema (build):
 from __future__ import annotations
 
 import argparse
-import hashlib
 import sys
 import time
 import tempfile
 from pathlib import Path
 
 import yaml
+
+from lib.deck.orchestrate import (
+    patch_set_hash as _patch_set_hash_fn,
+    signals_from_slide as _signals_from_slide_fn,
+    resolve_layout_path as _resolve_layout_path_fn,
+    slot_budgets_for_layout as _slot_budgets_for_layout_fn,
+    build_primitives_for_layout as _build_primitives_for_layout_fn,
+    build_refurbished_deck as _build_refurbished_deck_fn,
+)
 
 from lib.dsl.parser import parse_file
 from lib.dsl.tokens import Tokens, load_tokens
@@ -473,16 +481,8 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def _patch_set_hash(patches: list) -> str:
-    """Stable hash of a patch set — used for autofix cycle detection.
-
-    Two cycles that would apply identical changes produce the same hash so the
-    loop can detect oscillation and halt before wasting further iterations.
-    """
-    items = sorted(
-        (p.slide_index, p.action, str(sorted((p.payload or {}).items())))
-        for p in patches
-    )
-    return hashlib.sha256(repr(items).encode()).hexdigest()
+    """Delegate to lib.deck.orchestrate.patch_set_hash."""
+    return _patch_set_hash_fn(patches)
 
 
 def cmd_build(args) -> int:
@@ -802,30 +802,11 @@ def _build_primitives_for_layout(
     layout_path: Path, brand: str, content_path: Path | None,
     *, skip_interpolation: bool = False,
 ) -> tuple[list, object]:
-    """Parse, expand, and return (primitives, tokens) for a single layout.
-
-    When *skip_interpolation* is True the slot-filling pass is skipped so
-    ``{{ slot_name }}`` labels are preserved in the primitives. This is the
-    correct mode for wireframe rendering, where the slot structure matters
-    more than the filled content.
-    """
-    brand_dir = find_brand(brand).root
-    tokens = load_tokens(brand_dir)
-    compounds = load_compounds_for_brand(
-        brand_dir, std_dir=_bundled_compounds()
+    """Delegate to lib.deck.orchestrate.build_primitives_for_layout."""
+    return _build_primitives_for_layout_fn(
+        layout_path, brand, content_path,
+        skip_interpolation=skip_interpolation,
     )
-    layout_nodes, layout_compounds = parse_file(layout_path)
-    for cd in layout_compounds:
-        compounds[cd.name] = cd
-    if skip_interpolation:
-        source_nodes = layout_nodes
-    else:
-        ctx: dict = {}
-        if content_path and content_path.is_file():
-            ctx = yaml.safe_load(content_path.read_text()) or {}
-        source_nodes = interpolate_nodes(layout_nodes, ctx)
-    primitives, _ = expand_compounds(source_nodes, compounds)
-    return primitives, tokens
 
 
 def cmd_wireframe(args) -> int:
@@ -1148,92 +1129,8 @@ def cmd_polish(args) -> int:
 
 
 def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path) -> None:
-    """Build a multi-slide PPTX from a plan of {layout, content} entries.
-
-    Uses the existing build_multi_slide pipeline: per-slide nodes are expanded
-    and accumulated, then emitted in a single Presentation via build_multi_slide.
-    """
-    import tempfile
-    from lib.dsl.parser import parse_file
-    from lib.dsl.expander import (
-        expand_compounds, expand_diagram_blocks, interpolate_nodes,
-        load_compounds_for_brand,
-    )
-    from lib.dsl.tokens import load_tokens
-    from lib.dsl.pptx_emit import build_multi_slide
-
-    try:
-        brand_obj = find_brand(brand)
-    except ValueError as e:
-        raise ValueError(f"deck polish: {e}") from None
-    brand_dir = brand_obj.root
-
-    # Resolve build-time image provider for `picture query:` resolution.
-    # Same semantic as `deck build`: provider is brand-scoped, lock file
-    # lives next to the polished output deck.
-    discover_providers()
-    provider = None
-    if brand_obj.image_provider_config:
-        cfg = brand_obj.image_provider_config
-        provider = get_provider(cfg["kind"], cfg.get("config"))
-
-    tokens = load_tokens(brand_dir)
-    compounds = load_compounds_for_brand(
-        brand_dir, std_dir=_bundled_compounds()
-    )
-
-    slides_payload: list[tuple[list, object, Path]] = []
-
-    with tempfile.TemporaryDirectory() as tmp:
-        diagrams_out = Path(tmp) / "diagrams"
-        diagrams_out.mkdir()
-        for slide_idx, entry in enumerate(slides_plan, start=1):
-            from lib.layout_discovery import find_layout as _find_layout
-            _layout_name = entry["layout"]
-            if _layout_name.endswith(".slide.dsl"):
-                _layout_name = _layout_name[:-len(".slide.dsl")]
-            _ly = _find_layout(_layout_name)
-            if _ly is None:
-                raise FileNotFoundError(
-                    f"deck polish: layout not found: {entry['layout']!r}"
-                )
-            layout_path = _ly.path
-
-            layout_nodes, layout_compounds = parse_file(layout_path)
-            local_compounds = dict(compounds)
-            for cd in layout_compounds:
-                local_compounds[cd.name] = cd
-
-            interp = interpolate_nodes(layout_nodes, entry["content"])
-            interp = expand_diagram_blocks(
-                interp,
-                brand_dir=brand_dir,
-                out_dir=diagrams_out,
-                layout_dir=layout_path.parent,
-                slide_index=slide_idx,
-            )
-            primitives, diagnostics = expand_compounds(interp, local_compounds)
-            for d in diagnostics:
-                print(f"deck polish: {d.format()}", file=sys.stderr)
-
-            notes = entry.get("notes")
-            if notes is not None:
-                slides_payload.append(
-                    (primitives, tokens, brand_dir / "assets", notes)
-                )
-            else:
-                slides_payload.append(
-                    (primitives, tokens, brand_dir / "assets")
-                )
-
-        prs = build_multi_slide(
-            slides_payload,
-            asset_root_fallback=_bundled_assets(),
-            image_provider=provider,
-            deck_dir=out_path.parent,
-        )
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        prs.save(str(out_path))
+    """Delegate to lib.deck.orchestrate.build_refurbished_deck."""
+    _build_refurbished_deck_fn(slides_plan, brand, out_path)
 
 
 def cmd_book(args) -> int:
@@ -1484,88 +1381,23 @@ def cmd_timing(args) -> int:
 # Parallel generation — plan-skeleton + plan-merge
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Maps `diagram_kind` hints from content_plan into the layout picker's
-# preferred role. Keeps the centralized pick consistent with what the AI
-# would have chosen on a serial pass.
-_DIAGRAM_KIND_TO_ROLE: dict[str, str] = {
-    "concept": "content-with-visual",
-    "chart":   "data-quantity",
-    "process": "data-timeline",
-    "compare": "data-comparison",
-}
-
-
 def _signals_from_slide(slide: dict) -> dict:
-    """Extract the lib.layout_picker / lib.layout_budget kwargs from a
-    content-plan slide entry. Centralized here so the per-slide and
-    deck-wide pickers agree on which fields feed selection."""
-    role = slide.get("role") or slide.get("purpose") or (
-        _DIAGRAM_KIND_TO_ROLE.get(str(slide.get("diagram_kind") or ""))
-        or "content-columns"
-    )
-    return {
-        "role":            role,
-        "concept_count":   slide.get("concept_count"),
-        "data_quantity":   slide.get("data_quantity"),
-        "comparison":      slide.get("comparison"),
-        "narrative_role":  slide.get("narrative_role"),
-        "narrative_act":   slide.get("narrative_act"),
-        "time_axis_role":  slide.get("time_axis_role"),
-        "audience_mode":   slide.get("audience_mode"),
-        "diagram_kind":    slide.get("diagram_kind"),
-    }
+    """Delegate to lib.deck.orchestrate.signals_from_slide."""
+    return _signals_from_slide_fn(slide)
 
 
 def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
-    """Return the DSL path for *layout_name*, checking brand-local first then
-    the toolkit pool via layout_discovery.  Returns None if not found anywhere."""
-    from lib.layout_discovery import find_layout as _find_layout
-    # 1. Brand-local override.
-    brand_local = brand_root / "layouts" / f"{layout_name}.slide.dsl"
-    if brand_local.is_file():
-        return brand_local
-    # 2. Toolkit pool via discovery (covers bundled, env, user, plugin sources).
-    layout = _find_layout(layout_name)
-    return layout.path if layout is not None else None
+    """Delegate to lib.deck.orchestrate.resolve_layout_path."""
+    return _resolve_layout_path_fn(brand_root, layout_name)
 
 
 def _slot_budgets_for_layout(
     layout_name: str,
     brand_root: Path,
-    tokens: Tokens,
+    tokens: "Tokens",
 ) -> dict[str, dict[str, int]]:
-    """Compute slot budgets for *layout_name* and return a plain serialisable
-    dict mapping slot names to ``{chars_per_line, max_lines, max_chars}``.
-
-    Returns an empty dict and logs a warning on any error so the caller
-    never crashes.
-    """
-    layout_path = _resolve_layout_path(brand_root, layout_name)
-    if layout_path is None:
-        print(
-            f"deck plan-skeleton: layout {layout_name!r} not found in brand "
-            f"or toolkit; slot_budgets will be empty",
-            file=sys.stderr,
-        )
-        return {}
-    try:
-        nodes, _ = parse_file(layout_path)
-        budgets = compute_slot_budgets(nodes, tokens)
-    except Exception as exc:  # noqa: BLE001
-        print(
-            f"deck plan-skeleton: could not compute slot budgets for "
-            f"{layout_name!r}: {exc}",
-            file=sys.stderr,
-        )
-        return {}
-    return {
-        slot: {
-            "chars_per_line": b.chars_per_line,
-            "max_lines": b.max_lines,
-            "max_chars": b.max_chars,
-        }
-        for slot, b in budgets.items()
-    }
+    """Delegate to lib.deck.orchestrate.slot_budgets_for_layout."""
+    return _slot_budgets_for_layout_fn(layout_name, brand_root, tokens)
 
 
 def cmd_plan_skeleton(args) -> int:
