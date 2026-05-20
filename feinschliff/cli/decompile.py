@@ -41,10 +41,6 @@ from pathlib import Path
 from lib.dsl.pptx_decompile import decompile_pptx
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-BRANDS_DIR = REPO_ROOT / "brands"
-
-
 def register(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("pptx", help="Path to the input .pptx file")
     parser.add_argument("--brand", required=True,
@@ -69,22 +65,30 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def cmd_decompile(args) -> int:
+    from lib.brand_discovery import find_brand
     pptx_path = Path(args.pptx).resolve()
     if not pptx_path.is_file():
         print(f"error: {pptx_path} not found", flush=True)
         return 1
-    brand_dir = (BRANDS_DIR / args.brand).resolve()
-    if not brand_dir.is_dir():
-        # Allow an absolute brand-pack path as a fallback for out-of-tree
-        # brand packs (e.g. customer brands kept outside the repo).
+    # Try discovery first; fall back to bare path (out-of-tree brand packs).
+    try:
+        brand_obj = find_brand(args.brand)
+        brand_dir = brand_obj.root
+    except ValueError:
         brand_dir = Path(args.brand).resolve()
         if not brand_dir.is_dir():
-            print(f"error: brand pack not found at {brand_dir}", flush=True)
+            print(f"error: brand pack not found: {args.brand!r}", flush=True)
             return 1
+        brand_obj = None
 
     output_dir = Path(args.output_dir).resolve()
     assets_dir = Path(args.assets_dir).resolve() if args.assets_dir else None
-    brands_dir = Path(args.brands_dir).resolve() if args.brands_dir else BRANDS_DIR
+    if args.brands_dir:
+        brands_dir = Path(args.brands_dir).resolve()
+    elif brand_obj is not None:
+        brands_dir = brand_obj.root.parent
+    else:
+        brands_dir = brand_dir.parent
 
     if args.with_svg:
         return _decompile_with_svg(pptx_path, brand_dir, output_dir, args.brand)
