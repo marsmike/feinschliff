@@ -94,6 +94,13 @@ class Shape:
     # Border width in design-px. Captured from `<a:ln w="...">` (EMU); when
     # None the emitter uses its default hairline width.
     stroke_width: float | None = None
+    # Dashed-line preset name from `<a:ln><a:prstDash val="...">` (e.g.
+    # "dash", "dot", "sysDash", "lgDashDot"). None = solid stroke.
+    stroke_dash: str | None = None
+    # Corner radius in design-px for `roundRect` shapes. Captured from the
+    # `<a:gd name="adj" fmla="val N">` adjustment value where N is N/100000
+    # of the shape's shortest side. None when the source uses sharp corners.
+    corner_radius: float | None = None
     # Source bodyPr `anchor` attribute — controls text vertical position
     # within the shape bbox. "ctr" centers (PowerPoint default for many
     # text frames); "b" bottoms; "t" or absent = top. Without this the DSL
@@ -752,13 +759,12 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     if padding_emu is not None:
         left, top, right, bottom = padding_emu
         padding_px = (cmap.w(left), cmap.h(top), cmap.w(right), cmap.h(bottom))
-    # Stroke (line) colour + width. PowerPoint stores stroke width in EMU
-    # on `<a:ln w="...">` (default ~9525 EMU = 0.75pt = 1px hairline). We
-    # convert to design-px so the emitter's `stroke-width:N` reads in the
-    # same unit as the rest of the DSL. Without width capture, borders
-    # would render as 1px hairlines regardless of source.
+    # Stroke (line) colour + width + dash. PowerPoint stores stroke width
+    # in EMU on `<a:ln w="...">` (default ~9525 EMU = 0.75pt = 1px hairline);
+    # dash preset on the optional `<a:prstDash val="...">` child.
     stroke = None
     stroke_width: float | None = None
+    stroke_dash: str | None = None
     ln = spPr.find("a:ln", NS) if spPr is not None else None
     if ln is not None:
         sf = ln.find("a:solidFill", NS)
@@ -774,6 +780,23 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                 stroke_width = cmap.w(w_emu)
             except (ValueError, TypeError):
                 pass
+        dash = ln.find("a:prstDash", NS)
+        if dash is not None and dash.get("val"):
+            stroke_dash = dash.get("val")
+    # Corner radius — captured from `prstGeom prst="roundRect"` with an
+    # `<a:gd name="adj" fmla="val N">`. N is N/100000ths of the shape's
+    # shortest side. PowerPoint defaults to 0.10 when adj is absent.
+    corner_radius: float | None = None
+    if spPr is not None:
+        pg = spPr.find("a:prstGeom", NS)
+        if pg is not None and pg.get("prst") == "roundRect":
+            gd = pg.find(".//a:gd[@name='adj']", NS)
+            adj_frac = 0.10  # PowerPoint default when omitted
+            if gd is not None and gd.get("fmla"):
+                m = re.search(r"val (\d+)", gd.get("fmla"))
+                if m:
+                    adj_frac = int(m.group(1)) / 100000
+            corner_radius = cmap.w(min(w, h)) * adj_frac
 
     # Picture-typed placeholder → picture shape (no actual <p:pic>).
     if ph_type == "pic":
@@ -833,8 +856,9 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
         kind=kind, x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
-        fill=fill, stroke=stroke, stroke_width=stroke_width, text_runs=runs,
-        ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
+        fill=fill, stroke=stroke, stroke_width=stroke_width,
+        stroke_dash=stroke_dash, corner_radius=corner_radius,
+        text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
     ))
 
 
@@ -1196,15 +1220,19 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
-    # Backgrounds first (large area). Append stroke + stroke-width when the
-    # source shape carries an `<a:ln>` border — without this every framed
-    # rect (cards, badges, callouts) loses its outline in the render.
+    # Backgrounds first (large area). Append stroke / stroke-width / dash /
+    # radius captured from the source PowerPoint shape so framed cards,
+    # rounded rects, and dashed dividers survive the round-trip.
     for r in sorted(rects, key=lambda s: -(s.w * s.h)):
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
+        if r.corner_radius is not None and r.corner_radius > 0:
+            line += f" radius:{r.corner_radius:g}"
         if r.stroke:
             line += f" stroke:{r.stroke}"
             if r.stroke_width is not None and r.stroke_width > 0:
                 line += f" stroke-width:{r.stroke_width:g}"
+            if r.stroke_dash:
+                line += f" dash:{r.stroke_dash}"
         out.append(line)
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring

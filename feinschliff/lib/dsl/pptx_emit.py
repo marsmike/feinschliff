@@ -684,10 +684,38 @@ def _px_to_pt(px: float) -> float:
 
 
 def _emit_rect(slide, node: DSLNode, ctx: EmitContext) -> None:
-    """rect X,Y WxH fill:role stroke:role stroke-width:N"""
+    """rect X,Y WxH fill:role [radius:N] [stroke:role stroke-width:N dash:preset]
+
+    `radius:N` (design-px) switches the shape primitive to a rounded
+    rectangle and sets the corner adjustment to N as a fraction of the
+    shortest side. Decompiled brand packs use this for source PPTX
+    `<a:prstGeom prst="roundRect">` shapes — without it, source rounded
+    cards render as sharp rectangles.
+
+    `dash:preset` accepts the PowerPoint preset names (`solid`, `dash`,
+    `dot`, `sysDash`, `sysDot`, `dashDot`, `lgDashDot`, …) — passes
+    through to python-pptx's `line.dash_style` via `MSO_LINE_DASH_STYLE`.
+    """
     x, y = parse_xy(node.pos_args[0])
     w, h = parse_wh(node.pos_args[1])
-    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, _px(x), _px(y), _px(w), _px(h))
+    radius_attr = node.kw_args.get("radius")
+    radius_px = float(radius_attr) if radius_attr else 0.0
+    if radius_px > 0:
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.ROUNDED_RECTANGLE, _px(x), _px(y), _px(w), _px(h))
+        # Adjustment value is fraction of shortest side. python-pptx exposes
+        # this via shape.adjustments — index 0 is the corner-radius knob on
+        # a rounded rect, valid range 0.0..0.5.
+        shortest = min(w, h)
+        if shortest > 0:
+            adj = max(0.0, min(0.5, radius_px / shortest))
+            try:
+                shape.adjustments[0] = adj
+            except (IndexError, AttributeError):
+                pass
+    else:
+        shape = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, _px(x), _px(y), _px(w), _px(h))
     shape.shadow.inherit = False
     _strip_theme_style(shape)
 
@@ -703,8 +731,34 @@ def _emit_rect(slide, node: DSLNode, ctx: EmitContext) -> None:
         shape.line.color.rgb = _hex_to_rgb(ctx.tokens.color(stroke_name))
         sw = float(node.kw_args.get("stroke-width", 1))
         shape.line.width = Pt(sw * _STROKE_PX_TO_PT)
+        dash_name = node.kw_args.get("dash")
+        if dash_name:
+            _apply_line_dash(shape.line, dash_name)
     else:
         shape.line.fill.background()
+
+
+# PowerPoint preset-dash names → python-pptx MSO_LINE_DASH_STYLE. Keys are
+# the literal `prstDash val=` strings the decompiler emits; misses fall
+# through to the renderer default (solid).
+_DASH_PRESETS = {
+    "solid": "SOLID", "dash": "DASH", "dot": "ROUND_DOT",
+    "sysDash": "SQUARE_DOT", "sysDot": "ROUND_DOT",
+    "dashDot": "DASH_DOT", "lgDash": "LONG_DASH",
+    "lgDashDot": "LONG_DASH_DOT", "lgDashDotDot": "LONG_DASH_DOT_DOT",
+    "sysDashDot": "DASH_DOT", "sysDashDotDot": "DASH_DOT_DOT",
+}
+
+
+def _apply_line_dash(line, dash_name: str) -> None:
+    """Map a `prstDash val=` string onto MSO_LINE_DASH_STYLE."""
+    try:
+        from pptx.enum.dml import MSO_LINE_DASH_STYLE
+    except ImportError:
+        return
+    enum_name = _DASH_PRESETS.get(dash_name)
+    if enum_name and hasattr(MSO_LINE_DASH_STYLE, enum_name):
+        line.dash_style = getattr(MSO_LINE_DASH_STYLE, enum_name)
 
 
 def _emit_line(slide, node: DSLNode, ctx: EmitContext) -> None:
