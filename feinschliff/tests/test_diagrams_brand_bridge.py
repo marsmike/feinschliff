@@ -92,6 +92,7 @@ def test_missing_token_slot_raises(tmp_path):
 
 
 @pytest.mark.parametrize("brand_name", [
+    "blank",
     "feinschliff", "feinschliff-dark",
     "catppuccin-latte", "catppuccin-macchiato",
     "solarized-dark", "nord", "gruvbox-dark",
