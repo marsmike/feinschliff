@@ -368,9 +368,30 @@ def _resolve_gradient(spPr: etree._Element, theme: dict[str, str],
 
 
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
-    """Return a token name, or None if no fill."""
+    """Return a token name, or None if no fill.
+
+    Handles `<a:grpFill/>` by walking up to the nearest `<p:grpSp>` ancestor
+    and resolving its `grpSpPr/solidFill`. Without this, custGeom shapes that
+    declare `<a:grpFill/>` (the SARTORIUS logo glyphs on the slide master)
+    render unfilled instead of inheriting the group's solid colour.
+    """
     if spPr is None:
         return None
+    gf = spPr.find("a:grpFill", NS)
+    if gf is not None:
+        # Walk up to find the enclosing <p:grpSp> and resolve its fill.
+        anc = spPr.getparent()
+        while anc is not None:
+            tag = etree.QName(anc).localname
+            if tag == "grpSp":
+                grpSpPr = anc.find("p:grpSpPr", NS)
+                if grpSpPr is not None:
+                    grp_color = _resolve_fill(grpSpPr, theme, palette)
+                    if grp_color:
+                        return grp_color
+                anc = anc.getparent()
+                continue
+            anc = anc.getparent()
     sf = spPr.find("a:solidFill", NS)
     if sf is None:
         return None
@@ -558,6 +579,8 @@ _BRAND_TO_SVG_COLOR: dict[str, str] = {
     "accent-hover":   "accent",
     "highlight":      "accent",
     "ink":            "ink",
+    "black":          "ink",
+    "white":          "paper",
     "graphite":       "neutral-strong",
     "steel":          "neutral",
     "silver":         "neutral-soft",
