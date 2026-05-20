@@ -37,9 +37,9 @@ from lib.layout_validator import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-STD_COMPOUNDS = REPO_ROOT / "compounds"
-BRANDS_DIR = REPO_ROOT / "brands"
+def _bundled_compounds() -> Path:
+    """Return the compounds/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "compounds"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -60,9 +60,9 @@ def compile_slide(
 ) -> CompileResult:
     diagrams_out_dir.mkdir(parents=True, exist_ok=True)
 
-    tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+    tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR,
+        brand_dir, std_dir=_bundled_compounds(),
     )
 
     layout_nodes, layout_compounds = parse_file(layout_path)
