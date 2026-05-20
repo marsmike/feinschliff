@@ -30,6 +30,7 @@ token of that name.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +42,17 @@ from lib.jsonwalk import deep_merge
 
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "tokens.schema.json"
+
+_HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
+
+
+def _is_hex_literal(s: str) -> bool:
+    return bool(_HEX_RE.match(s))
+
+
+def _expand_short_hex(s: str) -> str:
+    # `#abc` → `#aabbcc`
+    return "#" + "".join(ch * 2 for ch in s[1:])
 
 
 def _strip_px(v: Any, key: str, brand_name: str) -> float:
@@ -218,8 +230,26 @@ class Tokens:
     # --- public lookups -----------------------------------------------
 
     def color(self, name: str) -> str:
-        c = self.raw.get("color", {}).get(name)
+        if isinstance(name, str) and name.startswith("#") and _is_hex_literal(name):
+            # Inline hex passthrough — the decompiler emits raw `#RRGGBB`
+            # for shape fills the reverse-token-mapping pass couldn't
+            # resolve. Treat them as valid colours so the verify loop can
+            # build the slide without forcing every literal into the
+            # brand's palette.
+            return name.upper() if len(name) == 7 else _expand_short_hex(name).upper()
+        colors = self.raw.get("color", {})
+        c = colors.get(name)
         if c is None:
+            # chart-series ramp fallback — matches the same convention
+            # `brand_bridge.resolve()` applies for the diagram DSL.
+            # Brands that don't ship an explicit per-series tint
+            # progression render every series in the brand's accent hue;
+            # bar/pie chart decks still build instead of crashing the
+            # whole layout with KeyError.
+            if isinstance(name, str) and name.startswith("chart-series-"):
+                fallback = colors.get("accent")
+                if fallback is not None:
+                    return fallback["$value"] if isinstance(fallback, dict) else fallback
             raise KeyError(f"brand '{self.brand_name}': no color token '{name}'")
         if isinstance(c, dict):           # designtokens schema: {"$value": "..."}
             return c["$value"]

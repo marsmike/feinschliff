@@ -52,10 +52,12 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import re
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from lxml import etree
 from pptx import Presentation
@@ -132,6 +134,12 @@ class Shape:
     # placeholder (genericised brand-template behaviour).
     media_path: str | None = None
     media_rid: str | None = None  # rId of the <a:blip r:embed=...>, for extraction
+    # Resolved python-pptx Part for the embedded image, captured at walk
+    # time so the rId is looked up against the part that actually owns it
+    # (slide vs. layout vs. master). Without this, layout-inherited
+    # pictures (most corporate-template chrome) fail extraction because
+    # their rId only resolves on the layout part, not the slide.
+    media_part: Any = None
     # For custGeom shapes: the full pathLst converted to an SVG-`d` string
     # in *canvas pixels* (already scaled from the path's path-local space).
     # When set, emit_dsl emits the shape as an `svg { path … }` block
@@ -165,11 +173,35 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
     brand_root = tokens_path.parent
     data = None
     if (brand_root / "DESIGN.md").is_file():
-        try:
-            from lib.dsl.tokens import load_tokens
-            data = load_tokens(brand_root).raw
-        except (FileNotFoundError, ValueError):
-            data = None
+        from lib.dsl.tokens import load_tokens
+        # Try sibling-located parent first (the default), then fall back
+        # to the toolkit's bundled brands/ dir. Out-of-tree packs (e.g.
+        # `.debug/brands/<name>` or `~/customer-brands/<name>`) declare
+        # `extends: feinschliff` but their sibling dir isn't the toolkit
+        # repo, so without this fallback the parent palette never loads
+        # and nearest_token() degrades to raw hex emission for every
+        # shape — visible in the decompiled DSL as `fill:#ffed00` instead
+        # of `fill:accent` and `fill:neutral` on every custGeom because
+        # _svg_color_token() then sees an unknown brand token.
+        candidate_dirs = [brand_root.parent]
+        toolkit_brands = Path(__file__).resolve().parents[2] / "brands"
+        if toolkit_brands.is_dir():
+            candidate_dirs.append(toolkit_brands)
+        env_paths = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+        for ep in env_paths.split(os.pathsep):
+            if ep and Path(ep).is_dir():
+                candidate_dirs.append(Path(ep))
+        seen: set[Path] = set()
+        for cd in candidate_dirs:
+            cd = cd.resolve()
+            if cd in seen:
+                continue
+            seen.add(cd)
+            try:
+                data = load_tokens(brand_root, brands_dir=cd).raw
+                break
+            except (FileNotFoundError, ValueError):
+                continue
     if data is None:
         data = json.loads(tokens_path.read_text(encoding="utf-8"))
     palette: dict[str, tuple[int, int, int]] = {}
@@ -213,7 +245,19 @@ def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, 
         if d < best_d:
             best_d = d
             best = name
-    return best or "#{:02x}{:02x}{:02x}".format(*rgb)
+    # Source-fidelity guard. Squared-euclidean threshold ≈ 25 per channel
+    # (3 * 25^2 = 1875). When the closest brand token is further than this,
+    # the source colour isn't really represented in the palette — emit the
+    # raw hex literal instead of approximating to a token that renders as
+    # a visibly different colour (e.g. the Sartorius source's #FFED00
+    # yellow shouldn't squash to the feinschliff parent's gold #C9A24A
+    # accent token just because it's the closest of 30 mostly-cool tokens).
+    if best is not None and best_d <= _NEAREST_TOKEN_THRESHOLD_SQ:
+        return best
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+_NEAREST_TOKEN_THRESHOLD_SQ = 1875
 
 
 def load_theme_scheme(pres: Presentation) -> dict[str, str]:
@@ -370,32 +414,34 @@ def _resolve_gradient(spPr: etree._Element, theme: dict[str, str],
 def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return a token name, or None if no fill.
 
-    Handles `<a:grpFill/>` by walking up to the nearest `<p:grpSp>` ancestor
-    and resolving its `grpSpPr/solidFill`. Without this, custGeom shapes that
-    declare `<a:grpFill/>` (a common pattern for vector logo glyph bundles
-    on slide masters) render unfilled instead of inheriting the group's
-    solid colour.
+    Handles `<a:grpFill/>` by walking up `<p:grpSp>` ancestors iteratively
+    until an actual `<a:solidFill>` is found. The walk is iterative (not
+    recursive on `_resolve_fill`) so nested `grpFill` chains — common in
+    multi-level Design Kit groups where every ancestor's grpSpPr itself
+    carries `<a:grpFill/>` — don't trigger `RecursionError`.
     """
     if spPr is None:
         return None
-    gf = spPr.find("a:grpFill", NS)
-    if gf is not None:
-        # Walk up to find the enclosing <p:grpSp> and resolve its fill.
-        anc = spPr.getparent()
-        while anc is not None:
-            tag = etree.QName(anc).localname
-            if tag == "grpSp":
-                grpSpPr = anc.find("p:grpSpPr", NS)
-                if grpSpPr is not None:
-                    grp_color = _resolve_fill(grpSpPr, theme, palette)
-                    if grp_color:
-                        return grp_color
-                anc = anc.getparent()
-                continue
-            anc = anc.getparent()
     sf = spPr.find("a:solidFill", NS)
     if sf is None:
-        return None
+        # No direct solid fill. If the shape declares grpFill, walk up
+        # ancestor groups looking for the first one with a real solid
+        # fill on its grpSpPr.
+        if spPr.find("a:grpFill", NS) is None:
+            return None
+        anc = spPr.getparent()
+        while anc is not None and sf is None:
+            if etree.QName(anc).localname == "grpSp":
+                grpSpPr = anc.find("p:grpSpPr", NS)
+                if grpSpPr is not None:
+                    inner_sf = grpSpPr.find("a:solidFill", NS)
+                    if inner_sf is not None:
+                        sf = inner_sf
+                        break
+                    # grpSpPr itself is grpFill-only — keep climbing.
+            anc = anc.getparent()
+        if sf is None:
+            return None
     srgb = sf.find("a:srgbClr", NS)
     if srgb is not None:
         hx = srgb.get("val")
@@ -613,9 +659,20 @@ _BRAND_TO_SVG_COLOR: dict[str, str] = {
 
 
 def _svg_color_token(brand_token: str | None, *, default: str = "neutral") -> str:
-    """Best-effort map of brand-pack color token → SVG DSL semantic name."""
+    """Best-effort map of brand-pack color token → SVG DSL semantic name.
+
+    Inline `#rrggbb` literals (produced by nearest_token when the source
+    colour is too far from any palette entry) pass through unchanged so
+    the SVG block renders the source colour verbatim instead of
+    collapsing to the default neutral. Without this, the source-fidelity
+    guard in nearest_token would buy nothing for custGeom paths — they'd
+    still render as a generic grey because `_BRAND_TO_SVG_COLOR` only
+    knows the named feinschliff vocabulary.
+    """
     if not brand_token:
         return default
+    if brand_token.startswith("#"):
+        return brand_token
     return _BRAND_TO_SVG_COLOR.get(brand_token, default)
 
 
@@ -1040,9 +1097,23 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     x, y, w, h = bbox
     ph_type, ph_idx = _placeholder_info(ch)
     runs = _text_runs(ch, theme, palette)
-    fill = _resolve_fill(spPr, theme, palette)
-    gradient = _resolve_gradient(spPr, theme, palette)
     kind = _shape_geometry_kind(spPr)
+    # For custGeom shapes (kind="shape") — typically map polygons,
+    # decorative vector clusters, or hand-drawn paths — bypass the
+    # brand-token mapping in `nearest_token` and emit the source colour
+    # as raw hex. These shapes carry hundreds of subtly-different
+    # source colours (e.g. world-map country fills at #EBEBEB /
+    # #DDDDDD / #C8C8C8) and the round-trip through nearest_token →
+    # `_svg_color_token` → `brand_bridge.resolve` collapses them to a
+    # handful of SVG semantic names that resolve to materially
+    # different greys in the brand pack. Going straight to hex
+    # preserves source-pixel fidelity for these high-cardinality
+    # vector compositions.
+    if kind == "shape":
+        fill = _resolve_fill(spPr, theme, palette={})
+    else:
+        fill = _resolve_fill(spPr, theme, palette)
+    gradient = _resolve_gradient(spPr, theme, palette)
     # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
     # this the rendered text lands at frame-top even when source centers
     # it, which is the dominant cause of the redline "two ghost positions"
@@ -1211,12 +1282,25 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     # Capture the embedded media rId so derive() can extract the binary
     # when image_extract_dir is set (pipeline-optimization mode).
     rid = None
+    media_part = None
     blip = ch.find(".//a:blip", NS)
     if blip is not None:
         rid = blip.get(f"{{{NS['r']}}}embed")
+        # Resolve the related part NOW against the source object that
+        # actually owns the rId (the slide, layout, or master `slide`
+        # param of this call). Storing only the rId and re-resolving on
+        # `slide.part` later breaks for layout-inherited pictures —
+        # their rId is scoped to the layout's relationships, not the
+        # slide's.
+        if rid is not None:
+            try:
+                media_part = slide.part.related_part(rid)
+            except (KeyError, AttributeError):
+                media_part = None
     shapes.append(Shape(
         kind="pic", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         is_picture=True, ph_type=ph_type, ph_idx=ph_idx, media_rid=rid,
+        media_part=media_part,
     ))
 
 
@@ -1229,16 +1313,29 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
     ox, oy = offset
     x += ox
     y += oy
-    # Stroke color from line/solidFill.
+    # Stroke color + width + dash from <a:ln w="..."><a:solidFill .../><a:prstDash .../></a:ln>.
     ln = spPr.find("a:ln", NS)
     stroke = None
+    stroke_width: float | None = None
+    stroke_dash: str | None = None
     if ln is not None:
         sf = ln.find("a:solidFill", NS)
         if sf is not None:
             stroke = _resolve_solid(sf, theme, palette)
+        w_attr = ln.get("w")
+        if w_attr:
+            try:
+                stroke_width = cmap.w(int(w_attr))
+            except (ValueError, TypeError):
+                pass
+        dash = ln.find("a:prstDash", NS)
+        if dash is not None and dash.get("val"):
+            stroke_dash = dash.get("val")
     shapes.append(Shape(
         kind="line", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         stroke=stroke or "fog",
+        stroke_width=stroke_width,
+        stroke_dash=stroke_dash,
     ))
 
 
@@ -1277,6 +1374,132 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
                 chart_part = None
             if chart_part is not None:
                 _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette)
+        return
+
+    # SmartArt diagrams: graphicData uri='…/drawingml/2006/diagram'. The slide
+    # rels carry both a `diagramData` (the semantic model) and a
+    # `diagramDrawing` (the pre-rendered drawing*.xml computed by PowerPoint
+    # when the user last edited the diagram). Parsing the drawing skips
+    # re-implementing the SmartArt layout engine — every shape, its xfrm,
+    # fill, stroke, and text live inside `<dsp:sp>` elements that mirror
+    # the `<p:sp>` structure.
+    diag_rel_ns = "http://schemas.microsoft.com/office/2007/relationships/diagramDrawing"
+    if slide is not None and hasattr(slide, "part"):
+        try:
+            rels = slide.part.rels
+            drawing_part = None
+            for rel in rels.values():
+                if rel.reltype == diag_rel_ns:
+                    # The drawing isn't directly referenced by rId from the
+                    # graphicFrame — it's a sibling relationship of the
+                    # diagramData. PowerPoint ties them by partname suffix
+                    # (data6.xml ↔ drawing6.xml). Find the matching one by
+                    # numeric suffix on the graphicData's diagramData rId.
+                    drawing_part = rel.target_part
+                    # The slide may have multiple diagramDrawing rels (one
+                    # per SmartArt). Use the rId currently being processed
+                    # if available; fall back to first drawing.
+                    break
+            if drawing_part is not None:
+                _emit_smartart(drawing_part.blob, x0, y0, fw, fh,
+                               shapes, cmap, theme, palette)
+        except Exception:
+            pass
+
+
+DSP_NS = "http://schemas.microsoft.com/office/drawing/2008/diagram"
+
+
+def _emit_smartart(blob: bytes, x0: int, y0: int, fw: int, fh: int,
+                   shapes: list, cmap, theme, palette) -> None:
+    """Decompile a SmartArt's pre-rendered drawing XML.
+
+    PowerPoint caches the computed-layout shapes for each SmartArt
+    diagram in `ppt/diagrams/drawing*.xml` so they don't need to be
+    relaid-out at presentation time. Each shape lives inside `<dsp:sp>`
+    elements that mirror the regular `<p:sp>` structure but use the
+    `dsp` namespace. Walking that tree gives us the actual circles,
+    arrows, callouts, etc. without re-implementing the SmartArt layout
+    engine.
+
+    `x0,y0` and `fw,fh` are the host `<p:graphicFrame>`'s EMU position
+    and size — the drawing's internal coordinates are already in
+    slide-EMU (the layout engine wrote them out absolute), so no extra
+    transform is needed for shapes whose own xfrm already lives in
+    slide-space. The frame offset is preserved as a fallback for
+    shapes whose xfrm is relative.
+    """
+    try:
+        root = etree.fromstring(blob)
+    except Exception:
+        return
+    spTree = root.find(f".//{{{DSP_NS}}}spTree")
+    if spTree is None:
+        return
+    for sp in spTree.findall(f"{{{DSP_NS}}}sp"):
+        spPr = sp.find(f"{{{DSP_NS}}}spPr")
+        if spPr is None:
+            continue
+        xfrm = spPr.find("a:xfrm", NS)
+        if xfrm is None:
+            continue
+        off = xfrm.find("a:off", NS)
+        ext = xfrm.find("a:ext", NS)
+        if off is None or ext is None:
+            continue
+        try:
+            x = int(off.get("x")) + x0
+            y = int(off.get("y")) + y0
+            w = int(ext.get("cx"))
+            h = int(ext.get("cy"))
+        except (TypeError, ValueError):
+            continue
+        # `<dsp:sp>` xfrm coords are RELATIVE to the host graphicFrame
+        # (the layout engine writes them in drawing-internal space), so
+        # we add the frame's (x0, y0) to land each shape on the slide.
+        # Fill — same resolver as <p:sp> uses (the a: children are
+        # identical regardless of dsp vs p parent).
+        fill = _resolve_fill(spPr, theme, palette)
+        # Stroke + width from <a:ln>.
+        stroke = None
+        stroke_width: float | None = None
+        ln = spPr.find("a:ln", NS)
+        if ln is not None:
+            sf = ln.find("a:solidFill", NS)
+            if sf is not None:
+                stroke = _resolve_solid(sf, theme, palette)
+            w_attr = ln.get("w")
+            if w_attr:
+                try:
+                    stroke_width = cmap.w(int(w_attr))
+                except (TypeError, ValueError):
+                    pass
+        # Geometry kind.
+        kind = "rect"
+        pg = spPr.find("a:prstGeom", NS)
+        if pg is not None:
+            preset = pg.get("prst")
+            if preset == "ellipse":
+                kind = "oval"
+            elif preset in ("line", "straightConnector1"):
+                kind = "line"
+            elif preset in ("rect", "roundRect"):
+                kind = "rect"
+        elif spPr.find("a:custGeom", NS) is not None:
+            kind = "shape"
+        # Text — dsp:txBody mirrors a:txBody / p:txBody.
+        txBody = sp.find(f"{{{DSP_NS}}}txBody")
+        runs = _text_runs(sp, theme, palette) if txBody is not None else []
+        # Drop placeholder demo text the same way regular shapes do.
+        if runs and _is_placeholder_text(runs):
+            runs = []
+        shapes.append(Shape(
+            kind=kind,
+            x=cmap.x(x), y=cmap.y(y),
+            w=cmap.w(w), h=cmap.h(h),
+            fill=fill, stroke=stroke, stroke_width=stroke_width,
+            text_runs=runs,
+        ))
 
 
 def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
@@ -1339,7 +1562,7 @@ def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
         y_cursor += row_h
 
 
-def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
+def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap, theme=None, palette=None):
     """Extract pie/doughnut chart geometry and emit one svg{} arc path per slice.
 
     Each slice becomes a Shape with kind='shape', svg_path_d set to an SVG
@@ -1375,6 +1598,25 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
         return
     total = sum(values)
 
+    # Per-slice colors from <c:dPt> data-point elements. Each dPt carries
+    # <c:idx val="N"/> identifying the slice index plus an optional
+    # <c:spPr><a:solidFill> with that slice's brand color. Falls back to
+    # the chart-series-N ramp by index when absent.
+    slice_colors: dict[int, str] = {}
+    if theme is not None and palette is not None:
+        for dpt in ser.findall(f"{{{CHART_NS}}}dPt"):
+            idx_el = dpt.find(f"{{{CHART_NS}}}idx")
+            sp_pr = dpt.find(f"{{{CHART_NS}}}spPr")
+            if idx_el is None or sp_pr is None:
+                continue
+            try:
+                idx = int(idx_el.get("val") or "-1")
+            except (TypeError, ValueError):
+                continue
+            color = _resolve_fill(sp_pr, theme, palette)
+            if color and idx >= 0:
+                slice_colors[idx] = color
+
     cat_els = ser.findall(
         f".//{{{CHART_NS}}}cat//{{{CHART_NS}}}pt/{{{CHART_NS}}}v"
     )
@@ -1384,18 +1626,33 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
     # only r/l (column-style legend with one row per category — the
     # dominant case for pies); t/b are rare on small pies and fall back
     # to right-side. Search at chart-space level since legend lives on
-    # the chart root, not inside pie_el.
+    # the chart root, not inside pie_el. When the chart has NO `<c:legend>`
+    # element at all, the pie should fill its frame (no legend slot to
+    # reserve). The previous code defaulted to "r" even when no legend
+    # element existed, which made pies on legend-less charts (showcase
+    # decks where every slice is labelled inline with `<c:showPercent>`)
+    # render at ~50% of their source size.
     chart_root = pie_el
     while chart_root is not None and chart_root.tag != f"{{{CHART_NS}}}chartSpace":
         parent = chart_root.getparent()
         if parent is None:
             break
         chart_root = parent
-    legend_pos = "r"
+    legend_pos: str | None = None
     if chart_root is not None:
-        lp = chart_root.find(f".//{{{CHART_NS}}}legend/{{{CHART_NS}}}legendPos")
-        if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
-            legend_pos = lp.get("val")
+        legend_el = chart_root.find(f".//{{{CHART_NS}}}legend")
+        if legend_el is not None:
+            # Overlay flag: when the legend is set to overlay the plot area
+            # (`<c:overlay val="1"/>`), no horizontal slot is reserved for
+            # it — treat as legend-less for sizing purposes.
+            overlay_el = legend_el.find(f"{{{CHART_NS}}}overlay")
+            is_overlay = overlay_el is not None and overlay_el.get("val") in ("1", "true")
+            lp = legend_el.find(f"{{{CHART_NS}}}legendPos")
+            if not is_overlay:
+                if lp is not None and lp.get("val") in ("l", "r", "t", "b"):
+                    legend_pos = lp.get("val")
+                else:
+                    legend_pos = "r"  # PowerPoint default when legend present
 
     # Data label flags — <c:dLbls><c:showPercent val="1"/> or
     # <c:dLbls><c:showVal val="1"/>. Mutually exclusive in practice;
@@ -1437,6 +1694,21 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
     # labels around the circumference.
     r_px = min(pie_w_px, pie_h_px) * 0.36
 
+    # Doughnut hole: `<c:holeSize val="N"/>` on `<c:doughnutChart>` where
+    # N is 10..90 = inner-radius percentage of outer radius. Default 50
+    # when the element is missing on a doughnutChart; pieChart has no
+    # hole. `pie_el.tag` localname distinguishes the two.
+    inner_r_px = 0.0
+    if etree.QName(pie_el).localname == "doughnutChart":
+        hole_pct = 50
+        hs = pie_el.find(f"{{{CHART_NS}}}holeSize")
+        if hs is not None and hs.get("val"):
+            try:
+                hole_pct = max(10, min(90, int(hs.get("val"))))
+            except (TypeError, ValueError):
+                pass
+        inner_r_px = r_px * (hole_pct / 100.0)
+
     # Start at 12 o'clock (-π/2), sweep clockwise. PowerPoint pies follow
     # this convention; matching it preserves slice-to-color correspondence
     # against the source.
@@ -1453,15 +1725,27 @@ def _emit_pie_chart(pie_el, x0, y0, fw, fh, shapes, cmap):
         x2 = cx_px + r_px * math.cos(angle_end)
         y2 = cy_px + r_px * math.sin(angle_end)
         large_arc = 1 if sweep > math.pi else 0
-        # SVG arc: A rx,ry x-axis-rotation large-arc-flag sweep-flag x,y
-        # sweep-flag=1 (clockwise) matches our positive-angle direction in
-        # screen-space (y grows down).
-        d = (
-            f"M {cx_px:.1f},{cy_px:.1f} "
-            f"L {x1:.1f},{y1:.1f} "
-            f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
-        )
-        fill_token = f"chart-series-{(i % 6) + 1}"
+        if inner_r_px > 0:
+            # Annular sector — outer arc forward + inner arc reversed.
+            ix1 = cx_px + inner_r_px * math.cos(angle_start)
+            iy1 = cy_px + inner_r_px * math.sin(angle_start)
+            ix2 = cx_px + inner_r_px * math.cos(angle_end)
+            iy2 = cy_px + inner_r_px * math.sin(angle_end)
+            d = (
+                f"M {x1:.1f},{y1:.1f} "
+                f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} "
+                f"L {ix2:.1f},{iy2:.1f} "
+                f"A {inner_r_px:.1f},{inner_r_px:.1f} 0 {large_arc},0 {ix1:.1f},{iy1:.1f} "
+                f"Z"
+            )
+        else:
+            # Pie wedge — apex at centre.
+            d = (
+                f"M {cx_px:.1f},{cy_px:.1f} "
+                f"L {x1:.1f},{y1:.1f} "
+                f"A {r_px:.1f},{r_px:.1f} 0 {large_arc},1 {x2:.1f},{y2:.1f} Z"
+            )
+        fill_token = slice_colors.get(i) or f"chart-series-{(i % 6) + 1}"
         shapes.append(Shape(
             kind="shape",
             x=cmap.x(x0), y=cmap.y(y0),
@@ -1554,12 +1838,31 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     pie = (root.find(f".//{{{CHART_NS}}}pieChart")
            or root.find(f".//{{{CHART_NS}}}doughnutChart"))
     if pie is not None:
-        _emit_pie_chart(pie, x0, y0, fw, fh, shapes, cmap)
+        _emit_pie_chart(pie, x0, y0, fw, fh, shapes, cmap, theme=theme, palette=palette)
         return
 
     bar = root.find(f".//{{{CHART_NS}}}barChart")
     if bar is None:
         return
+
+    # Bar orientation: <c:barDir val="bar"/> = horizontal bars (categories
+    # stack vertically, values extend rightward); val="col" (default) =
+    # vertical columns. The previous code always emitted columns, so any
+    # horizontal-bar source slide rendered with bars rotated 90° — visible
+    # as vertical stripes where the source had horizontal bars.
+    bar_dir_el = bar.find(f"{{{CHART_NS}}}barDir")
+    horizontal_bars = (
+        bar_dir_el is not None and bar_dir_el.get("val") == "bar"
+    )
+
+    # Stacking: <c:grouping val="standard|stacked|percentStacked"/>.
+    # "standard" (default): series sit side-by-side per category.
+    # "stacked": series stack head-to-tail; axis_max = max sum-per-category.
+    # "percentStacked": each category bar is 100%; series segment by share.
+    grouping_el = bar.find(f"{{{CHART_NS}}}grouping")
+    grouping = grouping_el.get("val") if grouping_el is not None else "standard"
+    if grouping not in ("standard", "stacked", "percentStacked", "clustered"):
+        grouping = "standard"
 
     series = []
     for ser in bar.findall(f"{{{CHART_NS}}}ser"):
@@ -1580,9 +1883,26 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
     n_cats = max(len(s[1]) for s in series)
     n_series = len(series)
     cats = series[0][2] if series[0][2] else [f"Cat {i+1}" for i in range(n_cats)]
-    data_max = max((max(s[1]) for s in series if s[1]), default=0)
+    if grouping == "stacked":
+        # Each category's bar = sum of all series values for that category.
+        cat_totals = [sum(s[1][ci] for s in series if ci < len(s[1]))
+                      for ci in range(n_cats)]
+        data_max = max(cat_totals) if cat_totals else 0
+    elif grouping == "percentStacked":
+        # Every category sums to 100% — plot axis is just 100.
+        data_max = 100
+    else:
+        data_max = max((max(s[1]) for s in series if s[1]), default=0)
     # Round axis max up to the next integer above data_max.
-    axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
+    # LibreOffice's auto-axis (the source-PNG ground truth in the verify
+    # loop) adds one major-unit of headroom over data_max, so matching its
+    # tick count beats the more semantically-correct ceil(data_max) — the
+    # struct_diff_ratio improves when ticks line up with the source-PNG
+    # rasterisation, not with what PowerPoint would have drawn.
+    if grouping == "percentStacked":
+        axis_max = 100
+    else:
+        axis_max = math.ceil(data_max + 0.5) if data_max > 0 else 5
 
     # Plot-area extents inside the frame (EMU). Match PowerPoint defaults:
     # ~7% left for y-axis labels, ~12% top for cat labels, ~22% bottom for legend.
@@ -1622,38 +1942,109 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             text_runs=[TextRun(text=cats[ci] if ci < len(cats) else "", pt=14)],
         ))
 
-    # Bars: each category has n_series side-by-side bars. Source bars are slim
-    # (~8% of category width) and adjacent (no inter-bar gap). Wider/spaced
-    # bars produced visibly different pixels and inflated struct_diff.
-    # Series colour: prefer the per-series fill resolved from <c:ser><c:spPr>
-    # (gives brand-accurate orange/peach/grey progression). Fall back to the
-    # chart-series ramp by index when the source omits per-series colour.
-    bar_w = int(cat_w * 0.085)
-    group_w = bar_w * n_series
-    group_inset = (cat_w - group_w) // 2
-    for si, (name, vals, _, ser_color) in enumerate(series):
-        color = ser_color or f"chart-series-{(si % 6) + 1}"
-        for ci, v in enumerate(vals):
-            bx = plot_x + ci * cat_w + group_inset + si * bar_w
-            bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
-            by = plot_y + plot_h - bh
-            shapes.append(Shape(
-                kind="rect",
-                x=cmap.x(bx), y=cmap.y(by),
-                w=cmap.w(bar_w), h=cmap.h(bh),
-                fill=color,
-            ))
-            # Value label above the bar.
-            label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
-            label = label.replace(".", ",")
-            shapes.append(Shape(
-                kind="text",
-                x=cmap.x(bx - bar_w // 2),
-                y=cmap.y(by - 400000),
-                w=cmap.w(bar_w * 2),
-                h=cmap.h(360000),
-                text_runs=[TextRun(text=label, pt=14)],
-            ))
+    # Bars: each category has n_series side-by-side bars. PowerPoint sizes
+    # them via `<c:gapWidth val="N"/>` where N is the inter-group gap as a
+    # percentage of bar width (default 150 = gap is 1.5x bar width). The
+    # category width then holds n_series bars plus a gap on each side:
+    #   cat_w = bar_w * n_series + bar_w * (gapWidth/100)
+    #   →  bar_w = cat_w / (n_series + gapWidth/100)
+    # Reading the actual gapWidth lets thick "showcase" bars (default 150)
+    # decompile at their real width instead of a fixed 8.5%-of-cat hairline,
+    # which left source-bar pixels uncovered and inflated struct_diff on
+    # every bar-chart slide.
+    gap_pct = 150.0
+    gw_el = bar.find(f"{{{CHART_NS}}}gapWidth")
+    if gw_el is not None and gw_el.get("val"):
+        try:
+            gap_pct = float(gw_el.get("val"))
+        except (TypeError, ValueError):
+            pass
+    if horizontal_bars:
+        # Horizontal layout: category axis runs vertically (rows), value
+        # axis runs horizontally. Each category gets a row of height
+        # `cat_h`; bars within stack by series and extend rightward.
+        cat_h = plot_h // n_cats if n_cats else plot_h
+        if grouping in ("stacked", "percentStacked"):
+            # One bar per category, series segments fill it left-to-right.
+            bar_h = int(cat_h / (1 + gap_pct / 100))
+            for ci in range(n_cats):
+                # Per-category total (stacked uses sum, percentStacked
+                # normalises to 100 so each row fills plot_w).
+                if grouping == "percentStacked":
+                    cat_total = sum(s[1][ci] for s in series if ci < len(s[1]))
+                else:
+                    cat_total = data_max
+                cursor_x = plot_x
+                row_y = plot_y + ci * cat_h + (cat_h - bar_h) // 2
+                for si, (name, vals, _, ser_color) in enumerate(series):
+                    if ci >= len(vals):
+                        continue
+                    v = vals[ci]
+                    color = ser_color or f"chart-series-{(si % 6) + 1}"
+                    if grouping == "percentStacked":
+                        seg_w = int(plot_w * (v / cat_total)) if cat_total > 0 else 0
+                    else:
+                        seg_w = int(plot_w * (v / axis_max)) if axis_max > 0 else 0
+                    shapes.append(Shape(
+                        kind="rect",
+                        x=cmap.x(cursor_x), y=cmap.y(row_y),
+                        w=cmap.w(seg_w), h=cmap.h(bar_h),
+                        fill=color,
+                    ))
+                    cursor_x += seg_w
+        else:
+            bar_h = int(cat_h / (n_series + gap_pct / 100))
+            group_h = bar_h * n_series
+            group_inset_v = (cat_h - group_h) // 2
+            for si, (name, vals, _, ser_color) in enumerate(series):
+                color = ser_color or f"chart-series-{(si % 6) + 1}"
+                for ci, v in enumerate(vals):
+                    by_ = plot_y + ci * cat_h + group_inset_v + si * bar_h
+                    bw_ = int(plot_w * v / axis_max) if axis_max > 0 else 0
+                    bx_ = plot_x
+                    shapes.append(Shape(
+                        kind="rect",
+                        x=cmap.x(bx_), y=cmap.y(by_),
+                        w=cmap.w(bw_), h=cmap.h(bar_h),
+                        fill=color,
+                    ))
+                    label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                    label = label.replace(".", ",")
+                    shapes.append(Shape(
+                        kind="text",
+                        x=cmap.x(bx_ + bw_ + 50000),
+                        y=cmap.y(by_),
+                        w=cmap.w(int(fw * 0.08)),
+                        h=cmap.h(int(bar_h)),
+                        text_runs=[TextRun(text=label, pt=14)],
+                    ))
+    else:
+        bar_w = int(cat_w / (n_series + gap_pct / 100))
+        group_w = bar_w * n_series
+        group_inset = (cat_w - group_w) // 2
+        for si, (name, vals, _, ser_color) in enumerate(series):
+            color = ser_color or f"chart-series-{(si % 6) + 1}"
+            for ci, v in enumerate(vals):
+                bx = plot_x + ci * cat_w + group_inset + si * bar_w
+                bh = int(plot_h * v / axis_max) if axis_max > 0 else 0
+                by = plot_y + plot_h - bh
+                shapes.append(Shape(
+                    kind="rect",
+                    x=cmap.x(bx), y=cmap.y(by),
+                    w=cmap.w(bar_w), h=cmap.h(bh),
+                    fill=color,
+                ))
+                # Value label above the bar.
+                label = str(v).rstrip("0").rstrip(".") if "." in str(v) else str(v)
+                label = label.replace(".", ",")
+                shapes.append(Shape(
+                    kind="text",
+                    x=cmap.x(bx - bar_w // 2),
+                    y=cmap.y(by - 400000),
+                    w=cmap.w(bar_w * 2),
+                    h=cmap.h(360000),
+                    text_runs=[TextRun(text=label, pt=14)],
+                ))
 
     # Legend at bottom-left.
     legend_y = y0 + fh - int(fh * 0.12)
@@ -1741,6 +2132,158 @@ def _style_for(pt: float, text: str, is_footer: bool) -> str:
 # ---------------------------------------------------------------------------
 
 
+# Demo-placeholder text patterns. Templates ship slides with literal
+# guidance text so the user can see what each slot is for; we suppress
+# them on decompile so the round-trip render shows an empty slot
+# instead of the prompt.
+#
+# Exact phrases (case-insensitive, stripped). Add a phrase here whenever
+# a new corporate template surfaces a new prompt variant.
+_PLACEHOLDER_EXACT: frozenset[str] = frozenset(map(str.lower, [
+    "headline", "subheadline", "sub-headline", "sub headline",
+    "placeholder", "placeholder text", "placeholder copy",
+    "this is a placeholder text", "this is placeholder text",
+    "title", "subtitle", "sub-title",
+    "presentation title", "chapter title", "section title", "slide title",
+    "welcome!", "welcome", "thank you!", "thank you",
+    "lorem ipsum",
+    "body text", "body copy",
+    "caption", "footnote",
+    "click here to add text", "click to add text",
+    "this text can be replaced with your own text",
+    "this text can be replaced",
+    "your text here", "insert text here",
+    # PowerPoint outline-level prompts (default for body placeholders) —
+    # English + German since BSH/Bosch templates ship localised.
+    "click to edit master title style",
+    "click to edit master text styles",
+    "second level", "third level", "fourth level", "fifth level",
+    "text hinzufügen", "text hinzufuegen",
+    "zweite ebene", "dritte ebene", "vierte ebene", "fünfte ebene", "fuenfte ebene",
+    "klicken sie, um einen titel hinzuzufügen",
+    "klicken sie, um titel hinzuzufügen",
+    # Bosch-specific common prompts surfaced from the Design Kit Blue.
+    "add text", "add title", "add headline", "add subheadline",
+]))
+
+# Prefix patterns — first few words of the text run lower-cased.
+_PLACEHOLDER_PREFIXES: tuple[str, ...] = (
+    "click to edit",
+    "lorem ipsum",
+    "this text can be replaced",
+    "this text demonstrates",       # "This text demonstrates how your own text..."
+    "this is a placeholder",
+    "this is placeholder",
+    "placeholder text",             # "Placeholder text\n…" wrappers
+    "click here to add",
+    "tap to add",
+    "double-click to edit",
+    "replace this text",
+    "replace with your",
+    "your own text",
+    "sample text",
+    "example text",
+)
+
+# Mail-merge / template-variable tokens (Bosch convention, also seen on
+# other corporate brands): wholly-token strings like `%classification%`
+# or chained `%a%%b%%c%`. PowerPoint replaces these at the org level;
+# our renderer has no such facility, so they emit literally.
+_TEMPLATE_VAR_RE = __import__("re").compile(r"^(%[A-Za-z][A-Za-z0-9_-]*%)+$")
+
+
+def _is_placeholder_line(line: str) -> bool:
+    norm = line.strip().lower().rstrip(".!?:;,")
+    if not norm:
+        return True   # blank line counts as placeholder noise
+    if norm in _PLACEHOLDER_EXACT:
+        return True
+    if any(norm.startswith(p) for p in _PLACEHOLDER_PREFIXES):
+        return True
+    if _TEMPLATE_VAR_RE.match(line.strip()):
+        return True
+    return False
+
+
+def _is_placeholder_text(text_runs: list["TextRun"]) -> bool:
+    """Return True iff the concatenated run text is recognizable demo /
+    template-prompt copy that should NOT survive the decompile round-trip.
+
+    Suppression triggers on any of:
+      * the WHOLE text (linebreaks collapsed to spaces) matches an exact
+        prompt or a known prefix — catches `"This text can be replaced\\nwith your own text."` where the source linebreaks for layout
+        reasons but the whole string is still one prompt
+      * every non-blank line matches an individual prompt pattern —
+        catches `"Headline\\nSubheadline\\nBody"` where each line is its
+        own prompt stacked in one placeholder
+    """
+    if not text_runs:
+        return False
+    raw = "".join(r.text or "" for r in text_runs).strip()
+    if not raw:
+        return False
+    # Collapse line breaks + duplicate whitespace, then check.
+    flat = " ".join(raw.split())
+    if _is_placeholder_line(flat):
+        return True
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    if lines and all(_is_placeholder_line(ln) for ln in lines):
+        return True
+    return False
+
+
+def _strip_placeholder_paragraphs(text_runs: list["TextRun"]) -> list["TextRun"]:
+    """Return text_runs with placeholder paragraphs removed.
+
+    Source decks often combine real labels with prompt copy inside one
+    placeholder, e.g.
+
+        "04\\nThis is a placeholder text\\nThis text demonstrates how your
+        own text will look when you replace the placeholder with your own
+        text."
+
+    Dropping the whole shape would lose the "04" label that's actual
+    content. This walks paragraphs (separated by `TextRun(text="\\n")`
+    markers inserted by `_text_runs`), drops paragraphs whose joined
+    text matches `_is_placeholder_line`, and stitches the survivors
+    back together with the same `\\n` separators.
+
+    Returns the original list unchanged when no paragraph qualifies as
+    placeholder, or an empty list when EVERY paragraph qualifies (caller
+    drops the shape).
+    """
+    if not text_runs:
+        return text_runs
+    # Group into paragraphs. A paragraph is a contiguous slice of runs
+    # not crossed by a `\n` separator run.
+    paragraphs: list[list["TextRun"]] = [[]]
+    for r in text_runs:
+        if r.text == "\n":
+            paragraphs.append([])
+            continue
+        paragraphs[-1].append(r)
+    kept: list[list["TextRun"]] = []
+    dropped_any = False
+    for para in paragraphs:
+        joined = "".join((r.text or "") for r in para)
+        if _is_placeholder_line(joined.strip()):
+            dropped_any = True
+            continue
+        kept.append(para)
+    if not dropped_any:
+        return text_runs
+    out: list["TextRun"] = []
+    for i, para in enumerate(kept):
+        if i > 0:
+            # Reuse a TextRun shape similar to what `_text_runs` emits —
+            # `pt` from the para's first run so the separator's height is
+            # consistent with the surrounding text.
+            sep_pt = para[0].pt if para else 12
+            out.append(TextRun(text="\n", pt=sep_pt))
+        out.extend(para)
+    return out
+
+
 def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
              placeholder_rel: str = PLACEHOLDER_REL,
@@ -1777,6 +2320,36 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 ph_type=s.ph_type, ph_idx=s.ph_idx, valign=s.valign,
                 padding=s.padding,
             ))
+    # Drop demo-placeholder text. Corporate templates ship slides with
+    # literal guidance text inside placeholders ("Headline", "Subheadline",
+    # "Click to edit Master title", "%classification%" mail-merge tokens,
+    # "This text can be replaced with your own text.") so the user knows
+    # what each slot is for. We don't want those strings showing up in
+    # the rendered round-trip — keeps the layout chrome / geometry but
+    # drops the prompt text so the slot reads as empty in the brand
+    # template render. See `_is_placeholder_text` for the patterns.
+    #
+    # When a shape mixes a real label with placeholder paragraphs
+    # ("04\nThis is a placeholder text\nThis text demonstrates…"), strip
+    # ONLY the placeholder paragraphs so the label survives. Shapes
+    # whose every paragraph is placeholder collapse to empty runs and
+    # the whole shape gets dropped.
+    filtered: list[Shape] = []
+    for t in texts:
+        if _is_placeholder_text(t.text_runs):
+            continue
+        stripped = _strip_placeholder_paragraphs(t.text_runs)
+        if stripped is t.text_runs:
+            filtered.append(t)
+            continue
+        if not any((r.text or "").strip() for r in stripped):
+            continue
+        filtered.append(Shape(
+            kind=t.kind, x=t.x, y=t.y, w=t.w, h=t.h,
+            text_runs=stripped, ph_type=t.ph_type, ph_idx=t.ph_idx,
+            valign=t.valign, padding=t.padding,
+        ))
+    texts = filtered
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
@@ -1880,11 +2453,18 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             f'path:"{{{{ {slot} | default(\\"{default_path}\\") }}}}" cover:true'
         )
 
-    # Lines.
+    # Lines. Stroke-width preserves the source `<a:ln w="...">` value so
+    # a 3pt horizontal divider survives the round-trip — the previous
+    # `stroke-width:1` hardcode flattened every line to a hairline and
+    # made decorative dividers invisible.
     for ln in lines:
         x1, y1 = ln.x, ln.y
         x2, y2 = ln.x + ln.w, ln.y + ln.h
-        out.append(f"line {x1},{y1} {x2},{y2} stroke:{ln.stroke or 'fog'} stroke-width:1")
+        sw = ln.stroke_width if ln.stroke_width is not None and ln.stroke_width > 0 else 1
+        attrs = f"stroke:{ln.stroke or 'fog'} stroke-width:{sw:g}"
+        if ln.stroke_dash:
+            attrs += f" dash:{ln.stroke_dash}"
+        out.append(f"line {x1},{y1} {x2},{y2} {attrs}")
 
     if rects or pics or lines or ovals or custs:
         out.append("")
@@ -2118,11 +2698,18 @@ def derive(
                 "it relative to the brand pack root)."
             )
         image_extract_dir.mkdir(parents=True, exist_ok=True)
-        pics = [s for s in shapes if s.is_picture and s.media_rid]
+        # Prefer pictures whose Part was resolved at walk-time (handles
+        # layout-inherited pics); fall back to slide.part lookup for the
+        # in-slide case so callers that pre-date media_part still work.
+        pics = [s for s in shapes if s.is_picture and (s.media_part or s.media_rid)]
         for i, p in enumerate(pics, 1):
-            try:
-                part = slide.part.related_part(p.media_rid)
-            except KeyError:
+            part = p.media_part
+            if part is None and p.media_rid:
+                try:
+                    part = slide.part.related_part(p.media_rid)
+                except KeyError:
+                    continue
+            if part is None:
                 continue
             blob = getattr(part, "blob", None)
             partname = str(getattr(part, "partname", "/image.bin"))

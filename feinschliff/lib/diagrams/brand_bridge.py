@@ -115,6 +115,14 @@ def resolve(name: str, brand_dir: Path) -> str:
     - brand tokens missing the slot (after extends: walk)
     """
     if _LITERAL_RE.match(name):
+        # Hex literals pass through as-is. The decompile pipeline emits
+        # `#RRGGBB` fills when nearest_token can't find a brand token
+        # close enough to the source colour; rejecting them here would
+        # leave the decompiled DSL unbuildable. Other literal forms
+        # (rgb()/hsl()) are still flagged because they don't survive the
+        # downstream SVG-attribute path.
+        if name.startswith("#") and len(name) in (4, 7, 9):
+            return name
         raise BrandBridgeError(
             f"literal color '{name}' — use semantic name "
             f"(see references/dsl-reference.md)"

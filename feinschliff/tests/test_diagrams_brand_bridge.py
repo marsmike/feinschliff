@@ -44,9 +44,13 @@ def test_unknown_name_rejected():
         resolve("royal-blue", _brand_dir("feinschliff"))
 
 
-def test_literal_hex_rejected():
-    with pytest.raises(BrandBridgeError, match="literal color"):
-        resolve("#4f46e5", _brand_dir("feinschliff"))
+def test_literal_hex_passes_through():
+    # Hex literals are accepted unchanged so the hybrid decompiler's
+    # source-fidelity fallback (raw `#RRGGBB` for colours that have no
+    # close brand-token match) survives the SVG-render path. Other
+    # literal forms — rgb()/hsl() — are still rejected.
+    assert resolve("#4f46e5", _brand_dir("feinschliff")) == "#4f46e5"
+    assert resolve("#abc", _brand_dir("feinschliff")) == "#abc"
 
 
 def test_rgb_rejected():
@@ -88,6 +92,7 @@ def test_missing_token_slot_raises(tmp_path):
 
 
 @pytest.mark.parametrize("brand_name", [
+    "blank",
     "feinschliff", "feinschliff-dark",
     "catppuccin-latte", "catppuccin-macchiato",
     "solarized-dark", "nord", "gruvbox-dark",
