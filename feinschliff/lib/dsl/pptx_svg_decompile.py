@@ -372,8 +372,9 @@ def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str
 
     Handles `<a:grpFill/>` by walking up to the nearest `<p:grpSp>` ancestor
     and resolving its `grpSpPr/solidFill`. Without this, custGeom shapes that
-    declare `<a:grpFill/>` (the SARTORIUS logo glyphs on the slide master)
-    render unfilled instead of inheriting the group's solid colour.
+    declare `<a:grpFill/>` (a common pattern for vector logo glyph bundles
+    on slide masters) render unfilled instead of inheriting the group's
+    solid colour.
     """
     if spPr is None:
         return None
@@ -764,7 +765,7 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
     placeholder, the body text). All decorative chrome — corporate logo,
     page-number bar, branded background blocks — lives on the slide's
     layout and master. Without this inheritance walk, the decompile of
-    a Sartorius-style deck emits ~10% of what the source renders.
+    a corporate-template deck emits ~10% of what the source renders.
 
     Layout/master shapes that are placeholder fills already provided by
     the slide itself (same ph_idx) are skipped — slide content wins.
