@@ -1,0 +1,44 @@
+"""feinschliff-builder CLI entry point.
+
+Registers brand-authoring, compile, decompile, verify, verify-quality,
+and verify-diagram subcommands.
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+
+from feinschliff_builder.cli import (
+    brand as brand_cmd,
+    compile as compile_cmd,
+    decompile as decompile_cmd,
+    verify as verify_cmd,
+    verify_quality as verify_quality_cmd,
+    verify_diagram as verify_diagram_cmd,
+)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="feinschliff-builder",
+        description="Feinschliff brand-pack authoring toolkit.",
+    )
+    sub = parser.add_subparsers(dest="command")
+    sub.required = True
+
+    brand_cmd.register(sub.add_parser("brand", help="Brand pack utilities"))
+    compile_cmd.register(sub.add_parser("compile-html", help="Compile HTML to DSL skeletons"))
+    decompile_cmd.register(sub.add_parser("decompile", help="Decompile a .pptx to DSL"))
+    verify_cmd.register(sub.add_parser("verify", help="Validate a built .pptx deck"))
+    verify_quality_cmd.register(sub.add_parser("verify-quality", help="LLM quality rubric"))
+    verify_diagram_cmd.register(sub.add_parser("verify-diagram", help="Validate diagram DSL files"))
+
+    args = parser.parse_args(argv)
+    rc = args.func(args)
+    if argv is None:
+        sys.exit(rc or 0)
+    return rc or 0
+
+
+if __name__ == "__main__":
+    main()

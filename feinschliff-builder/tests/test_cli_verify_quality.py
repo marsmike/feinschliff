@@ -4,7 +4,8 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+_BUILDER_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = _BUILDER_ROOT.parent / "feinschliff"
 SAMPLE_DECK = REPO_ROOT / "tests" / "fixtures" / "verify_quality" / "clean-deck.pptx"
 
 
@@ -24,9 +25,9 @@ def _ensure_fixture(tmp_path):
 def test_verify_quality_offline_emits_skipped_verdict(tmp_path):
     out = tmp_path / "report.json"
     proc = subprocess.run(
-        ["uv", "run", "feinschliff", "verify-quality",
+        ["uv", "run", "feinschliff-builder", "verify-quality",
          str(SAMPLE_DECK), "--offline", "--json", "--out", str(out)],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        cwd=_BUILDER_ROOT, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
     report = json.loads(out.read_text())
@@ -39,10 +40,10 @@ def test_verify_quality_offline_emits_skipped_verdict(tmp_path):
 def test_verify_quality_selective_rubric(tmp_path):
     out = tmp_path / "report.json"
     proc = subprocess.run(
-        ["uv", "run", "feinschliff", "verify-quality",
+        ["uv", "run", "feinschliff-builder", "verify-quality",
          str(SAMPLE_DECK), "--rubric", "title-body", "--offline",
          "--json", "--out", str(out)],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        cwd=_BUILDER_ROOT, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
     report = json.loads(out.read_text())
@@ -52,9 +53,9 @@ def test_verify_quality_selective_rubric(tmp_path):
 def test_verify_quality_emits_markdown_report_by_default(tmp_path):
     out = tmp_path / "verify_report.md"
     proc = subprocess.run(
-        ["uv", "run", "feinschliff", "verify-quality",
+        ["uv", "run", "feinschliff-builder", "verify-quality",
          str(SAMPLE_DECK), "--offline", "--out", str(out)],
-        cwd=REPO_ROOT, capture_output=True, text=True,
+        cwd=_BUILDER_ROOT, capture_output=True, text=True,
     )
     assert proc.returncode == 0, proc.stderr
     body = out.read_text()

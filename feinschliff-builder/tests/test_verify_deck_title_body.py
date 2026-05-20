@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.verify.deck.title_body import extract_slide_title_and_body
+from feinschliff_builder.verify.deck.title_body import extract_slide_title_and_body
 
 
 def test_extract_title_and_body_from_pptx(tmp_path: Path):

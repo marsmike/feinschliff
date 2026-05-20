@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from lib.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
+from feinschliff_builder.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
 
 
 _COLOR_PALETTE = [

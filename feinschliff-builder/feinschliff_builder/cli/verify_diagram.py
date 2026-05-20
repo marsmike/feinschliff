@@ -15,8 +15,8 @@ import json
 import sys
 from pathlib import Path
 
-from lib.defects import Severity, format_defect
-from lib.diagrams.structural_validator import validate_diagram_file
+from feinschliff.defects import Severity, format_defect
+from feinschliff_builder.diagrams.structural_validator import validate_diagram_file
 
 
 def register(parser: argparse.ArgumentParser) -> None:

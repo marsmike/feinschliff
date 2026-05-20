@@ -6,9 +6,9 @@ import json
 import sys
 from pathlib import Path
 
-from lib.verify.autofix import suggest_fix
-from lib.verify.cache import VerifyCache
-from lib.verify.llm.rubric import (
+from feinschliff_builder.verify.autofix import suggest_fix
+from feinschliff_builder.verify.cache import VerifyCache
+from feinschliff_builder.verify.llm.rubric import (
     RubricResult, result_to_defects,
     run_bullet_dump, run_claim_title, run_squint, run_title_body,
 )
@@ -123,7 +123,7 @@ def cmd_verify_quality(args) -> int:
 
 
 def _render_slide_pngs(deck: Path) -> dict[int, Path]:
-    from lib.verify.render_pngs import render_slides_to_png
+    from feinschliff_builder.verify.render_pngs import render_slides_to_png
     out_dir = deck.parent / (deck.stem + ".pngs")
     out_dir.mkdir(exist_ok=True)
     return render_slides_to_png(deck, out_dir)

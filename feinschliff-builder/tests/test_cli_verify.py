@@ -6,7 +6,7 @@ from pathlib import Path
 from pptx import Presentation
 from pptx.util import Inches
 
-from cli.main import main
+from feinschliff_builder.cli.main import main
 
 
 def _clean_deck(path: Path) -> Path:

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from lib.verify.deck.titles import (
+from feinschliff_builder.verify.deck.titles import (
     extract_titles_from_plan,
     extract_titles_from_pptx,
 )

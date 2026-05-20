@@ -51,7 +51,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
-from lib.defects import Defect, DefectKind
+from feinschliff.defects import Defect, DefectKind
 
 
 FixAction = Literal[
@@ -359,7 +359,7 @@ def _find_smaller_layout(
     candidate.
     """
     try:
-        from lib.layout_picker import pick_layout
+        from feinschliff.layout_picker import pick_layout
     except ImportError:
         return None
 
@@ -385,9 +385,10 @@ def _find_smaller_layout(
             continue  # same as current
         # Resolve path
         rel = f"layouts/{layout_id}.slide.dsl"
-        # Verify the layout file exists
-        repo_root = Path(__file__).resolve().parents[2]
-        if (repo_root / rel).is_file():
+        # Verify the layout file exists (layouts live in the core plugin)
+        _builder_root = Path(__file__).resolve().parents[2]
+        _core_root = _builder_root.parent / "feinschliff"
+        if (_core_root / rel).is_file():
             return rel
     return None
 
@@ -408,7 +409,7 @@ def _find_larger_layout(
     candidate.
     """
     try:
-        from lib.layout_picker import pick_layout
+        from feinschliff.layout_picker import pick_layout
     except ImportError:
         return None
 
@@ -431,8 +432,12 @@ def _find_larger_layout(
         if layout_id == current_name:
             continue
         rel = f"layouts/{layout_id}.slide.dsl"
-        repo_root = Path(__file__).resolve().parents[2]
-        if (repo_root / rel).is_file():
+        # Layouts live in the core feinschliff plugin, which is siblings to
+        # this builder plugin. Resolve relative to this file's package root.
+        _builder_root = Path(__file__).resolve().parents[2]
+        _core_root = _builder_root.parent / "feinschliff"
+        layout_path = _core_root / rel
+        if layout_path.is_file():
             return rel
     return None
 

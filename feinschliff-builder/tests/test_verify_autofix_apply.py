@@ -19,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2] / "feinschliff"
 BRANDS_DIR = REPO_ROOT / "brands"
 BRAND_DIR = REPO_ROOT / "brands" / "feinschliff"
 
@@ -43,7 +43,7 @@ def _make_plan(layout_rel: str, content: dict) -> dict:
 # ---------------------------------------------------------------------------
 
 def test_autofix_apply_importable():
-    from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary, FixPatch  # noqa: F401
+    from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary, FixPatch  # noqa: F401
     assert callable(plan_fixes)
     assert callable(apply_fixes)
     assert callable(diff_summary)
@@ -57,7 +57,7 @@ class TestShortenSlot:
     """SLOT_OVERFLOW defect → shorten_slot patch → content trimmed to budget."""
 
     def _overflow_defect(self, slot: str, budget: int, over_by: int, slide_index: int = 1):
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         return Defect(
             slide_index=slide_index,
             kind=DefectKind.SLOT_OVERFLOW,
@@ -67,8 +67,8 @@ class TestShortenSlot:
         )
 
     def test_plan_fixes_returns_shorten_patch(self):
-        from lib.verify.autofix import plan_fixes, FixPatch
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.autofix import plan_fixes, FixPatch
+        from feinschliff.defects import DefectKind
 
         # action_title budget on executive-summary = 84 chars.  Use 90 chars
         # (6 over budget) which is BELOW the 20% swap threshold (84 * 1.20 = 100.8).
@@ -95,7 +95,7 @@ class TestShortenSlot:
         assert p.source_defect == DefectKind.SLOT_OVERFLOW
 
     def test_apply_fixes_trims_to_budget(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         # Use content that is over budget but BELOW the 20% swap threshold so
         # plan_fixes emits shorten_slot (not swap_layout_larger).
@@ -128,7 +128,7 @@ class TestShortenSlot:
         )
 
     def test_trim_cuts_at_sentence_boundary(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         budget = 60
         # Two sentences; first fits in budget, second pushes over
@@ -148,7 +148,7 @@ class TestShortenSlot:
         assert result.endswith(".")
 
     def test_idempotent_shorten(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         # Use content below the 20% swap threshold to ensure shorten_slot fires.
         # executive-summary budget = 84; threshold = 100.8. Use 90 chars (6 over).
@@ -177,7 +177,7 @@ class TestDeleteWord:
     """FILLER_WORD defect → delete_word patch → filler removed from slot."""
 
     def _filler_defect(self, slot: str, word: str, slide_index: int = 1):
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         return Defect(
             slide_index=slide_index,
             kind=DefectKind.FILLER_WORD,
@@ -187,7 +187,7 @@ class TestDeleteWord:
         )
 
     def test_plan_fixes_returns_delete_word_patch(self):
-        from lib.verify.autofix import plan_fixes, FixPatch
+        from feinschliff_builder.verify.autofix import plan_fixes, FixPatch
 
         plan = _make_plan(
             "layouts/action-title.slide.dsl",
@@ -203,7 +203,7 @@ class TestDeleteWord:
         assert p.payload["word"] == "really"
 
     def test_apply_fixes_removes_filler_word(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         plan = _make_plan(
             "layouts/action-title.slide.dsl",
@@ -220,7 +220,7 @@ class TestDeleteWord:
         assert "really" not in result.lower()
 
     def test_apply_fixes_removes_all_occurrences(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         plan = _make_plan(
             "layouts/action-title.slide.dsl",
@@ -236,7 +236,7 @@ class TestDeleteWord:
         assert "really" not in result.lower(), f"All occurrences should be removed: {result!r}"
 
     def test_filler_word_is_case_insensitive(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         plan = _make_plan(
             "layouts/action-title.slide.dsl",
@@ -252,7 +252,7 @@ class TestDeleteWord:
         assert "really" not in result.lower(), f"Case-insensitive removal failed: {result!r}"
 
     def test_idempotent_delete_word(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         plan = _make_plan(
             "layouts/action-title.slide.dsl",
@@ -277,7 +277,7 @@ class TestDropBullet:
     """BULLET_DUMP defect with >5 peers → drop_bullet → ≤5 bullets remain."""
 
     def _bullet_dump_defect(self, slot: str, slide_index: int = 1):
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         return Defect(
             slide_index=slide_index,
             kind=DefectKind.BULLET_DUMP,
@@ -293,7 +293,7 @@ class TestDropBullet:
         return "\n".join(bullets)
 
     def test_plan_fixes_returns_drop_bullet_patch_when_gt5(self):
-        from lib.verify.autofix import plan_fixes, FixPatch
+        from feinschliff_builder.verify.autofix import plan_fixes, FixPatch
 
         body = self._make_bullets(7)  # 7 bullets → should trigger
         plan = _make_plan(
@@ -310,7 +310,7 @@ class TestDropBullet:
 
     def test_plan_fixes_no_patch_when_le5(self):
         """With ≤5 bullets, BULLET_DUMP produces no patch (already acceptable)."""
-        from lib.verify.autofix import plan_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes
 
         body = self._make_bullets(5)  # exactly 5 → no patch
         plan = _make_plan(
@@ -322,7 +322,7 @@ class TestDropBullet:
         assert patches == [], f"Expected no patch for ≤5 bullets, got {patches}"
 
     def test_apply_fixes_reduces_bullets_to_5(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         body = self._make_bullets(8)  # 8 bullets → drop 3
         plan = _make_plan(
@@ -344,7 +344,7 @@ class TestDropBullet:
         )
 
     def test_drop_bullet_preserves_order_of_survivors(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         # 7 bullets; we want to verify the survivors are in original order
         lines = [
@@ -374,7 +374,7 @@ class TestDropBullet:
         )
 
     def test_idempotent_drop_bullet(self):
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         body = self._make_bullets(7)
         plan = _make_plan(
@@ -397,7 +397,7 @@ class TestSwapLayoutSmaller:
     """EMPTY_PLACEHOLDER from layout having more required slots than content → swap to smaller."""
 
     def _empty_placeholder_defect(self, slot: str, layout: str, slide_index: int = 1):
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         return Defect(
             slide_index=slide_index,
             kind=DefectKind.EMPTY_PLACEHOLDER,
@@ -408,7 +408,7 @@ class TestSwapLayoutSmaller:
 
     def test_plan_fixes_swap_layout_smaller_when_candidate_exists(self):
         """When plan has an EMPTY_PLACEHOLDER and a smaller layout exists, return swap patch."""
-        from lib.verify.autofix import plan_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes
 
         # Use a content-heavy layout (executive-summary) with only minimal content
         # so there are many empty slots.  The fix should propose swapping down.
@@ -436,7 +436,7 @@ class TestSwapLayoutSmaller:
 
     def test_apply_fixes_updates_layout_field(self):
         """If a swap_layout_smaller patch is returned, applying it updates the layout field."""
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         plan = {
             "brand": "feinschliff",
@@ -477,7 +477,7 @@ class TestSwapLayoutLarger:
         defect.  Emitting both would be semantically contradictory — the larger layout
         was chosen precisely because the content cannot be shortened enough.
         """
-        from lib.verify.autofix import plan_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes
 
         # Craft a defect where content is > 120% of budget (over by more than 20%)
         budget = 80
@@ -489,7 +489,7 @@ class TestSwapLayoutLarger:
             "layouts/action-title.slide.dsl",
             {"action_title": text, "footer_left": "Corp", "footer_right": "2026"},
         )
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         defect = Defect(
             slide_index=1,
             kind=DefectKind.SLOT_OVERFLOW,
@@ -523,7 +523,7 @@ class TestSwapLayoutLarger:
         well over the 20% threshold — so swap_layout_larger must fire after
         the threshold fix.
         """
-        from lib.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
 
         budget = 40
         text = "X" * 200  # 5× budget — original length is clearly > budget * 1.20
@@ -534,7 +534,7 @@ class TestSwapLayoutLarger:
             "layouts/action-title.slide.dsl",
             {"action_title": text},
         )
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         defect = Defect(
             slide_index=1,
             kind=DefectKind.SLOT_OVERFLOW,
@@ -563,8 +563,8 @@ class TestSwapLayoutLarger:
         exactly one patch with action == 'swap_layout_larger' and zero patches with
         action == 'shorten_slot'.
         """
-        from lib.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
+        from feinschliff.defects import Defect, DefectKind, Severity
 
         # action-title layout has a known larger candidate (executive-summary).
         # Use budget=40, content=200 chars → 200 > 40*1.20=48 → above threshold.
@@ -612,15 +612,15 @@ class TestBehavioralRequirements:
 
     def test_empty_patches_no_op(self):
         """apply_fixes(plan, []) returns plan unchanged."""
-        from lib.verify.autofix import apply_fixes
+        from feinschliff_builder.verify.autofix import apply_fixes
         plan = _make_plan("layouts/end.slide.dsl", {"title": "Hello", "pgmeta": "Q1"})
         result = apply_fixes(plan, [])
         assert result["slides"][0]["content"] == {"title": "Hello", "pgmeta": "Q1"}
 
     def test_unknown_defect_class_no_patch(self):
         """plan_fixes for an unsupported defect kind returns no patches."""
-        from lib.verify.autofix import plan_fixes
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import plan_fixes
+        from feinschliff.defects import Defect, DefectKind, Severity
 
         plan = _make_plan("layouts/end.slide.dsl", {"title": "Hello"})
         defect = Defect(
@@ -635,8 +635,8 @@ class TestBehavioralRequirements:
 
     def test_multi_slide_patches_independent(self):
         """Patches against different slides are independent and composable."""
-        from lib.verify.autofix import plan_fixes, apply_fixes
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff.defects import Defect, DefectKind, Severity
 
         # Use content BELOW the 20% swap threshold for each slide so both get
         # shorten_slot (not swap_layout_larger).  Budget = 84 for executive-
@@ -691,8 +691,8 @@ class TestBehavioralRequirements:
 
     def test_diff_summary_non_empty_when_patches_applied(self):
         """diff_summary returns a non-empty markdown string when plan changed."""
-        from lib.verify.autofix import plan_fixes, apply_fixes, diff_summary
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary
+        from feinschliff.defects import Defect, DefectKind, Severity
 
         budget = 80
         plan = _make_plan(
@@ -716,7 +716,7 @@ class TestBehavioralRequirements:
 
     def test_diff_summary_empty_when_no_change(self):
         """diff_summary returns empty string when before == after."""
-        from lib.verify.autofix import diff_summary
+        from feinschliff_builder.verify.autofix import diff_summary
 
         plan = _make_plan("layouts/end.slide.dsl", {"title": "Hello"})
         summary = diff_summary(plan, plan)
@@ -724,8 +724,8 @@ class TestBehavioralRequirements:
 
     def test_text_overlap_shorten_uses_75_percent_ratio(self):
         """TEXT_OVERLAP defect with no budget_chars → shorten by 75% of current length."""
-        from lib.verify.autofix import plan_fixes, apply_fixes
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff.defects import Defect, DefectKind, Severity
 
         text = "This is a body slot that overlaps with the title slot." * 2  # 108 chars
         plan = _make_plan(
@@ -767,9 +767,9 @@ class TestIntegrationLoop:
         apply_fixes the text is trimmed to ≤84 chars and static_verify confirms
         that no SLOT_OVERFLOW remains for that slot.
         """
-        from lib.verify.static import static_verify
-        from lib.verify.autofix import plan_fixes, apply_fixes
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes
+        from feinschliff.defects import DefectKind
 
         # 89 chars — above budget=84, below swap threshold=100.8 → shorten_slot fires.
         action_title = (
@@ -820,7 +820,7 @@ class TestPathNavigator:
     """Direct unit tests for _get_slot_value / _set_slot_value."""
 
     def test_plain_key(self):
-        from lib.verify.autofix import _get_slot_value, _set_slot_value
+        from feinschliff_builder.verify.autofix import _get_slot_value, _set_slot_value
 
         content = {"title": "Hello"}
         assert _get_slot_value(content, "title") == "Hello"
@@ -828,7 +828,7 @@ class TestPathNavigator:
         assert content["title"] == "World"
 
     def test_array_index(self):
-        from lib.verify.autofix import _get_slot_value, _set_slot_value
+        from feinschliff_builder.verify.autofix import _get_slot_value, _set_slot_value
 
         content = {"kpis": [{"unit": "USD"}, {"unit": "EUR"}]}
         assert _get_slot_value(content, "kpis[0].unit") == "USD"
@@ -837,7 +837,7 @@ class TestPathNavigator:
         assert content["kpis"][0]["unit"] == "GBP"
 
     def test_nested_path(self):
-        from lib.verify.autofix import _get_slot_value, _set_slot_value
+        from feinschliff_builder.verify.autofix import _get_slot_value, _set_slot_value
 
         content = {"data": {"rows": [{"label": "A"}, {"label": "B"}]}}
         assert _get_slot_value(content, "data.rows[1].label") == "B"
@@ -845,21 +845,21 @@ class TestPathNavigator:
         assert content["data"]["rows"][0]["label"] == "Z"
 
     def test_out_of_range_index_returns_none(self):
-        from lib.verify.autofix import _get_slot_value, _set_slot_value
+        from feinschliff_builder.verify.autofix import _get_slot_value, _set_slot_value
 
         content = {"kpis": [{"unit": "USD"}, {"unit": "EUR"}, {"unit": "GBP"}]}
         assert _get_slot_value(content, "kpis[5].unit") is None
         assert _set_slot_value(content, "kpis[5].unit", "CHF") is False
 
     def test_missing_key_returns_none(self):
-        from lib.verify.autofix import _get_slot_value, _set_slot_value
+        from feinschliff_builder.verify.autofix import _get_slot_value, _set_slot_value
 
         content = {"title": "Hello"}
         assert _get_slot_value(content, "missing_key") is None
         assert _set_slot_value(content, "missing_key", "x") is False
 
     def test_set_does_not_create_intermediate(self):
-        from lib.verify.autofix import _set_slot_value
+        from feinschliff_builder.verify.autofix import _set_slot_value
 
         content: dict = {}
         # Should not create 'kpis' key
@@ -881,8 +881,8 @@ class TestArraySlotApply:
         Defect: budget_chars=4 (over by 4).
         After apply_fixes: kpis[0].unit is shortened to ≤4 chars.
         """
-        from lib.verify.autofix import apply_fixes, FixPatch
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.autofix import apply_fixes, FixPatch
+        from feinschliff.defects import DefectKind
 
         plan = {
             "brand": "feinschliff",
@@ -909,8 +909,8 @@ class TestArraySlotApply:
 
     def test_apply_shorten_slot_array_out_of_range(self, capsys):
         """shorten_slot on 'kpis[5].unit' with a 3-element array logs a skip and does not crash."""
-        from lib.verify.autofix import apply_fixes, FixPatch
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.autofix import apply_fixes, FixPatch
+        from feinschliff.defects import DefectKind
 
         plan = {
             "brand": "feinschliff",
@@ -964,7 +964,7 @@ class TestArraySlotOverflowAlwaysShortens:
     """
 
     def _overflow_defect(self, slot: str, budget: int, text_len: int):
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         return Defect(
             slide_index=1,
             kind=DefectKind.SLOT_OVERFLOW,
@@ -980,8 +980,8 @@ class TestArraySlotOverflowAlwaysShortens:
         Verifies the is_array_slot guard introduced to prevent silent orphaning of
         array data when the layout is swapped to one without a kpis[] slot.
         """
-        from lib.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
+        from feinschliff.defects import DefectKind
 
         budget = 4
         content = "United States share"  # 19 chars — 4.75× budget, well above 20% threshold
@@ -1026,7 +1026,7 @@ class TestArraySlotOverflowAlwaysShortens:
         """Scalar slots above the swap threshold still trigger swap_layout_larger
         (the new guard must not break the existing scalar-slot swap path).
         """
-        from lib.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
+        from feinschliff_builder.verify.autofix import plan_fixes, _SWAP_LARGER_THRESHOLD
 
         budget = 40
         content = "X" * 200  # 5× budget — well above threshold
@@ -1036,7 +1036,7 @@ class TestArraySlotOverflowAlwaysShortens:
             "layouts/action-title.slide.dsl",
             {"action_title": content},
         )
-        from lib.defects import Defect, DefectKind, Severity
+        from feinschliff.defects import Defect, DefectKind, Severity
         defect = Defect(
             slide_index=1,
             kind=DefectKind.SLOT_OVERFLOW,

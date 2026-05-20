@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import json
 
-from lib.defects import DefectKind, Severity
-from lib.diagrams.structural_validator import (
+from feinschliff.defects import DefectKind, Severity
+from feinschliff_builder.diagrams.structural_validator import (
     validate_diagram_file,
     validate_excalidraw_file,
     validate_excalidraw_structure,

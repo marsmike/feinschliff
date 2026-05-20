@@ -49,7 +49,7 @@ def _make_plan(*slides) -> dict:
 # ---------------------------------------------------------------------------
 
 def test_extract_title_and_body_inline():
-    from lib.verify.deck.claim_evidence import _extract_slide_text
+    from feinschliff_builder.verify.deck.claim_evidence import _extract_slide_text
 
     slide = {
         "layout": "layouts/title-body.slide.dsl",
@@ -61,7 +61,7 @@ def test_extract_title_and_body_inline():
 
 
 def test_extract_body_from_bullets():
-    from lib.verify.deck.claim_evidence import _extract_slide_text
+    from feinschliff_builder.verify.deck.claim_evidence import _extract_slide_text
 
     slide = {
         "layout": "layouts/bullets.slide.dsl",
@@ -74,7 +74,7 @@ def test_extract_body_from_bullets():
 
 
 def test_extract_body_from_supporting_body():
-    from lib.verify.deck.claim_evidence import _extract_slide_text
+    from feinschliff_builder.verify.deck.claim_evidence import _extract_slide_text
 
     slide = {
         "content": {"title": "T", "body": "main body", "supporting_body": "secondary"},
@@ -85,7 +85,7 @@ def test_extract_body_from_supporting_body():
 
 
 def test_extract_gracefully_missing_slots():
-    from lib.verify.deck.claim_evidence import _extract_slide_text
+    from feinschliff_builder.verify.deck.claim_evidence import _extract_slide_text
 
     slide = {"content": {"subtitle": "Subtitle only"}}
     title, body = _extract_slide_text(slide)
@@ -98,14 +98,14 @@ def test_extract_gracefully_missing_slots():
 # ---------------------------------------------------------------------------
 
 def test_claim_role_from_meta():
-    from lib.verify.deck.claim_evidence import _has_claim_role
+    from feinschliff_builder.verify.deck.claim_evidence import _has_claim_role
 
     slide = {"_meta": {"role": "evidence"}}
     assert _has_claim_role(slide, brief_slide=None) is True
 
 
 def test_non_claim_role_from_meta():
-    from lib.verify.deck.claim_evidence import _has_claim_role
+    from feinschliff_builder.verify.deck.claim_evidence import _has_claim_role
 
     for role in ("chapter", "agenda", "closer", "end", "title", "cover", "divider", "quote"):
         slide = {"_meta": {"role": role}}
@@ -113,7 +113,7 @@ def test_non_claim_role_from_meta():
 
 
 def test_claim_role_from_design_brief():
-    from lib.verify.deck.claim_evidence import _has_claim_role
+    from feinschliff_builder.verify.deck.claim_evidence import _has_claim_role
 
     slide = {}  # no _meta.role
     brief_slide = {"role": "recommendation"}
@@ -121,7 +121,7 @@ def test_claim_role_from_design_brief():
 
 
 def test_non_claim_role_from_design_brief_overrides():
-    from lib.verify.deck.claim_evidence import _has_claim_role
+    from feinschliff_builder.verify.deck.claim_evidence import _has_claim_role
 
     # design_brief says chapter → skip
     slide = {}
@@ -131,7 +131,7 @@ def test_non_claim_role_from_design_brief_overrides():
 
 
 def test_no_role_defaults_to_claim():
-    from lib.verify.deck.claim_evidence import _has_claim_role
+    from feinschliff_builder.verify.deck.claim_evidence import _has_claim_role
 
     slide = {}
     assert _has_claim_role(slide, brief_slide=None) is True
@@ -142,7 +142,7 @@ def test_no_role_defaults_to_claim():
 # ---------------------------------------------------------------------------
 
 def test_judge_plan_offline_returns_clean_verdicts():
-    from lib.verify.deck.claim_evidence import judge_plan
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan
 
     plan = _make_plan(
         _make_claim_slide(role="evidence"),
@@ -158,7 +158,7 @@ def test_judge_plan_offline_returns_clean_verdicts():
 
 
 def test_judge_plan_offline_skips_non_claim_slides():
-    from lib.verify.deck.claim_evidence import judge_plan
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan
 
     plan = _make_plan(
         _make_claim_slide(role="evidence"),
@@ -171,7 +171,7 @@ def test_judge_plan_offline_skips_non_claim_slides():
 
 
 def test_judge_plan_offline_all_non_claim_returns_empty():
-    from lib.verify.deck.claim_evidence import judge_plan
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan
 
     plan = _make_plan(
         _make_non_claim_slide(),
@@ -183,7 +183,7 @@ def test_judge_plan_offline_all_non_claim_returns_empty():
 
 
 def test_judge_plan_result_slide_indices_correct():
-    from lib.verify.deck.claim_evidence import judge_plan
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan
 
     # slides: 0=chapter(skip), 1=evidence(judge), 2=chapter(skip), 3=result(judge)
     plan = _make_plan(
@@ -199,7 +199,7 @@ def test_judge_plan_result_slide_indices_correct():
 
 
 def test_judge_plan_with_design_brief_skips_by_brief_role():
-    from lib.verify.deck.claim_evidence import judge_plan
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan
 
     plan = _make_plan(
         # plan says evidence role, but brief says chapter → brief wins
@@ -215,7 +215,7 @@ def test_judge_plan_with_design_brief_skips_by_brief_role():
 # ---------------------------------------------------------------------------
 
 def test_judge_plan_calls_judge_once_per_claim_slide(tmp_path: Path):
-    from lib.verify.deck import claim_evidence as ce_mod
+    from feinschliff_builder.verify.deck import claim_evidence as ce_mod
 
     plan = _make_plan(
         _make_claim_slide(role="evidence"),
@@ -239,7 +239,7 @@ def test_judge_plan_calls_judge_once_per_claim_slide(tmp_path: Path):
 
 
 def test_judge_plan_dirty_verdict_from_judge(tmp_path: Path):
-    from lib.verify.deck import claim_evidence as ce_mod
+    from feinschliff_builder.verify.deck import claim_evidence as ce_mod
 
     plan = _make_plan(_make_claim_slide(role="evidence"))
 
@@ -264,7 +264,7 @@ def test_judge_plan_dirty_verdict_from_judge(tmp_path: Path):
 def test_judge_plan_error_sentinel_yields_dirty(tmp_path: Path):
     """When _judge returns an error-sentinel (status=fail, no verdict key),
     the result must be dirty with the parse error surfaced in rationale."""
-    from lib.verify.deck import claim_evidence as ce_mod
+    from feinschliff_builder.verify.deck import claim_evidence as ce_mod
 
     plan = _make_plan(_make_claim_slide(role="evidence"))
 
@@ -285,7 +285,7 @@ def test_judge_plan_error_sentinel_yields_dirty(tmp_path: Path):
 # ---------------------------------------------------------------------------
 
 def test_write_report_clean(tmp_path: Path):
-    from lib.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
+    from feinschliff_builder.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
 
     results = [
         ClaimEvidenceResult(1, "clean", "body supports claim", None, None),
@@ -302,7 +302,7 @@ def test_write_report_clean(tmp_path: Path):
 
 
 def test_write_report_dirty(tmp_path: Path):
-    from lib.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
+    from feinschliff_builder.verify.deck.claim_evidence import ClaimEvidenceResult, write_report
 
     results = [
         ClaimEvidenceResult(1, "clean", "fine", None, None),
@@ -319,7 +319,7 @@ def test_write_report_dirty(tmp_path: Path):
 
 
 def test_write_report_no_results(tmp_path: Path):
-    from lib.verify.deck.claim_evidence import write_report
+    from feinschliff_builder.verify.deck.claim_evidence import write_report
 
     out = tmp_path / "claim_evidence_report.md"
     verdict = write_report(out, [], slide_count=3)
@@ -357,7 +357,7 @@ def test_cli_clean_plan_exits_0(tmp_path: Path):
     out = tmp_path / "claim_evidence_report.md"
     result = subprocess.run(
         [
-            sys.executable, "-m", "cli", "deck", "claim-evidence",
+            sys.executable, "-m", "feinschliff.cli", "deck", "claim-evidence",
             str(plan),
             "-o", str(out),
             "--offline",
@@ -377,7 +377,7 @@ def test_cli_offline_non_claim_only_exits_0(tmp_path: Path):
     ])
     out = tmp_path / "claim_evidence_report.md"
     result = subprocess.run(
-        [sys.executable, "-m", "cli", "deck", "claim-evidence",
+        [sys.executable, "-m", "feinschliff.cli", "deck", "claim-evidence",
          str(plan), "-o", str(out), "--offline"],
         capture_output=True, text=True, cwd=FEINSCHLIFF,
     )
@@ -388,8 +388,8 @@ def test_cmd_claim_evidence_dirty_exits_1(tmp_path: Path, monkeypatch):
     """cmd_claim_evidence returns exit code 1 when judge_plan yields a dirty result."""
     import argparse
     import yaml
-    from lib.verify.deck.claim_evidence import ClaimEvidenceResult
-    import cli.deck as deck_cli
+    from feinschliff_builder.verify.deck.claim_evidence import ClaimEvidenceResult
+    import feinschliff.cli.deck as deck_cli
 
     plan_path = tmp_path / "plan.yaml"
     plan_path.write_text(yaml.dump({"slides": [
@@ -426,7 +426,7 @@ def test_cmd_claim_evidence_dirty_exits_1(tmp_path: Path, monkeypatch):
 def test_cli_missing_plan_exits_2(tmp_path: Path):
     out = tmp_path / "claim_evidence_report.md"
     result = subprocess.run(
-        [sys.executable, "-m", "cli", "deck", "claim-evidence",
+        [sys.executable, "-m", "feinschliff.cli", "deck", "claim-evidence",
          str(tmp_path / "no_such_plan.yaml"),
          "-o", str(out),
          "--offline"],
@@ -445,7 +445,7 @@ def test_cli_with_design_brief(tmp_path: Path):
     brief = _write_design_brief(tmp_path, [{"role": "result"}])
     out = tmp_path / "claim_evidence_report.md"
     result = subprocess.run(
-        [sys.executable, "-m", "cli", "deck", "claim-evidence",
+        [sys.executable, "-m", "feinschliff.cli", "deck", "claim-evidence",
          str(plan),
          "--design-brief", str(brief),
          "-o", str(out),
@@ -465,7 +465,7 @@ def test_cli_stderr_token_estimate(tmp_path: Path):
     ])
     out = tmp_path / "claim_evidence_report.md"
     result = subprocess.run(
-        [sys.executable, "-m", "cli", "deck", "claim-evidence",
+        [sys.executable, "-m", "feinschliff.cli", "deck", "claim-evidence",
          str(plan), "-o", str(out), "--offline"],
         capture_output=True, text=True, cwd=FEINSCHLIFF,
     )

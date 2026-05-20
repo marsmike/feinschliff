@@ -20,7 +20,7 @@ def _new_blank_pptx() -> Presentation:
 
 
 def test_pp_chrome_clean_slide_no_defects():
-    from lib.verify.chrome import scan_pp_chrome
+    from feinschliff_builder.verify.chrome import scan_pp_chrome
     prs = _new_blank_pptx()
     defects = scan_pp_chrome(prs)
     assert defects == []
@@ -29,7 +29,7 @@ def test_pp_chrome_clean_slide_no_defects():
 def test_pp_chrome_detects_drop_shadow():
     """A shape with an outerShdw effect should produce one defect."""
     from lxml import etree
-    from lib.verify.chrome import scan_pp_chrome
+    from feinschliff_builder.verify.chrome import scan_pp_chrome
 
     prs = _new_blank_pptx()
     slide = prs.slides[0]
@@ -46,7 +46,7 @@ def test_pp_chrome_detects_drop_shadow():
 
 def test_pp_chrome_detects_grad_fill():
     from lxml import etree
-    from lib.verify.chrome import scan_pp_chrome
+    from feinschliff_builder.verify.chrome import scan_pp_chrome
 
     prs = _new_blank_pptx()
     slide = prs.slides[0]
@@ -60,7 +60,7 @@ def test_pp_chrome_detects_grad_fill():
 
 def test_pp_chrome_detects_fat_outline():
     from lxml import etree
-    from lib.verify.chrome import scan_pp_chrome
+    from feinschliff_builder.verify.chrome import scan_pp_chrome
 
     prs = _new_blank_pptx()
     slide = prs.slides[0]
@@ -76,7 +76,7 @@ def test_pp_chrome_detects_fat_outline():
 def test_pp_chrome_respects_effect_allow_marker():
     """A <p:sp> with effect-allow='1' keeps its effectLst (author opt-in)."""
     from lxml import etree
-    from lib.verify.chrome import scan_pp_chrome
+    from feinschliff_builder.verify.chrome import scan_pp_chrome
 
     prs = _new_blank_pptx()
     slide = prs.slides[0]
@@ -104,7 +104,7 @@ def _two_slide_pptx():
 
 
 def test_chrome_drift_zero_when_positions_match():
-    from lib.verify.chrome import scan_chrome_drift
+    from feinschliff_builder.verify.chrome import scan_chrome_drift
 
     prs = _two_slide_pptx()
     for slide in prs.slides:
@@ -115,7 +115,7 @@ def test_chrome_drift_zero_when_positions_match():
 
 
 def test_chrome_drift_flags_position_mismatch():
-    from lib.verify.chrome import scan_chrome_drift
+    from feinschliff_builder.verify.chrome import scan_chrome_drift
 
     prs = _two_slide_pptx()
     sh1 = prs.slides[0].shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(100), Emu(200), Emu(50), Emu(20))
@@ -130,7 +130,7 @@ def test_chrome_drift_flags_position_mismatch():
 
 def test_chrome_drift_skips_non_chrome_named_shapes():
     """Shapes whose name does not match the chrome-role prefixes are skipped."""
-    from lib.verify.chrome import scan_chrome_drift
+    from feinschliff_builder.verify.chrome import scan_chrome_drift
 
     prs = _two_slide_pptx()
     sh1 = prs.slides[0].shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(100), Emu(200), Emu(50), Emu(20))
@@ -143,7 +143,7 @@ def test_chrome_drift_skips_non_chrome_named_shapes():
 
 def test_chrome_drift_within_tolerance():
     """Drift smaller than the tolerance is not a defect."""
-    from lib.verify.chrome import scan_chrome_drift
+    from feinschliff_builder.verify.chrome import scan_chrome_drift
 
     prs = _two_slide_pptx()
     sh1 = prs.slides[0].shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(100), Emu(200), Emu(50), Emu(20))

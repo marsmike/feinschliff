@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from lib.io.soffice import pptx_to_png
+from feinschliff.io.soffice import pptx_to_png
 
 
 def main() -> int:

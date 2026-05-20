@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from lib.verify.deck.squint import make_squint_thumbnail
+from feinschliff_builder.verify.deck.squint import make_squint_thumbnail
 
 
 def _write_png(path: Path, size: tuple[int, int]) -> Path:

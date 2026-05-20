@@ -40,7 +40,7 @@ from unittest.mock import patch
 
 import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2] / "feinschliff"
 BRAND_DIR = REPO_ROOT / "brands" / "feinschliff"
 
 
@@ -60,7 +60,7 @@ def _make_slide(layout_rel: str, content: dict, meta: dict | None = None) -> dic
 
 
 def _ep_defect(slot: str, layout: str, slide_index: int = 1):
-    from lib.defects import Defect, DefectKind, Severity
+    from feinschliff.defects import Defect, DefectKind, Severity
     return Defect(
         slide_index=slide_index,
         kind=DefectKind.EMPTY_PLACEHOLDER,
@@ -79,8 +79,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
 
     def test_eyebrow_absent_no_defect(self):
         """Missing 'eyebrow' must not produce EMPTY_PLACEHOLDER."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/full-bleed-cover.slide.dsl", {
@@ -101,8 +101,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
 
     def test_so_what_absent_no_defect(self):
         """Missing 'so_what' must not produce EMPTY_PLACEHOLDER."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/svg-infographic-full.slide.dsl", {
@@ -122,8 +122,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
 
     def test_kicker_absent_no_defect(self):
         """Missing 'kicker' must not produce EMPTY_PLACEHOLDER."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/timeline.slide.dsl", {
@@ -143,8 +143,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
 
     def test_array_shape_slot_absent_no_defect(self):
         """Array-shape slots like 'kpis[].unit' must not fire EMPTY_PLACEHOLDER."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/action-title.slide.dsl", {
@@ -164,8 +164,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
 
     def test_pgmeta_absent_no_defect(self):
         """Missing 'pgmeta' (chrome slot) must not produce EMPTY_PLACEHOLDER."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/end.slide.dsl", {
@@ -191,8 +191,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
         ``supporting_eyebrow|default("Supporting narrative")`` has an explicit
         fallback — the template renders fine when the content key is absent.
         """
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/action-title.slide.dsl", {
@@ -214,8 +214,8 @@ class TestOptionalSlotsNoEmptyPlaceholder:
     def test_required_slot_still_fires(self):
         """Optional-slot suppression must not prevent EMPTY_PLACEHOLDER for
         genuinely required slots like 'title'."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = _make_plan([
             _make_slide("layouts/end.slide.dsl", {
@@ -268,8 +268,8 @@ class TestWaterCycleNoPatchesAfterFix:
 
     def test_zero_empty_placeholder_defects(self):
         """static_verify on the water-cycle plan must emit 0 EMPTY_PLACEHOLDER defects."""
-        from lib.verify.static import static_verify
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff.defects import DefectKind
 
         plan = self._build_water_cycle_plan()
         if plan is None:
@@ -286,8 +286,8 @@ class TestWaterCycleNoPatchesAfterFix:
 
     def test_zero_autofix_patches_emitted(self):
         """plan_fixes on the water-cycle plan must emit 0 patches after Fix-1."""
-        from lib.verify.static import static_verify
-        from lib.verify.autofix import plan_fixes
+        from feinschliff_builder.verify.static import static_verify
+        from feinschliff_builder.verify.autofix import plan_fixes
 
         plan = self._build_water_cycle_plan()
         if plan is None:
@@ -317,9 +317,9 @@ class TestAutofixOscillationHalt:
     def test_patch_set_hash_stable(self):
         """_patch_set_hash must return the same value for identical patch lists
         regardless of insertion order."""
-        from cli.deck import _patch_set_hash
-        from lib.verify.autofix import FixPatch
-        from lib.defects import DefectKind
+        from feinschliff.cli.deck import _patch_set_hash
+        from feinschliff_builder.verify.autofix import FixPatch
+        from feinschliff.defects import DefectKind
 
         p1 = FixPatch(
             slide_index=1, action="shorten_slot", slot="body",
@@ -337,9 +337,9 @@ class TestAutofixOscillationHalt:
 
     def test_patch_set_hash_differs_for_different_patches(self):
         """Different patch payloads must produce different hashes."""
-        from cli.deck import _patch_set_hash
-        from lib.verify.autofix import FixPatch
-        from lib.defects import DefectKind
+        from feinschliff.cli.deck import _patch_set_hash
+        from feinschliff_builder.verify.autofix import FixPatch
+        from feinschliff.defects import DefectKind
 
         p1 = FixPatch(
             slide_index=1, action="shorten_slot", slot="body",
@@ -362,8 +362,8 @@ class TestAutofixOscillationHalt:
         detection the loop would run all 3 cycles; with it, it must halt at
         cycle 2 after detecting the repeated hash.
         """
-        from lib.defects import Defect, DefectKind, Severity
-        from lib.verify.autofix import FixPatch
+        from feinschliff.defects import Defect, DefectKind, Severity
+        from feinschliff_builder.verify.autofix import FixPatch
 
         oscillating_defect = Defect(
             slide_index=1,
@@ -398,14 +398,14 @@ class TestAutofixOscillationHalt:
             return ""
 
         with (
-            patch("lib.verify.static.static_verify", _fake_sv),
-            patch("lib.verify.autofix.plan_fixes", _fake_plan_fixes),
-            patch("lib.verify.autofix.apply_fixes", _fake_apply_fixes),
-            patch("lib.verify.autofix.diff_summary", _fake_diff_summary),
+            patch("feinschliff_builder.verify.static.static_verify", _fake_sv),
+            patch("feinschliff_builder.verify.autofix.plan_fixes", _fake_plan_fixes),
+            patch("feinschliff_builder.verify.autofix.apply_fixes", _fake_apply_fixes),
+            patch("feinschliff_builder.verify.autofix.diff_summary", _fake_diff_summary),
         ):
 
             # Exercise _patch_set_hash + the detection logic directly.
-            from cli.deck import _patch_set_hash
+            from feinschliff.cli.deck import _patch_set_hash
 
             seen_hashes: set[str] = set()
             halt_triggered = False
@@ -425,9 +425,9 @@ class TestAutofixOscillationHalt:
         """When oscillation is detected the message must mention the cycle
         number and 'halting'."""
         import io
-        from cli.deck import _patch_set_hash
-        from lib.verify.autofix import FixPatch
-        from lib.defects import DefectKind
+        from feinschliff.cli.deck import _patch_set_hash
+        from feinschliff_builder.verify.autofix import FixPatch
+        from feinschliff.defects import DefectKind
 
         patch_obj = FixPatch(
             slide_index=1, action="shorten_slot", slot="body",
@@ -468,8 +468,8 @@ class TestSwapLayoutVariance:
         the variety penalty isn't working.  The test is skipped gracefully when
         the picker has fewer than 2 distinct valid candidates.
         """
-        from lib.verify.autofix import plan_fixes
-        from lib.defects import DefectKind
+        from feinschliff_builder.verify.autofix import plan_fixes
+        from feinschliff.defects import DefectKind
 
         # Build 4 slides on a heavy layout with a role that has multiple
         # alternatives.  All will have an EMPTY_PLACEHOLDER defect for "summary"
@@ -483,7 +483,7 @@ class TestSwapLayoutVariance:
             })
         plan = {"brand": "feinschliff", "out": "deck.pptx", "slides": slides}
 
-        from lib.defects import Defect, Severity
+        from feinschliff.defects import Defect, Severity
         defects = [
             Defect(
                 slide_index=i + 1,
@@ -514,7 +514,7 @@ class TestSwapLayoutVariance:
 
     def test_swap_history_is_passed_to_picker(self):
         """_find_smaller_layout must accept and forward layout_history to pick_layout."""
-        from lib.verify.autofix import _find_smaller_layout
+        from feinschliff_builder.verify.autofix import _find_smaller_layout
 
         slide = {
             "layout": "layouts/executive-summary.slide.dsl",

@@ -19,13 +19,13 @@ Two defect classes are detected:
 Usage::
 
     from pathlib import Path
-    from lib.verify.static import static_verify, validate
+    from feinschliff_builder.verify.static import static_verify, validate
 
     # Legacy API (list of Defect):
     defects = static_verify(plan, brand_dir=Path("brands/feinschliff"))
 
     # New typed API (DiagnosticBag):
-    from lib.brand import BrandPack
+    from feinschliff.brand import BrandPack
     pack = BrandPack.load(Path("brands/feinschliff"))
     bag = validate(plan, brand=pack)
     if bag.has_errors():
@@ -38,11 +38,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from lib.defects import Defect, DefectKind, Severity
+from feinschliff.defects import Defect, DefectKind, Severity
 
 if TYPE_CHECKING:
-    from lib.brand import BrandPack
-    from lib.diagnostics import DiagnosticBag
+    from feinschliff.brand import BrandPack
+    from feinschliff.diagnostics import DiagnosticBag
 
 # Slot interpolation RE — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
@@ -81,7 +81,7 @@ def _bundled_compounds() -> Path:
 
 def _resolve_layout_path(plan_dir: Path, layout_rel: str) -> Path | None:
     """Resolve a layout path from the plan directory or discovered layout dirs."""
-    from lib.layout_discovery import all_layout_dirs
+    from feinschliff.layout_discovery import all_layout_dirs
 
     candidate = (plan_dir / layout_rel).resolve()
     if candidate.is_file():
@@ -121,7 +121,7 @@ def _collect_interpolated_slots(nodes: list) -> tuple[set[str], set[str]]:
     with ``_SLOT_PATH_RE`` to extract just the slot references before applying
     normalisation, avoiding false positives from numeric suffixes.
     """
-    from lib.dsl.parser import DSLNode
+    from feinschliff.dsl.parser import DSLNode
 
     required: set[str] = set()
     structural_array_bases: set[str] = set()
@@ -252,11 +252,11 @@ def static_verify(
         One :class:`~lib.defects.Defect` per detected problem.  Empty list
         means clean.  All defects are :attr:`~lib.defects.Severity.WARN`.
     """
-    from lib.dsl.parser import parse_file
-    from lib.dsl.tokens import load_tokens
-    from lib.dsl.expander import load_compounds_for_brand
-    from lib.slot_budget import compute_slot_budgets
-    from lib.content_validator import (
+    from feinschliff.dsl.parser import parse_file
+    from feinschliff.dsl.tokens import load_tokens
+    from feinschliff.dsl.expander import load_compounds_for_brand
+    from feinschliff.slot_budget import compute_slot_budgets
+    from feinschliff.content_validator import (
         _check_slot_overflow,
         _iter_slot_values,
         ContentDefect,
@@ -422,7 +422,7 @@ def validate(
     DiagnosticBag
         The (possibly pre-populated) bag with newly found defects appended.
     """
-    from lib.diagnostics import (
+    from feinschliff.diagnostics import (
         DiagnosticBag as _Bag,
         Defect as _NewDefect,
         DefectKind as _NewKind,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
-from lib.diagrams.refurbish.extract_raster import extract_from_image
-from lib.diagrams.refurbish.ir import ExtractedDiagram
+from feinschliff_builder.diagrams.refurbish.extract_raster import extract_from_image
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram
 
 
 _MOCK_LLM_RESPONSE = {
@@ -21,7 +21,7 @@ def test_raster_extract_with_mocked_llm(tmp_path):
     img.write_bytes(b"\x89PNG\r\n" + b"\x00" * 100)
 
     with patch(
-        "lib.diagrams.refurbish.extract_raster._call_claude_vision",
+        "feinschliff_builder.diagrams.refurbish.extract_raster._call_claude_vision",
         return_value=_MOCK_LLM_RESPONSE,
     ):
         ir = extract_from_image(img)

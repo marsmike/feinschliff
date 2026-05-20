@@ -1,7 +1,7 @@
 """Unit tests for lib/verify/deck/defects — deck-level defect catalog."""
 from __future__ import annotations
 
-from lib.verify.deck.defects import DeckDefect, format_deck_defects
+from feinschliff_builder.verify.deck.defects import DeckDefect, format_deck_defects
 
 
 def test_deck_defect_required_fields():

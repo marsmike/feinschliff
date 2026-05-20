@@ -11,11 +11,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
 
-from lib.defects import Defect, DefectKind, Severity
-from lib.verify.cache import CachedVerdict, VerifyCache, slide_hash
-from lib.verify.deck.squint import make_squint_thumbnail
-from lib.verify.deck.title_body import extract_slide_title_and_body
-from lib.verify.llm import prompts
+from feinschliff.defects import Defect, DefectKind, Severity
+from feinschliff_builder.verify.cache import CachedVerdict, VerifyCache, slide_hash
+from feinschliff_builder.verify.deck.squint import make_squint_thumbnail
+from feinschliff_builder.verify.deck.title_body import extract_slide_title_and_body
+from feinschliff_builder.verify.llm import prompts
 
 
 Status = Literal["pass", "fail", "skipped"]

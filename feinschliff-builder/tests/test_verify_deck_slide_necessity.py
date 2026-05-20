@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from lib.verify.deck.slide_necessity import materialize_necessity_context
+from feinschliff_builder.verify.deck.slide_necessity import materialize_necessity_context
 
 
 def test_middle_slide_returns_all_three_titles():

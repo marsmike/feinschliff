@@ -1005,10 +1005,10 @@ def cmd_polish(args) -> int:
 
     from pathlib import Path as _Path
     from pptx import Presentation
-    from feinschliff.diagrams.refurbish.extract_vector import extract_from_slide
-    from feinschliff.diagrams.refurbish.kind_selector import select_kind
-    from feinschliff.diagrams.refurbish.emit_excalidraw import emit as emit_excalidraw_dsl
-    from feinschliff.diagrams.refurbish.emit_svg import emit as emit_svg_dsl
+    from feinschliff_builder.diagrams.refurbish.extract_vector import extract_from_slide
+    from feinschliff_builder.diagrams.refurbish.kind_selector import select_kind
+    from feinschliff_builder.diagrams.refurbish.emit_excalidraw import emit as emit_excalidraw_dsl
+    from feinschliff_builder.diagrams.refurbish.emit_svg import emit as emit_svg_dsl
 
     def _extract_slide_title(slide) -> str:
         """Pick the best title candidate from a refurbished slide.

@@ -38,7 +38,7 @@ Brand-specific knobs (all defaulted to feinschliff baseline):
     collapse the four footer lines into a single compound call.
 
 Usage (programmatic, preferred):
-  from lib.dsl.pptx_svg_decompile import derive
+  from feinschliff_builder.decompile.pptx_svg_decompile import derive
   dsl = derive(pptx_path, slide_idx=1, theme_name="acme",
                tokens_path=Path("brands/acme/tokens.json"),
                layout_name="cover-orange")
@@ -62,7 +62,7 @@ from typing import Any
 from lxml import etree
 from pptx import Presentation
 
-from lib.dsl.tokens import STYLE_BUNDLES
+from feinschliff.dsl.tokens import STYLE_BUNDLES
 
 NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
@@ -173,7 +173,7 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
     brand_root = tokens_path.parent
     data = None
     if (brand_root / "DESIGN.md").is_file():
-        from lib.dsl.tokens import load_tokens
+        from feinschliff.dsl.tokens import load_tokens
         # Try sibling-located parent first (the default), then fall back
         # to the toolkit's bundled brands/ dir. Out-of-tree packs (e.g.
         # `.debug/brands/<name>` or `~/customer-brands/<name>`) declare
@@ -183,7 +183,7 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
         # shape — visible in the decompiled DSL as `fill:#ffed00` instead
         # of `fill:accent` and `fill:neutral` on every custGeom because
         # _svg_color_token() then sees an unknown brand token.
-        from lib.brand_discovery import discover_brands as _discover_brands
+        from feinschliff.brand_discovery import discover_brands as _discover_brands
         candidate_dirs = [brand_root.parent]
         # Add all discovered brands directories in priority order so out-of-tree
         # packs whose parent lives in a different discovery source still resolve.

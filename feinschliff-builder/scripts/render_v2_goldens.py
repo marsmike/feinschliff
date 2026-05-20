@@ -21,16 +21,16 @@ from pathlib import Path
 
 import yaml
 
-from lib.io.soffice import pptx_to_png
-from lib.dsl.expander import (
+from feinschliff.io.soffice import pptx_to_png
+from feinschliff.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,
     interpolate_nodes,
     load_compounds_for_brand,
 )
-from lib.dsl.parser import parse_file
-from lib.dsl.pptx_emit import build_presentation
-from lib.dsl.tokens import load_tokens
+from feinschliff.dsl.parser import parse_file
+from feinschliff.dsl.pptx_emit import build_presentation
+from feinschliff.dsl.tokens import load_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

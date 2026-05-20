@@ -43,7 +43,7 @@ from pathlib import Path
 
 import yaml
 
-from lib.io.soffice import SOFFICE, pptx_to_pdf
+from feinschliff.io.soffice import SOFFICE, pptx_to_pdf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SHARED_LAYOUTS = REPO_ROOT / "layouts"

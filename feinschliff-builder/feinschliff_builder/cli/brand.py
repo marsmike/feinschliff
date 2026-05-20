@@ -6,11 +6,13 @@ import json
 import sys
 from pathlib import Path
 
-from lib.brand_discovery import discover_brands
+from feinschliff.brand_discovery import discover_brands
+import feinschliff as _feinschliff_pkg
 
 
 # Toolkit-shared layouts/compounds (inherited by every brand).
-_TOOLKIT_ROOT = Path(__file__).resolve().parents[1]
+# These live in the core feinschliff plugin, not in the builder plugin.
+_TOOLKIT_ROOT = Path(_feinschliff_pkg.__file__).resolve().parent.parent
 _TOOLKIT_LAYOUTS = _TOOLKIT_ROOT / "layouts"
 _TOOLKIT_COMPOUNDS = _TOOLKIT_ROOT / "compounds"
 
@@ -67,7 +69,7 @@ def _inheritance_chain(brand) -> list[str]:
     the walk silently — the caller decides how to render. Cycles raise
     ValueError."""
     try:
-        from lib.design_md import parse as parse_design_md
+        from feinschliff.design_md import parse as parse_design_md
     except Exception:
         return [brand.name]
 

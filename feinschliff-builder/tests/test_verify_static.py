@@ -11,12 +11,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from lib.verify.static import static_verify, validate
-from lib.brand import BrandPack
-from lib.diagnostics import DiagnosticBag, Severity
+from feinschliff_builder.verify.static import static_verify, validate
+from feinschliff.brand import BrandPack
+from feinschliff.diagnostics import DiagnosticBag, Severity
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+# Core plugin root (feinschliff) is the sibling directory; brands/layouts live there.
+REPO_ROOT = Path(__file__).resolve().parents[2] / "feinschliff"
 BRANDS_DIR = REPO_ROOT / "brands"
 BRAND_DIR = REPO_ROOT / "brands" / "feinschliff"
 LAYOUTS_DIR = REPO_ROOT / "layouts"
@@ -46,14 +47,14 @@ def _make_plan(layout_rel: str, content: dict, brand: str = "feinschliff") -> di
 # ---------------------------------------------------------------------------
 
 def test_static_verify_importable():
-    """lib.verify.static must be importable and export static_verify."""
-    from lib.verify.static import static_verify  # noqa: F401
+    """feinschliff_builder.verify.static must be importable and export static_verify."""
+    from feinschliff_builder.verify.static import static_verify  # noqa: F401
     assert callable(static_verify)
 
 
 def test_defect_kind_has_empty_placeholder():
     """DefectKind must carry EMPTY_PLACEHOLDER."""
-    from lib.defects import DefectKind
+    from feinschliff.defects import DefectKind
     assert hasattr(DefectKind, "EMPTY_PLACEHOLDER")
     assert DefectKind.EMPTY_PLACEHOLDER.value == "empty-placeholder"
 
@@ -69,7 +70,7 @@ def test_clean_plan_returns_no_defects():
     pgmeta, title, footnote, footer_left, footer_right.  Filling all of them
     should yield zero defects.
     """
-    from lib.verify.static import static_verify
+    from feinschliff_builder.verify.static import static_verify
 
     plan = _make_plan(
         "end.slide.dsl",
@@ -95,8 +96,8 @@ def test_overflow_plan_returns_slot_overflow_defect():
     Uses executive-summary where action_title has max_lines=1, max_chars=84.
     A 150-char title must produce a SLOT_OVERFLOW defect.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     # action_title budget: max_lines=1, chars_per_line=84.
     # A 150-char title will wrap to 2 lines → overflow.
@@ -132,8 +133,8 @@ def test_empty_placeholder_plan_returns_defect():
     Uses end.slide.dsl: title is an interpolated slot.  Supplying an empty
     string triggers the EMPTY_PLACEHOLDER defect.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     plan = _make_plan(
         "end.slide.dsl",
@@ -155,8 +156,8 @@ def test_empty_placeholder_plan_returns_defect():
 
 def test_missing_slot_fires_empty_placeholder():
     """Completely absent required slot (not in content dict) also fires."""
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     # title not provided at all in end.slide.dsl
     plan = _make_plan(
@@ -186,8 +187,8 @@ def test_combined_overflow_and_empty_placeholder():
     - action_title with 150 chars overflows the max_chars=84 budget.
     - summary="" triggers EMPTY_PLACEHOLDER.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     long_title = (
         "Revenue declined for three consecutive quarters because enterprise "
@@ -235,8 +236,8 @@ def test_multi_slide_slide_index_is_correct():
     Slide 1 is clean; slide 2 has an empty title → EMPTY_PLACEHOLDER on
     slide 2 only.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     plan = {
         "brand": "feinschliff",
@@ -280,8 +281,8 @@ def test_multi_slide_slide_index_is_correct():
 
 def test_defects_are_warn_severity():
     """Static verify defects must be WARN, not FATAL."""
-    from lib.verify.static import static_verify
-    from lib.defects import Severity
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import Severity
 
     plan = _make_plan(
         "end.slide.dsl",
@@ -317,7 +318,7 @@ def test_cli_verify_static_clean_exits_zero(tmp_path):
     plan_file.write_text(yaml.safe_dump(plan), encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, "-m", "cli.main", "deck", "verify-static", str(plan_file)],
+        [sys.executable, "-m", "feinschliff.cli", "deck", "verify-static", str(plan_file)],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -340,7 +341,7 @@ def test_cli_verify_static_defects_exits_one(tmp_path):
     plan_file.write_text(yaml.safe_dump(plan), encoding="utf-8")
 
     result = subprocess.run(
-        [sys.executable, "-m", "cli.main", "deck", "verify-static", str(plan_file)],
+        [sys.executable, "-m", "feinschliff.cli", "deck", "verify-static", str(plan_file)],
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,
@@ -364,7 +365,7 @@ def test_cli_verify_static_json_output(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "cli.main",
+            sys.executable, "-m", "feinschliff.cli",
             "deck", "verify-static", str(plan_file), "--json",
         ],
         cwd=str(REPO_ROOT),
@@ -392,7 +393,7 @@ def test_plan_dir_resolves_layout_relative_to_plan_file(tmp_path):
     pass), but here we use a layout name that does NOT exist under REPO_ROOT to
     prove the plan_dir path is actually taken.
     """
-    from lib.verify.static import static_verify
+    from feinschliff_builder.verify.static import static_verify
 
     # Create a subdirectory that mimics `layouts/` next to the plan
     layouts_dir = tmp_path / "layouts"
@@ -481,8 +482,8 @@ def test_slot_overflow_meta_contains_budget_and_over_by():
     Task B1 (shorten_slot apply-fix) relies on these fields to compute the
     target character count for in-place trimming.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     long_title = (
         "We must urgently restructure our go-to-market approach because "
@@ -542,7 +543,7 @@ def test_deck_build_strict_static_exits_nonzero_on_bad_plan(tmp_path):
 
     result = subprocess.run(
         [
-            sys.executable, "-m", "cli.main",
+            sys.executable, "-m", "feinschliff.cli",
             "deck", "build", str(plan_file),
             "-o", str(out_pptx),
             "--strict-static",
@@ -567,8 +568,8 @@ def test_deck_build_strict_static_exits_nonzero_on_bad_plan(tmp_path):
 
 def test_optional_slots_dont_fire_empty_placeholder():
     """Well-known optional slots like 'eyebrow', 'so_what', 'pgmeta' must not fire."""
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     plan = _make_plan(
         "end.slide.dsl",
@@ -603,8 +604,8 @@ def test_structural_array_slot_fires_empty_placeholder():
     this causes a render crash.  The structural-array heuristic must flag
     bars[].width* as a required slot so the defect surfaces pre-render.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     plan = _make_plan(
         "bar-chart.slide.dsl",
@@ -631,8 +632,8 @@ def test_content_flexible_array_slot_does_not_fire():
     compound call (not in rect/line pos_args), so the array is content-flexible.
     An author who leaves items[] empty gets blank agenda boxes — not a crash.
     """
-    from lib.verify.static import static_verify
-    from lib.defects import DefectKind
+    from feinschliff_builder.verify.static import static_verify
+    from feinschliff.defects import DefectKind
 
     plan = _make_plan(
         "agenda.slide.dsl",

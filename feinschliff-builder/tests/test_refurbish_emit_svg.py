@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.diagrams.refurbish.ir import ExtractedDiagram, Node
-from lib.diagrams.refurbish.emit_svg import emit
-from lib.diagrams.svg_expand import expand
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node
+from feinschliff_builder.diagrams.refurbish.emit_svg import emit
+from feinschliff.diagrams.svg_expand import expand
 
 
 def test_emit_svg_for_bars():
@@ -19,7 +19,7 @@ def test_emit_svg_for_bars():
     assert "canvas 600x400" in dsl
     assert "bar b1" in dsl
     assert "bar b2" in dsl
-    brand_dir = Path(__file__).resolve().parent.parent / "brands" / "feinschliff"
+    brand_dir = Path(__file__).resolve().parents[2] / "feinschliff" / "brands" / "feinschliff"
     svg = expand(dsl, brand_dir=brand_dir)
     assert "<svg" in svg
     assert svg.count("<rect") >= 2
