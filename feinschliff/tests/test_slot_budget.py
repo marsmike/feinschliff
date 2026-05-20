@@ -322,7 +322,7 @@ def test_slot_overflow_message_is_helpful():
 
 
 # ---------------------------------------------------------------------------
-# _iter_slot_values (indirectly via validate_content w/ budgets)
+# iter_slot_values (indirectly via validate_content w/ budgets)
 # ---------------------------------------------------------------------------
 
 def test_iter_slot_values_flat_dict():

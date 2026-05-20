@@ -63,7 +63,7 @@ from ._dsl_common import (
     parse_xy as _parse_xy,
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
-from ._text_metrics import EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
+from .text_metrics import EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
 _VALID_PORTS = frozenset({"left", "right", "top", "bottom"})

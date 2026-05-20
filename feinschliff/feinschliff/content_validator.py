@@ -335,7 +335,7 @@ def _check_so_what_vagueness(
     )]
 
 
-def _check_slot_overflow(
+def check_slot_overflow(
     value: str,
     *,
     slot: str,
@@ -446,7 +446,7 @@ def _check_filler_words(
     )]
 
 
-def _iter_slot_values(
+def iter_slot_values(
     ctx: dict, prefix: str = "", raw_prefix: str = "",
 ) -> list[tuple[str, str, str]]:
     """Flatten *ctx* into ``(normalised_path, raw_path, str_value)`` triples.
@@ -462,10 +462,10 @@ def _iter_slot_values(
         for k, v in ctx.items():
             norm_child = f"{prefix}.{k}" if prefix else k
             raw_child = f"{raw_prefix}.{k}" if raw_prefix else k
-            out.extend(_iter_slot_values(v, norm_child, raw_child))
+            out.extend(iter_slot_values(v, norm_child, raw_child))
     elif isinstance(ctx, list):
         for i, v in enumerate(ctx):
-            out.extend(_iter_slot_values(v, f"{prefix}[]", f"{raw_prefix}[{i}]"))
+            out.extend(iter_slot_values(v, f"{prefix}[]", f"{raw_prefix}[{i}]"))
     elif isinstance(ctx, str):
         out.append((prefix, raw_prefix, ctx))
     return out
@@ -489,7 +489,7 @@ def validate_content(
     `slot_budgets` is an optional dict mapping normalised slot paths to
     :class:`~lib.slot_budget.SlotBudget` objects. When supplied, each string
     slot value in `ctx` is checked against its budget via
-    ``_check_slot_overflow``; this fires the ``slot-overflow`` defect class
+    ``check_slot_overflow``; this fires the ``slot-overflow`` defect class
     before any render budget is spent.
     """
     defects: list[ContentDefect] = []
@@ -533,10 +533,10 @@ def validate_content(
             ))
 
     if slot_budgets:
-        for norm_path, raw_path, value in _iter_slot_values(ctx):
+        for norm_path, raw_path, value in iter_slot_values(ctx):
             budget = slot_budgets.get(norm_path)
             if budget is not None:
-                defects.extend(_check_slot_overflow(
+                defects.extend(check_slot_overflow(
                     value, slot=raw_path, budget=budget, slide_index=slide_index,
                 ))
 

@@ -52,13 +52,13 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feinschliff.defects import Defect, DefectKind, Severity
-from feinschliff.diagrams._text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from feinschliff.diagrams.text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
 
 # Font metrics approximate what Excalidraw renders at runtime. The DSL uses
 # fontFamily 3 (monospace, Cascadia) at specific sizes; monospace glyphs
 # average ~0.6 em wide; line-height is 1.25 per `excalidraw_expand.py`.
-# _CHAR_WIDTH_EM is imported from _text_metrics (single source of truth).
+# _CHAR_WIDTH_EM is imported from text_metrics (single source of truth).
 _LINE_HEIGHT = 1.25
 # Slack to absorb sub-pixel rounding and font-substitution variance.
 _OVERFLOW_TOLERANCE_PX = 6.0

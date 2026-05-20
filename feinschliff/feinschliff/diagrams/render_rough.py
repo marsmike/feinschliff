@@ -22,7 +22,7 @@ from pathlib import Path
 
 import rough
 
-from ._text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
 
 def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
@@ -80,7 +80,7 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
                 lines = max(1, e.get("text", "").count("\n") + 1)
                 h = fs * lh * lines
                 # rough estimate of text width — 0.62em per char (shared with
-                # the overflow validator via _text_metrics.CHAR_WIDTH_EM)
+                # the overflow validator via text_metrics.CHAR_WIDTH_EM)
                 w = fs * _CHAR_WIDTH_EM * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
             mn_x, mn_y = min(mn_x, x), min(mn_y, y)
             mx_x, mx_y = max(mx_x, x + abs(w)), max(mx_y, y + abs(h))
