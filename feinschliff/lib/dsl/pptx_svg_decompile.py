@@ -1360,6 +1360,132 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
                 chart_part = None
             if chart_part is not None:
                 _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette)
+        return
+
+    # SmartArt diagrams: graphicData uri='…/drawingml/2006/diagram'. The slide
+    # rels carry both a `diagramData` (the semantic model) and a
+    # `diagramDrawing` (the pre-rendered drawing*.xml computed by PowerPoint
+    # when the user last edited the diagram). Parsing the drawing skips
+    # re-implementing the SmartArt layout engine — every shape, its xfrm,
+    # fill, stroke, and text live inside `<dsp:sp>` elements that mirror
+    # the `<p:sp>` structure.
+    diag_rel_ns = "http://schemas.microsoft.com/office/2007/relationships/diagramDrawing"
+    if slide is not None and hasattr(slide, "part"):
+        try:
+            rels = slide.part.rels
+            drawing_part = None
+            for rel in rels.values():
+                if rel.reltype == diag_rel_ns:
+                    # The drawing isn't directly referenced by rId from the
+                    # graphicFrame — it's a sibling relationship of the
+                    # diagramData. PowerPoint ties them by partname suffix
+                    # (data6.xml ↔ drawing6.xml). Find the matching one by
+                    # numeric suffix on the graphicData's diagramData rId.
+                    drawing_part = rel.target_part
+                    # The slide may have multiple diagramDrawing rels (one
+                    # per SmartArt). Use the rId currently being processed
+                    # if available; fall back to first drawing.
+                    break
+            if drawing_part is not None:
+                _emit_smartart(drawing_part.blob, x0, y0, fw, fh,
+                               shapes, cmap, theme, palette)
+        except Exception:
+            pass
+
+
+DSP_NS = "http://schemas.microsoft.com/office/drawing/2008/diagram"
+
+
+def _emit_smartart(blob: bytes, x0: int, y0: int, fw: int, fh: int,
+                   shapes: list, cmap, theme, palette) -> None:
+    """Decompile a SmartArt's pre-rendered drawing XML.
+
+    PowerPoint caches the computed-layout shapes for each SmartArt
+    diagram in `ppt/diagrams/drawing*.xml` so they don't need to be
+    relaid-out at presentation time. Each shape lives inside `<dsp:sp>`
+    elements that mirror the regular `<p:sp>` structure but use the
+    `dsp` namespace. Walking that tree gives us the actual circles,
+    arrows, callouts, etc. without re-implementing the SmartArt layout
+    engine.
+
+    `x0,y0` and `fw,fh` are the host `<p:graphicFrame>`'s EMU position
+    and size — the drawing's internal coordinates are already in
+    slide-EMU (the layout engine wrote them out absolute), so no extra
+    transform is needed for shapes whose own xfrm already lives in
+    slide-space. The frame offset is preserved as a fallback for
+    shapes whose xfrm is relative.
+    """
+    try:
+        root = etree.fromstring(blob)
+    except Exception:
+        return
+    spTree = root.find(f".//{{{DSP_NS}}}spTree")
+    if spTree is None:
+        return
+    for sp in spTree.findall(f"{{{DSP_NS}}}sp"):
+        spPr = sp.find(f"{{{DSP_NS}}}spPr")
+        if spPr is None:
+            continue
+        xfrm = spPr.find("a:xfrm", NS)
+        if xfrm is None:
+            continue
+        off = xfrm.find("a:off", NS)
+        ext = xfrm.find("a:ext", NS)
+        if off is None or ext is None:
+            continue
+        try:
+            x = int(off.get("x")) + x0
+            y = int(off.get("y")) + y0
+            w = int(ext.get("cx"))
+            h = int(ext.get("cy"))
+        except (TypeError, ValueError):
+            continue
+        # `<dsp:sp>` xfrm coords are RELATIVE to the host graphicFrame
+        # (the layout engine writes them in drawing-internal space), so
+        # we add the frame's (x0, y0) to land each shape on the slide.
+        # Fill — same resolver as <p:sp> uses (the a: children are
+        # identical regardless of dsp vs p parent).
+        fill = _resolve_fill(spPr, theme, palette)
+        # Stroke + width from <a:ln>.
+        stroke = None
+        stroke_width: float | None = None
+        ln = spPr.find("a:ln", NS)
+        if ln is not None:
+            sf = ln.find("a:solidFill", NS)
+            if sf is not None:
+                stroke = _resolve_solid(sf, theme, palette)
+            w_attr = ln.get("w")
+            if w_attr:
+                try:
+                    stroke_width = cmap.w(int(w_attr))
+                except (TypeError, ValueError):
+                    pass
+        # Geometry kind.
+        kind = "rect"
+        pg = spPr.find("a:prstGeom", NS)
+        if pg is not None:
+            preset = pg.get("prst")
+            if preset == "ellipse":
+                kind = "oval"
+            elif preset in ("line", "straightConnector1"):
+                kind = "line"
+            elif preset in ("rect", "roundRect"):
+                kind = "rect"
+        elif spPr.find("a:custGeom", NS) is not None:
+            kind = "shape"
+        # Text — dsp:txBody mirrors a:txBody / p:txBody.
+        txBody = sp.find(f"{{{DSP_NS}}}txBody")
+        runs = _text_runs(sp, theme, palette) if txBody is not None else []
+        # Drop placeholder demo text the same way regular shapes do.
+        if runs and _is_placeholder_text(runs):
+            runs = []
+        shapes.append(Shape(
+            kind=kind,
+            x=cmap.x(x), y=cmap.y(y),
+            w=cmap.w(w), h=cmap.h(h),
+            fill=fill, stroke=stroke, stroke_width=stroke_width,
+            text_runs=runs,
+        ))
 
 
 def _emit_table(tbl, x0, y0, shapes, cmap, theme, palette):
