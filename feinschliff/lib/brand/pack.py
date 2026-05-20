@@ -43,10 +43,18 @@ class BrandPack:
     Parameters are private; use `BrandPack.load(root)` to construct.
     """
 
-    def __init__(self, root: Path, tokens: dict[str, Any], tokens_hash: str) -> None:
+    def __init__(
+        self,
+        root: Path,
+        tokens: dict[str, Any],
+        tokens_hash: str,
+        *,
+        image_provider_config: dict | None = None,
+    ) -> None:
         self._root = root
         self._tokens = tokens
         self._tokens_hash = tokens_hash
+        self._image_provider_config = image_provider_config
 
     # ------------------------------------------------------------------
     # Factory
@@ -124,6 +132,12 @@ class BrandPack:
     def tokens_path(self) -> Path | None:
         """Path to tokens.json if present."""
         p = self._root / "tokens.json"
+        return p if p.is_file() else None
+
+    @property
+    def design_path(self) -> Path | None:
+        """Path to DESIGN.md if present."""
+        p = self._root / "DESIGN.md"
         return p if p.is_file() else None
 
     # ------------------------------------------------------------------
@@ -212,6 +226,20 @@ class BrandPack:
         if candidate.is_file():
             return FoundCompound(name=name, path=candidate, origin="toolkit")
         return None
+
+    # ------------------------------------------------------------------
+    # Image provider config (extends-resolved, set by discover_brands)
+    # ------------------------------------------------------------------
+
+    @property
+    def image_provider_config(self) -> dict | None:
+        """Extends-resolved ``$image_provider`` block from tokens.json.
+
+        None when the brand (and none of its parents) declares a provider.
+        Set externally by ``discover_brands`` so the extends-walk logic
+        stays in one place.
+        """
+        return self._image_provider_config
 
     # ------------------------------------------------------------------
     # Dunder
