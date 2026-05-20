@@ -26,6 +26,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import time
 import urllib.error
@@ -143,25 +144,35 @@ def _office_bundle_fonts() -> set[str]:
 
 
 def _assert_font_available(family: str, brand_name: str) -> None:
-    """Hard-fail when the brand's primary font family is not on the system.
+    """Check whether the brand's primary font is installed on the system.
 
-    Source-faithful rendering requires the exact font used by the source PPTX
-    — substituting another family changes glyph widths + stroke weight and
-    invalidates pixel comparisons. Decompile writes the source theme font
-    into tokens.json; this check turns a missing system font into an early
-    actionable error instead of a silently-wrong render.
+    Behaviour gated by env var ``FEINSCHLIFF_STRICT_FONTS``:
+
+    - ``=1`` → hard-fail with DSLError (source-faithful rendering: a missing
+      font means glyph metrics + stroke weights will differ from the
+      authoring tool's render, invalidating any pixel-level comparison).
+    - unset / ``=0`` → soft-warn to stderr but let the build proceed (lets
+      CI and toolkit-internal tests build against brand packs whose
+      canonical fonts may not be present on every runner).
+
+    Decompile sets the brand's tokens.json font-family to the source theme
+    font, so source-faithful pipelines should run with the strict env set.
     """
     installed = _installed_fonts()
     if not installed:
         return  # fc-list unavailable — can't verify; defer to the renderer.
-    if family.lower() not in installed:
-        raise DSLError(
-            f"brand '{brand_name}': required font '{family}' is not installed. "
-            f"Install it (`brew install --cask font-{family.lower().replace(' ', '-')}` "
-            f"on macOS, or copy the .ttf into ~/.fonts on Linux + run `fc-cache -f`) "
-            f"then re-run. Substituting another family would invalidate source-"
-            f"matched rendering."
-        )
+    if family.lower() in installed:
+        return
+    msg = (
+        f"brand '{brand_name}': required font '{family}' is not installed. "
+        f"Install it (`brew install --cask font-{family.lower().replace(' ', '-')}` "
+        f"on macOS, or copy the .ttf into ~/.fonts on Linux + run `fc-cache -f`) "
+        f"then re-run. Substituting another family would invalidate source-"
+        f"matched rendering."
+    )
+    if os.environ.get("FEINSCHLIFF_STRICT_FONTS") == "1":
+        raise DSLError(msg)
+    print(f"WARN: {msg}", file=sys.stderr)
 
 EMU_PER_PT = 12700           # PowerPoint standard: 1pt = 12700 EMU (914400 / 72).
 _EMU_PER_PX = _LEGACY_SLIDE_WIDTH_EMU / _LEGACY_CANVAS_W   # 6350 — default fallback
