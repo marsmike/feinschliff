@@ -71,9 +71,27 @@ from lib.pipeline_log import (
 )
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-STD_COMPOUNDS = REPO_ROOT / "compounds"
-BRANDS_DIR = REPO_ROOT / "brands"
+def _bundled_assets() -> Path:
+    """Return the assets/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "assets"
+
+
+def _bundled_compounds() -> Path:
+    """Return the compounds/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "compounds"
+
+
+def _find_toolkit_file(rel: str) -> Path | None:
+    """Resolve *rel* against each discovered layout dir's parent (i.e. the
+    plugin root), returning the first match.  Used to replace hard-coded
+    ``REPO_ROOT / rel`` fallback lookups in the deck CLI.
+    """
+    from lib.layout_discovery import all_layout_dirs
+    for layout_dir in all_layout_dirs():
+        candidate = (layout_dir.parent / rel).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def register(parser: argparse.ArgumentParser) -> None:
@@ -612,9 +630,9 @@ def cmd_build(args) -> int:
         for i, spec in enumerate(slides_spec):
             layout_path = (plan_dir / spec["layout"]).resolve()
             if not layout_path.is_file():
-                # also try plan-dir-relative + repo-relative.
-                alt = (REPO_ROOT / spec["layout"]).resolve()
-                if alt.is_file():
+                # also try toolkit-relative (plugin root / rel).
+                alt = _find_toolkit_file(spec["layout"])
+                if alt is not None:
                     layout_path = alt
                 else:
                     print(f"deck: slide {i}: layout not found: {spec['layout']}", file=sys.stderr)
@@ -627,9 +645,9 @@ def cmd_build(args) -> int:
                 print(f"deck: slide {i}: {e}", file=sys.stderr)
                 return 2
 
-            tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+            tokens = load_tokens(brand_dir)
             compounds = load_compounds_for_brand(
-                brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+                brand_dir, std_dir=_bundled_compounds()
             )
 
             layout_nodes, layout_compounds = parse_file(layout_path)
@@ -640,8 +658,8 @@ def cmd_build(args) -> int:
             if not ctx and "content_file" in spec:
                 content_path = (plan_dir / spec["content_file"]).resolve()
                 if not content_path.is_file():
-                    alt = (REPO_ROOT / spec["content_file"]).resolve()
-                    if alt.is_file():
+                    alt = _find_toolkit_file(spec["content_file"])
+                    if alt is not None:
                         content_path = alt
                     else:
                         print(f"deck: slide {i}: content_file not found: {spec['content_file']}", file=sys.stderr)
@@ -723,7 +741,7 @@ def cmd_build(args) -> int:
 
         prs = build_multi_slide(
             slides_payload,
-            asset_root_fallback=REPO_ROOT / "assets",
+            asset_root_fallback=_bundled_assets(),
             image_provider=provider,
             deck_dir=out_path.parent,
         )
@@ -800,9 +818,9 @@ def _build_primitives_for_layout(
     more than the filled content.
     """
     brand_dir = find_brand(brand).root
-    tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+    tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+        brand_dir, std_dir=_bundled_compounds()
     )
     layout_nodes, layout_compounds = parse_file(layout_path)
     for cd in layout_compounds:
@@ -823,8 +841,8 @@ def cmd_wireframe(args) -> int:
 
     layout_path = Path(args.layout).resolve()
     if not layout_path.is_file():
-        alt = (REPO_ROOT / args.layout).resolve()
-        if alt.is_file():
+        alt = _find_toolkit_file(args.layout)
+        if alt is not None:
             layout_path = alt
         else:
             print(f"deck wireframe: layout not found: {args.layout}", file=sys.stderr)
@@ -898,8 +916,8 @@ def cmd_wireframe_sheet(args) -> int:
         layout_rel = spec["layout"]
         layout_path = (plan_dir / layout_rel).resolve()
         if not layout_path.is_file():
-            alt = (REPO_ROOT / layout_rel).resolve()
-            if alt.is_file():
+            alt = _find_toolkit_file(layout_rel)
+            if alt is not None:
                 layout_path = alt
             else:
                 print(f"deck wireframe-sheet: slide {i}: layout not found: {layout_rel}",
@@ -912,14 +930,14 @@ def cmd_wireframe_sheet(args) -> int:
         if not ctx_inline and "content_file" in spec:
             cp = (plan_dir / spec["content_file"]).resolve()
             if not cp.is_file():
-                cp = (REPO_ROOT / spec["content_file"]).resolve()
+                cp = _find_toolkit_file(spec["content_file"]) or cp
             content_path = cp if cp.is_file() else None
 
         try:
             brand_dir = find_brand(brand).root
-            tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+            tokens = load_tokens(brand_dir)
             compounds = load_compounds_for_brand(
-                brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+                brand_dir, std_dir=_bundled_compounds()
             )
             layout_nodes, layout_compounds = parse_file(layout_path)
             for cd in layout_compounds:
@@ -1167,9 +1185,9 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
         cfg = brand_obj.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
 
-    tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+    tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+        brand_dir, std_dir=_bundled_compounds()
     )
 
     slides_payload: list[tuple[list, object, Path]] = []
@@ -1178,11 +1196,16 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
         diagrams_out = Path(tmp) / "diagrams"
         diagrams_out.mkdir()
         for slide_idx, entry in enumerate(slides_plan, start=1):
-            layout_path = (REPO_ROOT / "layouts" / entry["layout"]).resolve()
-            if not layout_path.is_file():
+            from lib.layout_discovery import find_layout as _find_layout
+            _layout_name = entry["layout"]
+            if _layout_name.endswith(".slide.dsl"):
+                _layout_name = _layout_name[:-len(".slide.dsl")]
+            _ly = _find_layout(_layout_name)
+            if _ly is None:
                 raise FileNotFoundError(
-                    f"deck polish: layout not found: {layout_path}"
+                    f"deck polish: layout not found: {entry['layout']!r}"
                 )
+            layout_path = _ly.path
 
             layout_nodes, layout_compounds = parse_file(layout_path)
             local_compounds = dict(compounds)
@@ -1213,7 +1236,7 @@ def _build_refurbished_deck(slides_plan: list[dict], brand: str, out_path: Path)
 
         prs = build_multi_slide(
             slides_payload,
-            asset_root_fallback=REPO_ROOT / "assets",
+            asset_root_fallback=_bundled_assets(),
             image_provider=provider,
             deck_dir=out_path.parent,
         )
@@ -1503,16 +1526,15 @@ def _signals_from_slide(slide: dict) -> dict:
 
 def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
     """Return the DSL path for *layout_name*, checking brand-local first then
-    the toolkit pool.  Returns None if the layout can't be found anywhere."""
+    the toolkit pool via layout_discovery.  Returns None if not found anywhere."""
+    from lib.layout_discovery import find_layout as _find_layout
     # 1. Brand-local override.
     brand_local = brand_root / "layouts" / f"{layout_name}.slide.dsl"
     if brand_local.is_file():
         return brand_local
-    # 2. Toolkit pool (sibling of the brands/ directory).
-    toolkit = Path(__file__).resolve().parents[1] / "layouts" / f"{layout_name}.slide.dsl"
-    if toolkit.is_file():
-        return toolkit
-    return None
+    # 2. Toolkit pool via discovery (covers bundled, env, user, plugin sources).
+    layout = _find_layout(layout_name)
+    return layout.path if layout is not None else None
 
 
 def _slot_budgets_for_layout(
@@ -1766,7 +1788,7 @@ def cmd_verify_aspect(args) -> int:
             for i, spec in enumerate(slides):
                 layout_path = (plan_path.parent / spec["layout"]).resolve()
                 if not layout_path.is_file():
-                    layout_path = (REPO_ROOT / spec["layout"]).resolve()
+                    layout_path = _find_toolkit_file(spec["layout"]) or layout_path
                 try:
                     brand_dir = find_brand(spec.get("brand")
                                            or plan.get("brand")

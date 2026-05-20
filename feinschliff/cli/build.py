@@ -25,9 +25,14 @@ from lib.defects import fatal_kinds, format_defect
 from lib.image_provider import discover_providers, get_provider
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-STD_COMPOUNDS = REPO_ROOT / "compounds"
-BRANDS_DIR = REPO_ROOT / "brands"
+def _bundled_assets() -> Path:
+    """Return the assets/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "assets"
+
+
+def _bundled_compounds() -> Path:
+    """Return the compounds/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "compounds"
 
 
 def register(parser: argparse.ArgumentParser) -> None:
@@ -81,9 +86,9 @@ def cmd_build(args) -> int:
         cfg = brand.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
 
-    tokens = load_tokens(brand_dir, brands_dir=BRANDS_DIR)
+    tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=STD_COMPOUNDS, brands_dir=BRANDS_DIR
+        brand_dir, std_dir=_bundled_compounds()
     )
 
     layout_nodes, layout_compounds = parse_file(layout_path)
@@ -146,7 +151,7 @@ def cmd_build(args) -> int:
     tokens = result.tokens
 
     asset_root = brand_dir / "assets"
-    asset_root_fallback = REPO_ROOT / "assets"
+    asset_root_fallback = _bundled_assets()
     out_path = Path(args.output).resolve()
     prs = build_presentation(
         primitives, tokens,
