@@ -1,0 +1,218 @@
+"""Locate brand packs across bundled, plugin-installed, env, and user-local paths."""
+from __future__ import annotations
+
+import os
+import warnings
+from dataclasses import dataclass
+from json import JSONDecodeError
+from pathlib import Path
+
+from feinschliff.brand import BrandPack
+from feinschliff.dsl.tokens import load_tokens
+
+
+@dataclass
+class Brand:
+    """Legacy dataclass kept for backwards compatibility.
+
+    New code should use :class:`lib.brand.BrandPack` instead.
+    ``discover_brands`` now returns ``BrandPack`` objects; this class is
+    retained only for external scripts that may still reference it by name.
+    """
+    name: str
+    root: Path
+    tokens_path: Path | None = None
+    design_path: Path | None = None
+    layouts_path: Path | None = None   # brand-specific layouts/ (overrides toolkit)
+    compounds_path: Path | None = None # brand-specific compounds/
+    # `$image_provider`: extends-resolved block from tokens.json. None when
+    # the brand (and none of its parents) declares a provider. `config` is
+    # deep-merged across `extends`; `kind` is fully replaced by the child
+    # if specified (and a `kind` swap drops the parent's `config` since it
+    # was scoped to a different provider).
+    image_provider_config: dict | None = None
+
+
+def _bundled_brands_root() -> Path:
+    """The brands/ directory shipped inside this plugin."""
+    return Path(__file__).resolve().parents[1] / "brands"
+
+
+def _user_brands_root() -> Path:
+    return Path.home() / ".feinschliff" / "brands"
+
+
+def _plugin_brands_roots() -> list[Path]:
+    """`brands/` dirs from installed Claude Code plugins.
+
+    Brand packs are intentionally permissive — any plugin can ship a ``brands/``
+    directory (e.g. third-party brand packs, BSH private packs), so no plugin-name
+    filter is applied here.
+
+    Modern plugins land under ``~/.claude/plugins/marketplaces/{marketplace}/{plugin}/``;
+    sideloaded plugins occasionally land directly under ``~/.claude/plugins/{plugin}/``.
+    Both layouts are supported.
+    """
+    plugins = Path.home() / ".claude" / "plugins"
+    if not plugins.is_dir():
+        return []
+    roots: list[Path] = []
+    marketplaces = plugins / "marketplaces"
+    if marketplaces.is_dir():
+        for marketplace in sorted(marketplaces.iterdir()):
+            if not marketplace.is_dir():
+                continue
+            for plugin in sorted(marketplace.iterdir()):
+                brands = plugin / "brands"
+                if brands.is_dir():
+                    roots.append(brands)
+    for entry in sorted(plugins.iterdir()):
+        if entry.name == "marketplaces" or not entry.is_dir():
+            continue
+        brands = entry / "brands"
+        if brands.is_dir():
+            roots.append(brands)
+    return roots
+
+
+def _env_brands_roots() -> list[Path]:
+    raw = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+    return [Path(p) for p in raw.split(os.pathsep) if p]
+
+
+def _cwd_dev_brands_roots() -> list[Path]:
+    """Walk up from $CWD; if an in-place git checkout of feinschliff exists,
+    surface its brands/. Supports the dev workflow where a brand author edits
+    `~/work/feinschliff/feinschliff/brands/<brand>/` and runs scripts that
+    don't sit inside the package.
+
+    The walk stops at the first git boundary so we don't accidentally scan
+    the whole home directory.
+    """
+    out: list[Path] = []
+    try:
+        cwd = Path.cwd().resolve()
+    except FileNotFoundError:
+        return out
+    for ancestor in [cwd, *cwd.parents]:
+        candidate = ancestor / "feinschliff" / "brands"
+        if candidate.is_dir():
+            out.append(candidate)
+        # Also handle a checkout where the cwd is already inside `feinschliff/`.
+        sibling = ancestor / "brands"
+        if (ancestor / "pyproject.toml").is_file() and sibling.is_dir():
+            out.append(sibling)
+        if (ancestor / ".git").exists():
+            break
+    return out
+
+
+def _discovery_sources() -> list[tuple[str, Path]]:
+    """Source-tagged list used by both discovery and the not-found error."""
+    items: list[tuple[str, Path]] = [("bundled", _bundled_brands_root())]
+    items.extend(("plugin", p) for p in _plugin_brands_roots())
+    items.extend(("env", p) for p in _env_brands_roots())
+    items.extend(("cwd-dev", p) for p in _cwd_dev_brands_roots())
+    items.append(("user", _user_brands_root()))
+    return items
+
+
+def discover_brands() -> list[BrandPack]:
+    """Returns all brands found across all discovery sources, deduped by name (first wins).
+
+    A brand is a directory containing either `tokens.json` (the v2 marker)
+    or `DESIGN.md` (with token frontmatter). Brands inherit toolkit-level
+    layouts and may add brand-specific ones via `layouts/`.
+
+    Sources scanned, in priority order:
+      1. bundled — `brands/` next to the installed `lib/`
+      2. plugin — `~/.claude/plugins/.../brands/`
+      3. env — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
+      4. cwd-dev — `feinschliff/brands/` reachable by walking up from $CWD
+      5. user — `~/.feinschliff/brands/`
+    """
+    seen: dict[str, BrandPack] = {}
+    for _src, root in _discovery_sources():
+        if not root.is_dir():
+            continue
+        for d in sorted(root.iterdir()):
+            if not d.is_dir():
+                continue
+            tokens = d / "tokens.json"
+            design = d / "DESIGN.md"
+            if not (tokens.is_file() or design.is_file()):
+                continue
+            if d.name in seen:
+                continue
+            image_provider_config: dict | None = None
+            # Spec: `BrandPack.image_provider_config` is the extends-resolved
+            # block. Use `load_tokens` so a child that inherits the
+            # provider from a parent surfaces it correctly. `brands_dir`
+            # defaults to the brand's parent in `load_tokens`, which
+            # matches how we discovered `d` (under `root`). On a
+            # *survivable* failure (malformed JSON, missing parent file,
+            # cyclic `extends`, schema-validation error) fall back to
+            # None AND emit a RuntimeWarning so the operator sees why
+            # the field is empty — silent swallow makes a misconfigured
+            # brand indistinguishable from one with no provider declared.
+            # Genuine bugs / aborts (KeyboardInterrupt, SystemExit,
+            # MemoryError, RecursionError) intentionally propagate.
+            try:
+                resolved = load_tokens(d, brands_dir=root)
+                ip = resolved.raw.get("$image_provider") if isinstance(resolved.raw, dict) else None
+                if isinstance(ip, dict):
+                    image_provider_config = ip
+            except (OSError, ValueError, JSONDecodeError) as exc:
+                warnings.warn(
+                    f"discover_brands: skipping $image_provider for brand "
+                    f"{d.name!r}: {type(exc).__name__}: {exc}",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                image_provider_config = None
+            # Build a BrandPack. When tokens.json is absent (DESIGN.md-only brands)
+            # or malformed, fall back to an empty-tokens pack so discovery
+            # doesn't crash — same survivable-failure philosophy as above.
+            try:
+                if tokens.is_file():
+                    pack = BrandPack.load(d)
+                else:
+                    pack = BrandPack(root=d, tokens={}, tokens_hash="")
+            except (OSError, ValueError, JSONDecodeError):
+                pack = BrandPack(root=d, tokens={}, tokens_hash="")
+            # Inject the extends-resolved image_provider_config (computed above by
+            # the load_tokens extends-walk). This is set here rather than in
+            # BrandPack.load because the extends-resolution logic lives in
+            # brand_discovery and we don't want to duplicate it.
+            pack._image_provider_config = image_provider_config
+            seen[d.name] = pack
+    return list(seen.values())
+
+
+def find_brand(name: str) -> BrandPack:
+    """Return the brand with the given name, or raise ValueError with a
+    diagnostic listing every searched path and every brand actually found.
+
+    This is the function `/deck --brand <name>` should call — its error
+    message tells the user exactly what to fix.
+
+    Returns a :class:`~lib.brand.BrandPack` (previously returned the legacy
+    ``Brand`` dataclass — all attributes used by callers are present on
+    ``BrandPack`` with the same names).
+    """
+    brands = discover_brands()
+    for b in brands:
+        if b.name == name:
+            return b
+    available = sorted(b.name for b in brands)
+    searched_lines = []
+    for src, root in _discovery_sources():
+        marker = "✓" if root.is_dir() else "·"
+        searched_lines.append(f"  {marker} [{src}] {root}")
+    searched = "\n".join(searched_lines)
+    raise ValueError(
+        f"brand '{name}' not found.\n"
+        f"available brands: {', '.join(available) or '(none)'}\n"
+        f"searched paths:\n{searched}\n"
+        f"to add a brand path, set FEINSCHLIFF_BRAND_PATH=/abs/path[:/another]"
+    )
