@@ -7,11 +7,18 @@ from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
 
+from lib.brand import BrandPack
 from lib.dsl.tokens import load_tokens
 
 
 @dataclass
 class Brand:
+    """Legacy dataclass kept for backwards compatibility.
+
+    New code should use :class:`lib.brand.BrandPack` instead.
+    ``discover_brands`` now returns ``BrandPack`` objects; this class is
+    retained only for external scripts that may still reference it by name.
+    """
     name: str
     root: Path
     tokens_path: Path | None = None
@@ -110,7 +117,7 @@ def _discovery_sources() -> list[tuple[str, Path]]:
     return items
 
 
-def discover_brands() -> list[Brand]:
+def discover_brands() -> list[BrandPack]:
     """Returns all brands found across all discovery sources, deduped by name (first wins).
 
     A brand is a directory containing either `tokens.json` (the v2 marker)
@@ -124,7 +131,7 @@ def discover_brands() -> list[Brand]:
       4. cwd-dev — `feinschliff/brands/` reachable by walking up from $CWD
       5. user — `~/.feinschliff/brands/`
     """
-    seen: dict[str, Brand] = {}
+    seen: dict[str, BrandPack] = {}
     for _src, root in _discovery_sources():
         if not root.is_dir():
             continue
@@ -138,7 +145,7 @@ def discover_brands() -> list[Brand]:
             if d.name in seen:
                 continue
             image_provider_config: dict | None = None
-            # Spec: `Brand.image_provider_config` is the extends-resolved
+            # Spec: `BrandPack.image_provider_config` is the extends-resolved
             # block. Use `load_tokens` so a child that inherits the
             # provider from a parent surfaces it correctly. `brands_dir`
             # defaults to the brand's parent in `load_tokens`, which
@@ -163,23 +170,35 @@ def discover_brands() -> list[Brand]:
                     stacklevel=2,
                 )
                 image_provider_config = None
-            seen[d.name] = Brand(
-                name=d.name, root=d,
-                tokens_path=tokens if tokens.is_file() else None,
-                design_path=design if design.is_file() else None,
-                layouts_path=(d / "layouts") if (d / "layouts").is_dir() else None,
-                compounds_path=(d / "compounds") if (d / "compounds").is_dir() else None,
-                image_provider_config=image_provider_config,
-            )
+            # Build a BrandPack. When tokens.json is absent (DESIGN.md-only brands)
+            # or malformed, fall back to an empty-tokens pack so discovery
+            # doesn't crash — same survivable-failure philosophy as above.
+            try:
+                if tokens.is_file():
+                    pack = BrandPack.load(d)
+                else:
+                    pack = BrandPack(root=d, tokens={}, tokens_hash="")
+            except (OSError, ValueError, JSONDecodeError):
+                pack = BrandPack(root=d, tokens={}, tokens_hash="")
+            # Inject the extends-resolved image_provider_config (computed above by
+            # the load_tokens extends-walk). This is set here rather than in
+            # BrandPack.load because the extends-resolution logic lives in
+            # brand_discovery and we don't want to duplicate it.
+            pack._image_provider_config = image_provider_config
+            seen[d.name] = pack
     return list(seen.values())
 
 
-def find_brand(name: str) -> Brand:
+def find_brand(name: str) -> BrandPack:
     """Return the brand with the given name, or raise ValueError with a
     diagnostic listing every searched path and every brand actually found.
 
     This is the function `/deck --brand <name>` should call — its error
     message tells the user exactly what to fix.
+
+    Returns a :class:`~lib.brand.BrandPack` (previously returned the legacy
+    ``Brand`` dataclass — all attributes used by callers are present on
+    ``BrandPack`` with the same names).
     """
     brands = discover_brands()
     for b in brands:
