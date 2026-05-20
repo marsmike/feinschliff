@@ -446,6 +446,7 @@ def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str
     if srgb is not None:
         hx = srgb.get("val")
         rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+        rgb = _blend_on_white(rgb, _alpha_for_color(srgb))
         return nearest_token(rgb, palette)
     scheme = sf.find("a:schemeClr", NS)
     if scheme is not None:
@@ -462,6 +463,7 @@ def _resolve_fill(spPr: etree._Element, theme: dict[str, str], palette: dict[str
                 rgb = tuple(
                     max(0, min(255, int(c * mod + 255 * off))) for c in rgb
                 )
+            rgb = _blend_on_white(rgb, _alpha_for_color(scheme))
             return nearest_token(rgb, palette)
     return None
 
@@ -598,20 +600,52 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
     return runs
 
 
+def _alpha_for_color(color_el: etree._Element) -> float:
+    """Return alpha 0..1 from `<a:alpha val="...">` child (PPTX uses 0..100000).
+    Defaults to 1.0 when the element is absent."""
+    a = color_el.find("a:alpha", NS)
+    if a is None or not a.get("val"):
+        return 1.0
+    try:
+        return max(0.0, min(1.0, int(a.get("val")) / 100000.0))
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _blend_on_white(rgb: tuple[int, int, int], alpha: float) -> tuple[int, int, int]:
+    """Pre-multiply RGBA against a white slide background.
+
+    Most decks render alpha-on-shape against the slide's paper colour.
+    Approximating "blend against white" lets us preserve the perceived
+    colour of semi-transparent fills (Venn circles, overlay panels) on
+    typical white-canvas slides without threading true alpha through the
+    build pipeline. For non-white slide backgrounds the result is
+    visually off but only fractionally so — the colour shifts toward
+    white instead of the actual canvas.
+    """
+    if alpha >= 0.999:
+        return rgb
+    return tuple(
+        max(0, min(255, int(round(c * alpha + 255 * (1 - alpha)))))
+        for c in rgb
+    )
+
+
 def _resolve_solid(sf: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]]) -> str | None:
     srgb = sf.find("a:srgbClr", NS)
     if srgb is not None:
         hx = srgb.get("val")
-        return nearest_token((int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16)), palette)
+        rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+        rgb = _blend_on_white(rgb, _alpha_for_color(srgb))
+        return nearest_token(rgb, palette)
     scheme = sf.find("a:schemeClr", NS)
     if scheme is not None:
         key = scheme.get("val")
         hex_str = theme.get(key)
         if hex_str:
-            return nearest_token(
-                (int(hex_str[1:3], 16), int(hex_str[3:5], 16), int(hex_str[5:7], 16)),
-                palette,
-            )
+            rgb = (int(hex_str[1:3], 16), int(hex_str[3:5], 16), int(hex_str[5:7], 16))
+            rgb = _blend_on_white(rgb, _alpha_for_color(scheme))
+            return nearest_token(rgb, palette)
     return None
 
 
