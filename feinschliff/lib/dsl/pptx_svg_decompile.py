@@ -2334,16 +2334,25 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
                         text_runs=[TextRun(text=label, pt=14)],
                     ))
 
-    # Legend at bottom-left.
+    # Legend + chart-title emission — gated on the source actually
+    # carrying `<c:legend>` and `<c:title>` (with `<c:autoTitleDeleted
+    # val="0"/>`). The previous code always painted them. Showcase
+    # charts with no `<c:legend>` element rendered a phantom series
+    # name (e.g. "Datenreihe 1") at the bottom-left that wraps mid-
+    # word inside the swatch slot.
     legend_y = y0 + fh - int(fh * 0.12)
     legend_x = plot_x + int(fw * 0.02)
     swatch_w = int(fw * 0.012)
     swatch_h = int(fh * 0.025)
-    # Read chart title from c:title//c:tx//c:rich//a:p//a:r//a:t (or cached
-    # strRef). Omit the title primitive entirely when the chart has no title.
+    has_legend = root.find(f".//{{{CHART_NS}}}legend") is not None
     title_el = root.find(f".//{{{CHART_NS}}}title")
+    auto_title_deleted_el = root.find(f".//{{{CHART_NS}}}autoTitleDeleted")
+    title_deleted = (
+        auto_title_deleted_el is not None
+        and auto_title_deleted_el.get("val") in ("1", "true")
+    )
     title_text = ""
-    if title_el is not None:
+    if title_el is not None and not title_deleted:
         for t_el in title_el.iterfind(f".//{{{NS['a']}}}t"):
             if t_el.text:
                 title_text += t_el.text
@@ -2354,6 +2363,8 @@ def _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette):
             w=cmap.w(int(fw * 0.22)), h=cmap.h(int(fh * 0.04)),
             text_runs=[TextRun(text=title_text, pt=14)],
         ))
+    if not has_legend:
+        return
     lx = legend_x + int(fw * 0.18)
     for si, (name, _, _, ser_color, _dpt) in enumerate(series):
         color = ser_color or f"chart-series-{(si % 6) + 1}"
