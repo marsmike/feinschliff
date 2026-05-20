@@ -15,7 +15,7 @@ The skill orchestrator invokes this at step 4 verify (see
 """
 from __future__ import annotations
 
-from lib.verify.deck.defects import DeckDefect
+from feinschliff_builder.verify.deck.defects import DeckDefect
 
 
 _VALID_ACTS = frozenset({"situation", "complication", "resolution"})

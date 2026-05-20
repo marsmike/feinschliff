@@ -1,8 +1,8 @@
 """Unit tests for lib/verify/deck/narrative_arc — narrative-arc-missing defect."""
 from __future__ import annotations
 
-from lib.verify.deck.narrative_arc import check_narrative_arc
-from lib.verify.deck.defects import DeckDefect
+from feinschliff_builder.verify.deck.narrative_arc import check_narrative_arc
+from feinschliff_builder.verify.deck.defects import DeckDefect
 
 
 def test_full_scr_arc_is_clean():

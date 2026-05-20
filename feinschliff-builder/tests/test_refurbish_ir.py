@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from lib.diagrams.refurbish.ir import ExtractedDiagram, Node, Edge
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node, Edge
 
 
 def test_ir_serialization_roundtrip():

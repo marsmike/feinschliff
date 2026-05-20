@@ -1,8 +1,8 @@
 """Unit tests for lib/verify/deck/non_mece — non-mece-breakdown defect."""
 from __future__ import annotations
 
-from lib.verify.deck.defects import DeckDefect
-from lib.verify.deck.non_mece import check_non_mece
+from feinschliff_builder.verify.deck.defects import DeckDefect
+from feinschliff_builder.verify.deck.non_mece import check_non_mece
 
 
 def test_empty_list_is_clean():

@@ -20,10 +20,10 @@ and the underlying pixels.
 
 Usage::
 
-    from lib.dsl.parser import parse_file
-    from lib.dsl.expander import interpolate_nodes, expand_compounds, load_compounds_for_brand
-    from lib.dsl.tokens import load_tokens
-    from lib.dsl.svg_wireframe import render_wireframe
+    from feinschliff.dsl.parser import parse_file
+    from feinschliff.dsl.expander import interpolate_nodes, expand_compounds, load_compounds_for_brand
+    from feinschliff.dsl.tokens import load_tokens
+    from feinschliff_builder.decompile.wireframe import render_wireframe
 
     nodes, cds = parse_file(layout_path)
     tokens = load_tokens(brand_dir)
@@ -42,8 +42,8 @@ import re
 import sys
 from collections.abc import Sequence
 
-from .parser import DSLNode, parse_xy, parse_wh
-from .tokens import Tokens
+from feinschliff.dsl.parser import DSLNode, parse_xy, parse_wh
+from feinschliff.dsl.tokens import Tokens
 
 
 # Pattern for detecting unexpanded Jinja placeholders in `if:` guards.

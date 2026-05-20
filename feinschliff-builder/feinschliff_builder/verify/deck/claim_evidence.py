@@ -10,7 +10,7 @@ Usage
 -----
 From the pipeline (step 2b):
 
-    from lib.verify.deck.claim_evidence import judge_plan, write_report
+    from feinschliff_builder.verify.deck.claim_evidence import judge_plan, write_report
 
     results = judge_plan(plan, design_brief=brief)
     overall = write_report(out_path, results, slide_count=len(plan["slides"]))
@@ -28,8 +28,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
-from lib.verify.llm import prompts
-from lib.verify.llm.rubric import _judge  # noqa: F401  (re-exported for patch targets)
+from feinschliff_builder.verify.llm import prompts
+from feinschliff_builder.verify.llm.rubric import _judge  # noqa: F401  (re-exported for patch targets)
 
 
 # ---------------------------------------------------------------------------

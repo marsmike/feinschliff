@@ -15,8 +15,8 @@ from pathlib import Path
 
 from pptx import Presentation
 
-from lib.layout_validator import validate_deck, format_defects
-from lib.verify.chrome import scan_pp_chrome, scan_chrome_drift
+from feinschliff.layout_validator import validate_deck, format_defects
+from feinschliff_builder.verify.chrome import scan_pp_chrome, scan_chrome_drift
 
 
 def register(parser: argparse.ArgumentParser) -> None:

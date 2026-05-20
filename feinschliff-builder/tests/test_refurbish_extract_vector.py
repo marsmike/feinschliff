@@ -9,8 +9,8 @@ pptx = pytest.importorskip("pptx")
 from pptx import Presentation
 from pptx.util import Inches
 
-from lib.diagrams.refurbish.extract_vector import extract_from_slide
-from lib.diagrams.refurbish.ir import ExtractedDiagram
+from feinschliff_builder.diagrams.refurbish.extract_vector import extract_from_slide
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram
 
 
 def _build_five_box_flow(tmp_path: Path) -> Path:

@@ -47,7 +47,7 @@ DARK_FIRST = {
 # The try/except keeps the script runnable outside the feinschliff venv.
 sys.path.insert(0, str(REPO))
 try:
-    from lib.layout_picker import _LAYOUTS as _PICKER_LAYOUTS, _PHASE4_LAYOUTS
+    from feinschliff.layout_picker import _LAYOUTS as _PICKER_LAYOUTS, _PHASE4_LAYOUTS
 except ImportError:
     _PICKER_LAYOUTS: dict = {}
     _PHASE4_LAYOUTS: frozenset = frozenset()
@@ -126,7 +126,7 @@ def discover_layouts(brand: str) -> list[dict]:
     Mirrors `scripts/render_brand_atlas._discover_layouts` so the gallery
     references the same set of slides the renderer produces.
 
-    Role + phase4 metadata are pulled from lib.layout_picker so layout cards
+    Role + phase4 metadata are pulled from feinschliff.layout_picker so layout cards
     show accurate classifications — including the four-column-cards fix
     (content-columns, not data-timeline).
     """

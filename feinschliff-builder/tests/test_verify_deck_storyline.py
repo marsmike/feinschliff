@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.verify.deck.storyline import (
+from feinschliff_builder.verify.deck.storyline import (
     render_contact_sheet,
     write_storyline_report,
 )

@@ -6,7 +6,7 @@ before any render budget is burned, alongside `validate_content`.
 """
 from __future__ import annotations
 
-from lib.content_validator import ContentDefect
+from feinschliff.content_validator import ContentDefect
 
 
 # Per-slide speaker-notes word budgets, keyed by `design_brief.verbosity`.

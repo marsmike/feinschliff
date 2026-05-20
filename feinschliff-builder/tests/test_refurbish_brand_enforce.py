@@ -10,10 +10,10 @@ import re
 from pathlib import Path
 
 
-from lib.diagrams.refurbish.brand_enforce import snap_svg_to_brand_palette
+from feinschliff_builder.diagrams.refurbish.brand_enforce import snap_svg_to_brand_palette
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2] / "feinschliff"
 BRAND_DIR = REPO_ROOT / "brands" / "feinschliff"
 
 

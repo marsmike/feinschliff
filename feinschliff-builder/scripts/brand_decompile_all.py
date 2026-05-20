@@ -38,7 +38,7 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from lib.dsl.pptx_svg_decompile import derive
+from feinschliff_builder.decompile.pptx_svg_decompile import derive
 
 
 def main() -> int:

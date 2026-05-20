@@ -19,7 +19,7 @@ from pathlib import Path
 import imagehash
 from PIL import Image
 
-from lib.io.soffice import pptx_to_png
+from feinschliff.io.soffice import pptx_to_png
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-from lib.verify.cache import CachedVerdict, VerifyCache, slide_hash
+from feinschliff_builder.verify.cache import CachedVerdict, VerifyCache, slide_hash
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +178,8 @@ def _make_rendered_pngs(tmp_path: Path, n: int) -> dict[int, Path]:
 
 def test_run_squint_second_call_uses_cache(tmp_path: Path):
     """Running run_squint twice with same plan+cache → _judge called only on first run."""
-    from lib.verify.cache import VerifyCache
-    from lib.verify.llm import rubric as rubric_mod
+    from feinschliff_builder.verify.cache import VerifyCache
+    from feinschliff_builder.verify.llm import rubric as rubric_mod
 
     plan = _make_plan(2)
     pngs = _make_rendered_pngs(tmp_path, 2)
@@ -221,8 +221,8 @@ def test_run_squint_second_call_uses_cache(tmp_path: Path):
 
 def test_run_squint_cache_hit_only_for_unchanged_slides(tmp_path: Path):
     """After first run, changing one slide's content forces re-judge for that slide only."""
-    from lib.verify.cache import VerifyCache
-    from lib.verify.llm import rubric as rubric_mod
+    from feinschliff_builder.verify.cache import VerifyCache
+    from feinschliff_builder.verify.llm import rubric as rubric_mod
 
     plan = _make_plan(2)
     pngs = _make_rendered_pngs(tmp_path, 2)
@@ -260,7 +260,7 @@ def test_run_squint_cache_hit_only_for_unchanged_slides(tmp_path: Path):
 
 def test_run_squint_no_cache_arg_unchanged_behavior(tmp_path: Path):
     """Without cache args, run_squint behaves exactly as before (always calls _judge)."""
-    from lib.verify.llm import rubric as rubric_mod
+    from feinschliff_builder.verify.llm import rubric as rubric_mod
 
     pngs = _make_rendered_pngs(tmp_path, 2)
     judge_return = {"status": "pass", "reason": "ok"}
@@ -287,7 +287,7 @@ def test_no_cache_flag_in_verify_quality_cli(tmp_path: Path):
     prs.save(str(deck))
 
     proc = subprocess.run(
-        ["uv", "run", "feinschliff", "verify-quality",
+        ["uv", "run", "feinschliff-builder", "verify-quality",
          str(deck), "--offline", "--no-cache", "--json",
          "--out", str(tmp_path / "report.json")],
         cwd=_P(__file__).resolve().parents[1],
@@ -323,7 +323,7 @@ def test_no_plan_arg_does_not_overwrite_existing_cache(tmp_path: Path):
 
     # Run cmd_verify_quality WITHOUT --plan (plan arg defaults to None)
     import argparse
-    from cli.verify_quality import cmd_verify_quality
+    from feinschliff_builder.cli.verify_quality import cmd_verify_quality
 
     args = argparse.Namespace(
         deck=deck,
@@ -337,7 +337,7 @@ def test_no_plan_arg_does_not_overwrite_existing_cache(tmp_path: Path):
     )
 
     # Patch _render_slide_pngs to avoid needing a real PPTX renderer
-    with patch("cli.verify_quality._render_slide_pngs", return_value={}):
+    with patch("feinschliff_builder.cli.verify_quality._render_slide_pngs", return_value={}):
         cmd_verify_quality(args)
 
     # The cache file must be byte-for-byte identical — mtime unchanged is sufficient
@@ -353,8 +353,8 @@ def test_no_plan_arg_does_not_overwrite_existing_cache(tmp_path: Path):
 
 def test_run_squint_cached_stale_slide_index_is_overwritten(tmp_path: Path):
     """I2 fix: a stale slide_index=99 in stored findings is replaced by the loop's idx."""
-    from lib.verify.cache import VerifyCache, CachedVerdict
-    from lib.verify.llm import rubric as rubric_mod
+    from feinschliff_builder.verify.cache import VerifyCache, CachedVerdict
+    from feinschliff_builder.verify.llm import rubric as rubric_mod
     from unittest.mock import patch
 
     plan = _make_plan(2)
@@ -363,7 +363,7 @@ def test_run_squint_cached_stale_slide_index_is_overwritten(tmp_path: Path):
     # Pre-populate the cache with a verdict whose findings carry a bogus slide_index
     cache = VerifyCache(tmp_path)
     for i, slide in enumerate(plan["slides"], start=1):
-        from lib.verify.cache import slide_hash
+        from feinschliff_builder.verify.cache import slide_hash
         h = slide_hash(slide, "feinschliff")
         cache.put(CachedVerdict(
             slide_hash=h,
@@ -394,8 +394,8 @@ def test_run_squint_cached_stale_slide_index_is_overwritten(tmp_path: Path):
 
 def test_run_text_rubric_cached_stale_slide_index_is_overwritten(tmp_path: Path):
     """I2 fix (text path): stale slide_index=99 in findings is replaced by loop idx."""
-    from lib.verify.cache import VerifyCache, CachedVerdict, slide_hash
-    from lib.verify.llm import rubric as rubric_mod
+    from feinschliff_builder.verify.cache import VerifyCache, CachedVerdict, slide_hash
+    from feinschliff_builder.verify.llm import rubric as rubric_mod
     from unittest.mock import patch
     from pptx import Presentation
 

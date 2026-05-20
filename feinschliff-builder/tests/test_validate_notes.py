@@ -6,7 +6,7 @@ in `feinschliff deck build`. The LLM-judged coherence check is separate
 """
 from __future__ import annotations
 
-from lib.verify.deck.notes_budget import validate_notes
+from feinschliff_builder.verify.deck.notes_budget import validate_notes
 
 
 # ── hook slide ────────────────────────────────────────────────────────

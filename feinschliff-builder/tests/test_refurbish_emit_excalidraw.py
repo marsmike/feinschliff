@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.diagrams.refurbish.ir import ExtractedDiagram, Node, Edge
-from lib.diagrams.refurbish.emit_excalidraw import emit
-from lib.diagrams.excalidraw_expand import expand
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node, Edge
+from feinschliff_builder.diagrams.refurbish.emit_excalidraw import emit
+from feinschliff.diagrams.excalidraw_expand import expand
 
 
 def test_emit_excalidraw_roundtrips_through_expand():
@@ -20,7 +20,7 @@ def test_emit_excalidraw_roundtrips_through_expand():
     assert 'box a' in dsl
     assert 'box b' in dsl
     assert "arrow a -> b" in dsl
-    brand_dir = Path(__file__).resolve().parent.parent / "brands" / "feinschliff"
+    brand_dir = Path(__file__).resolve().parents[2] / "feinschliff" / "brands" / "feinschliff"
     j = expand(dsl, brand_dir=brand_dir)
     assert "rectangle" in j
     assert "arrow" in j

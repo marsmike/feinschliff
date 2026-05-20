@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from numbers import Real
 
-from lib.verify.deck.defects import DeckDefect
+from feinschliff_builder.verify.deck.defects import DeckDefect
 
 
 # Tolerance in percentage points around 100. Items summing to anything in

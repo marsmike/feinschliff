@@ -1,5 +1,5 @@
-from lib.defects import Defect, DefectKind, Severity
-from lib.verify.autofix import suggest_fix
+from feinschliff.defects import Defect, DefectKind, Severity
+from feinschliff_builder.verify.autofix import suggest_fix
 
 
 def test_slot_overflow_emits_chars_to_drop():

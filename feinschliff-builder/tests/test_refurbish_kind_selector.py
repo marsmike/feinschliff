@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from lib.diagrams.refurbish.ir import ExtractedDiagram, Node
-from lib.diagrams.refurbish.kind_selector import select_kind
+from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node
+from feinschliff_builder.diagrams.refurbish.kind_selector import select_kind
 
 
 def _ir(signals: dict, n_nodes: int = 3) -> ExtractedDiagram:

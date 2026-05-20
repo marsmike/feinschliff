@@ -13,6 +13,7 @@ cards. This test asserts both layers of the fix:
 """
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -24,17 +25,38 @@ from feinschliff.dsl.tokens import load_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+_CORE_BRANDS = REPO_ROOT / "brands"
+_EXTRA_BRANDS = REPO_ROOT.parent / "feinschliff-extra" / "brands"
 
 def _find_brand(name: str) -> Path | None:
-    core = REPO_ROOT / "brands" / name
+    core = _CORE_BRANDS / name
     if core.exists():
         return core
-    extra = REPO_ROOT.parent / "feinschliff-extra" / "brands" / name
+    extra = _EXTRA_BRANDS / name
     if extra.exists():
         return extra
     return None
 
 BRAND_ROOT = _find_brand("feinschliff-dark")
+
+
+def _load_tokens_extra(brand_root: Path) -> object:
+    """Load tokens for an extra brand, providing a combined brands_dir so that
+    extends-chain resolution can locate parent brands in the core plugin."""
+    brands_dir = brand_root.parent
+    # If parent dir doesn't contain core brands (e.g. feinschliff), build a
+    # combined dir via symlinks in a temp directory.
+    if not (brands_dir / "feinschliff").exists() and _CORE_BRANDS.exists():
+        tmp = Path(tempfile.mkdtemp())
+        for child in _CORE_BRANDS.iterdir():
+            (tmp / child.name).symlink_to(child)
+        if brands_dir.exists():
+            for child in brands_dir.iterdir():
+                dest = tmp / child.name
+                if not dest.exists():
+                    dest.symlink_to(child)
+        brands_dir = tmp
+    return load_tokens(brand_root, brands_dir=brands_dir)
 
 
 _DSL = """\
@@ -66,7 +88,7 @@ def test_build_presentation_suppresses_missing_if_node():
     while still rendering the present-key text shape."""
     if BRAND_ROOT is None:
         pytest.skip("feinschliff-dark brand not available (install feinschliff-extra)")
-    tokens = load_tokens(BRAND_ROOT)
+    tokens = _load_tokens_extra(BRAND_ROOT)
     nodes, _ = parse_lines(_DSL, source="<test>")
     expanded, _diagnostics = expand_compounds(nodes, compounds={})
     interp = interpolate_nodes(expanded, {"title": "Hello"})
@@ -93,7 +115,7 @@ def test_emitter_treats_residual_placeholder_as_falsy():
     an `if:` condition, the emitter must still suppress the node."""
     if BRAND_ROOT is None:
         pytest.skip("feinschliff-dark brand not available (install feinschliff-extra)")
-    tokens = load_tokens(BRAND_ROOT)
+    tokens = _load_tokens_extra(BRAND_ROOT)
     # Hand-craft nodes with a leftover placeholder in `if:` (skip interpolation).
     dsl = (
         "canvas 1920x1080\n"

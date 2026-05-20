@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from lib.dsl.parser import DSLNode, parse_file
-from lib.dsl.tokens import load_tokens
-from lib.dsl.svg_wireframe import render_wireframe, render_wireframe_sheet
+from feinschliff.dsl.parser import DSLNode, parse_file
+from feinschliff.dsl.tokens import load_tokens
+from feinschliff_builder.decompile.wireframe import render_wireframe, render_wireframe_sheet
 
 # Minimal valid 1×1 white PNG (verified bytes for a 1×1 RGB PNG).
 _PNG_1X1_B64 = base64.b64encode(
@@ -20,7 +20,7 @@ _PNG_1X1_B64 = base64.b64encode(
 ).decode("ascii")
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2] / "feinschliff"
 BRANDS_DIR = REPO_ROOT / "brands"
 
 
@@ -303,7 +303,7 @@ def test_real_layout_wireframe_smoke():
     Wireframe mode skips interpolate_nodes so {{ slot_name }} labels are
     preserved — the wireframe shows slot structure, not filled content.
     """
-    from lib.dsl.expander import expand_compounds, load_compounds_for_brand
+    from feinschliff.dsl.expander import expand_compounds, load_compounds_for_brand
     layout_path = REPO_ROOT / "layouts" / "executive-summary.slide.dsl"
     if not layout_path.is_file():
         pytest.skip("layout not present")

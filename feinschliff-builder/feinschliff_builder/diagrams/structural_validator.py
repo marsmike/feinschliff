@@ -35,7 +35,7 @@ integrate with the same defect taxonomy used by `cli/verify`.
 
 Usage:
 
-    from lib.diagrams.structural_validator import (
+    from feinschliff_builder.diagrams.structural_validator import (
         validate_excalidraw_structure,
         validate_excalidraw_file,
         validate_svg_file,
@@ -51,8 +51,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from lib.defects import Defect, DefectKind, Severity
-from lib.diagrams._text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from feinschliff.defects import Defect, DefectKind, Severity
+from feinschliff.diagrams._text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
 
 # Font metrics approximate what Excalidraw renders at runtime. The DSL uses

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from lib.verify.deck.notes_coherence import (
+from feinschliff_builder.verify.deck.notes_coherence import (
     SlideForCoherence,
     render_contact_sheet,
     slides_from_design_brief,

@@ -29,7 +29,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.dml import MSO_FILL_TYPE, MSO_THEME_COLOR_INDEX
 
-from .tokens import STYLE_BUNDLES, Tokens, load_tokens
+from feinschliff.dsl.tokens import STYLE_BUNDLES, Tokens, load_tokens
 
 
 # 1 design-px = 6350 EMU on the canonical 1920×1080 canvas. Mirrors the

@@ -9,10 +9,10 @@ skill's iteration-loop prompt (see
 """
 from __future__ import annotations
 
-from lib.verify.deck.defects import DeckDefect, format_deck_defects
-from lib.verify.deck.narrative_arc import check_narrative_arc
-from lib.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
-from lib.verify.deck.title_body import extract_slide_title_and_body
+from feinschliff_builder.verify.deck.defects import DeckDefect, format_deck_defects
+from feinschliff_builder.verify.deck.narrative_arc import check_narrative_arc
+from feinschliff_builder.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
+from feinschliff_builder.verify.deck.title_body import extract_slide_title_and_body
 
 __all__ = [
     "DeckDefect",
