@@ -178,9 +178,14 @@ def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = N
         for root in env.split(os.pathsep):
             if root:
                 candidates.append(Path(root) / parent)
-        # Toolkit-bundled brands directory — the last-resort fallback so a
-        # CI run without FEINSCHLIFF_BRAND_PATH still finds `feinschliff`.
-        candidates.append(Path(__file__).resolve().parents[2] / "brands" / parent)
+        # Fall back to brand_discovery so all registered sources are searched
+        # (bundled, plugin, env, cwd-dev, user) — avoids a hardcoded path.
+        from lib.brand_discovery import find_brand as _find_brand
+        try:
+            discovered = _find_brand(parent)
+            candidates.append(discovered.root)
+        except (ValueError, Exception):  # noqa: BLE001
+            pass
         parent_dir = next((p for p in candidates if (p / "tokens.json").exists()), None)
         if parent_dir is None:
             raise BrandBridgeError(
