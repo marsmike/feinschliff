@@ -183,14 +183,14 @@ def load_palette(tokens_path: Path) -> dict[str, tuple[int, int, int]]:
         # shape — visible in the decompiled DSL as `fill:#ffed00` instead
         # of `fill:accent` and `fill:neutral` on every custGeom because
         # _svg_color_token() then sees an unknown brand token.
+        from lib.brand_discovery import discover_brands as _discover_brands
         candidate_dirs = [brand_root.parent]
-        toolkit_brands = Path(__file__).resolve().parents[2] / "brands"
-        if toolkit_brands.is_dir():
-            candidate_dirs.append(toolkit_brands)
-        env_paths = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
-        for ep in env_paths.split(os.pathsep):
-            if ep and Path(ep).is_dir():
-                candidate_dirs.append(Path(ep))
+        # Add all discovered brands directories in priority order so out-of-tree
+        # packs whose parent lives in a different discovery source still resolve.
+        for _brand in _discover_brands():
+            brand_parent = _brand.root.parent
+            if brand_parent not in candidate_dirs:
+                candidate_dirs.append(brand_parent)
         seen: set[Path] = set()
         for cd in candidate_dirs:
             cd = cd.resolve()
