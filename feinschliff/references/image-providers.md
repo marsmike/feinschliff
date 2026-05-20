@@ -36,7 +36,7 @@ through the resolver.
 
 ## The `ImageProvider` ABC
 
-Lives at [`../lib/image_provider.py`](../lib/image_provider.py).
+Lives at [`../lib/io/image_provider.py`](../lib/io/image_provider.py).
 
 ```python
 from abc import ABC, abstractmethod
@@ -152,7 +152,7 @@ Minimal working example. Drop this at
 
 ```python
 """Tiny fixture provider — returns a single pinned ImageHit."""
-from lib.image_provider import ImageHit, ImageProvider, register_provider
+from lib.io.image_provider import ImageHit, ImageProvider, register_provider
 
 
 @register_provider

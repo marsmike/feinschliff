@@ -289,7 +289,7 @@ class EmitContext:
     missing_assets: list[dict] = field(default_factory=list)
     # Active image provider for resolving `picture query:"..."` nodes
     # (Task 7). String forward-ref keeps module import cheap and avoids any
-    # circular-import risk between `lib.dsl.pptx_emit` and `lib.image_provider`.
+    # circular-import risk between `lib.dsl.pptx_emit` and `lib.io.image_provider`.
     # Defaults to None so existing callers that never set it keep working.
     image_provider: "ImageProvider | None" = None
     # Deck output directory — used by the picture-query path to write the
