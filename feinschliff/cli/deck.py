@@ -62,7 +62,7 @@ from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect
 from lib.brand_discovery import find_brand
-from lib.image_provider import discover_providers, get_provider
+from lib.io.image_provider import discover_providers, get_provider
 from lib.verify.deck.titles import extract_titles_from_plan
 from lib.verify.deck.storyline import render_contact_sheet, write_storyline_report
 from lib.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report
@@ -873,7 +873,7 @@ def cmd_wireframe(args) -> int:
 
     bg_b64: str | None = None
     if args.overlay_pptx:
-        from lib.dsl.pptx_to_png import slide_to_b64
+        from lib.io.pptx_to_png import slide_to_b64
         try:
             bg_b64 = slide_to_b64(
                 Path(args.overlay_pptx).resolve(),
@@ -964,7 +964,7 @@ def cmd_wireframe_sheet(args) -> int:
 
     bg_list: list[str | None] | None = None
     if args.overlay_pptx:
-        from lib.dsl.pptx_to_png import pptx_to_pngs_b64
+        from lib.io.pptx_to_png import pptx_to_pngs_b64
         try:
             pngs = pptx_to_pngs_b64(Path(args.overlay_pptx).resolve())
         except (FileNotFoundError, RuntimeError) as exc:

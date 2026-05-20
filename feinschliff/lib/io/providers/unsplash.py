@@ -34,7 +34,7 @@ from typing import Any
 from urllib.request import Request, urlopen
 
 from lib.defects import Defect
-from lib.image_provider import ImageHit, ImageProvider, register_provider
+from lib.io.image_provider import ImageHit, ImageProvider, register_provider
 
 # Endpoint + timing knobs.
 _ENDPOINT = "https://api.unsplash.com/search/photos"
@@ -96,7 +96,7 @@ class UnsplashProvider(ImageProvider):
         """Run palette + crop-risk preflight on a resolved image.
 
         Loads the image from ``image_path``, calls
-        :func:`lib.image_preflight.preflight_image`, and returns any
+        :func:`lib.io.image_preflight.preflight_image`, and returns any
         emitted defects. Never raises — errors are surfaced as
         :class:`RuntimeWarning` and an empty list is returned so builds
         are not blocked by an unexpected preflight failure.
@@ -104,7 +104,7 @@ class UnsplashProvider(ImageProvider):
         try:
             from PIL import Image
 
-            from lib.image_preflight import preflight_image
+            from lib.io.image_preflight import preflight_image
 
             img = Image.open(image_path)
             _, defects = preflight_image(

@@ -13,8 +13,8 @@ import textwrap
 
 import pytest
 
-from lib import image_provider
-from lib.image_provider import (
+from lib.io import image_provider
+from lib.io.image_provider import (
     ImageHit,
     ImageProvider,
     discover_providers,
@@ -116,7 +116,7 @@ def test_discover_providers_is_idempotent(tmp_path, monkeypatch):
     (plugin_root / "good.py").write_text(
         textwrap.dedent(
             """
-            from lib.image_provider import ImageProvider, register_provider
+            from lib.io.image_provider import ImageProvider, register_provider
 
             @register_provider
             class GoodProvider(ImageProvider):
@@ -149,7 +149,7 @@ def test_discover_providers_skips_broken_plugins_and_logs(tmp_path, monkeypatch,
     (plugin_root / "fine.py").write_text(
         textwrap.dedent(
             """
-            from lib.image_provider import ImageProvider, register_provider
+            from lib.io.image_provider import ImageProvider, register_provider
 
             @register_provider
             class FineProvider(ImageProvider):
@@ -271,7 +271,7 @@ def test_plugin_label_disambiguates_same_named_roots(tmp_path, monkeypatch):
     (root_a / "shared.py").write_text(
         textwrap.dedent(
             """
-            from lib.image_provider import ImageProvider, register_provider
+            from lib.io.image_provider import ImageProvider, register_provider
 
             @register_provider
             class AlphaProvider(ImageProvider):
@@ -284,7 +284,7 @@ def test_plugin_label_disambiguates_same_named_roots(tmp_path, monkeypatch):
     (root_b / "shared.py").write_text(
         textwrap.dedent(
             """
-            from lib.image_provider import ImageProvider, register_provider
+            from lib.io.image_provider import ImageProvider, register_provider
 
             @register_provider
             class BetaProvider(ImageProvider):

@@ -22,7 +22,7 @@ from lib.content_validator import validate_content, emit_defects_and_abort_messa
 from lib.slot_budget import compute_slot_budgets
 from lib.pipeline import compile_slide
 from lib.defects import fatal_kinds, format_defect
-from lib.image_provider import discover_providers, get_provider
+from lib.io.image_provider import discover_providers, get_provider
 
 
 def _bundled_assets() -> Path:

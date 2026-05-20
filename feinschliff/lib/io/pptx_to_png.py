@@ -18,7 +18,7 @@ slide (e.g. ``wireframe-sheet --overlay-pptx``) will emit a warning.
 
 Usage::
 
-    from lib.dsl.pptx_to_png import pptx_to_pngs_b64, slide_to_b64
+    from lib.io.pptx_to_png import pptx_to_pngs_b64, slide_to_b64
 
     b64_list = pptx_to_pngs_b64(Path("deck.pptx"))   # one entry per slide exported
     b64 = slide_to_b64(Path("deck.pptx"), slide_index=0)

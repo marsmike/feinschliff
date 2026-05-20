@@ -1,4 +1,4 @@
-"""Tests for the built-in :mod:`lib.providers.unsplash` reference impl.
+"""Tests for the built-in :mod:`lib.io.providers.unsplash` reference impl.
 
 Mirrors :mod:`tests.test_image_provider` for registry isolation. Mocks
 ``urllib.request.urlopen`` (the implementation deliberately avoids
@@ -15,8 +15,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from lib import image_provider
-from lib.image_provider import ImageHit
+from lib.io import image_provider
+from lib.io.image_provider import ImageHit
 
 
 @pytest.fixture(autouse=True)
@@ -50,7 +50,7 @@ def _reset_stub_warning(monkeypatch):
     """Reset the module-level "warned once" flag so each test starts fresh."""
     # Import here so the module exists for the patch — the test of the
     # module's mere import side-effects must still see a virgin registry.
-    from lib.providers import unsplash as unsplash_mod
+    from lib.io.providers import unsplash as unsplash_mod
 
     monkeypatch.setattr(unsplash_mod, "_STUB_WARNED", False)
     yield
@@ -99,7 +99,7 @@ def _fake_response(payload: dict, status: int = 200):
 
 
 def test_instantiation_without_key_is_stub():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({})
     assert p._stub is True
@@ -108,7 +108,7 @@ def test_instantiation_without_key_is_stub():
 
 def test_instantiation_with_env_key_is_not_stub(monkeypatch):
     monkeypatch.setenv("UNSPLASH_ACCESS_KEY", "env-key-xyz")
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({})
     assert p._stub is False
@@ -116,7 +116,7 @@ def test_instantiation_with_env_key_is_not_stub(monkeypatch):
 
 
 def test_instantiation_with_config_key_is_not_stub():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "config-key-abc"})
     assert p._stub is False
@@ -125,14 +125,14 @@ def test_instantiation_with_config_key_is_not_stub():
 
 def test_config_key_takes_precedence_over_env(monkeypatch):
     monkeypatch.setenv("UNSPLASH_ACCESS_KEY", "env-key-xyz")
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "config-wins"})
     assert p.access_key == "config-wins"
 
 
 def test_stub_search_returns_empty_and_warns_once():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p1 = UnsplashProvider({})
     p2 = UnsplashProvider({})
@@ -165,11 +165,11 @@ def test_stub_search_returns_empty_and_warns_once():
 
 
 def test_search_with_key_returns_parsed_image_hit():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
-    with patch("lib.providers.unsplash.urlopen") as mock_urlopen:
+    with patch("lib.io.providers.unsplash.urlopen") as mock_urlopen:
         mock_urlopen.return_value = _fake_response(_FIXTURE_RESPONSE)
         hits = p.search("sunny kitchen", count=1)
 
@@ -195,11 +195,11 @@ def test_search_with_key_returns_parsed_image_hit():
 
 def test_search_url_encodes_special_characters():
     """Query with accents and ampersands must be percent-encoded into the URL."""
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
-    with patch("lib.providers.unsplash.urlopen") as mock_urlopen:
+    with patch("lib.io.providers.unsplash.urlopen") as mock_urlopen:
         mock_urlopen.return_value = _fake_response({"results": []})
         p.search("café & küche")
 
@@ -211,11 +211,11 @@ def test_search_url_encodes_special_characters():
 
 
 def test_search_handles_empty_results():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
-    with patch("lib.providers.unsplash.urlopen") as mock_urlopen:
+    with patch("lib.io.providers.unsplash.urlopen") as mock_urlopen:
         mock_urlopen.return_value = _fake_response({"results": [], "total": 0})
         hits = p.search("nothing-matches")
 
@@ -228,7 +228,7 @@ def test_search_handles_empty_results():
 
 
 def test_search_retries_then_gives_up_on_429():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
@@ -241,8 +241,8 @@ def test_search_retries_then_gives_up_on_429():
         fp=io.BytesIO(b""),
     )
 
-    with patch("lib.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep") as mock_sleep:
+    with patch("lib.io.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
+            patch("lib.io.providers.unsplash.time.sleep") as mock_sleep:
         hits = p.search("kitchen")
 
     assert hits == []
@@ -253,7 +253,7 @@ def test_search_retries_then_gives_up_on_429():
 
 
 def test_search_retries_then_gives_up_on_500():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
     err = urllib.error.HTTPError(
@@ -264,8 +264,8 @@ def test_search_retries_then_gives_up_on_500():
         fp=io.BytesIO(b""),
     )
 
-    with patch("lib.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep"):
+    with patch("lib.io.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert hits == []
@@ -274,7 +274,7 @@ def test_search_retries_then_gives_up_on_500():
 
 def test_search_does_not_retry_on_401():
     """4xx that isn't 429 is a permanent auth/config error — don't retry."""
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "bad-key"})
     err = urllib.error.HTTPError(
@@ -285,8 +285,8 @@ def test_search_does_not_retry_on_401():
         fp=io.BytesIO(b""),
     )
 
-    with patch("lib.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep"):
+    with patch("lib.io.providers.unsplash.urlopen", side_effect=err) as mock_urlopen, \
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert hits == []
@@ -295,15 +295,15 @@ def test_search_does_not_retry_on_401():
 
 
 def test_search_handles_socket_timeout():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
     with patch(
-        "lib.providers.unsplash.urlopen",
+        "lib.io.providers.unsplash.urlopen",
         side_effect=socket.timeout("timed out"),
     ) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep"):
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert hits == []
@@ -312,15 +312,15 @@ def test_search_handles_socket_timeout():
 
 
 def test_search_handles_url_error():
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
     with patch(
-        "lib.providers.unsplash.urlopen",
+        "lib.io.providers.unsplash.urlopen",
         side_effect=urllib.error.URLError("network unreachable"),
     ) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep"):
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert hits == []
@@ -329,7 +329,7 @@ def test_search_handles_url_error():
 
 def test_search_retry_then_success():
     """Transient failure → backoff → success on second attempt."""
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
@@ -342,8 +342,8 @@ def test_search_retry_then_success():
     )
 
     side_effects = [err, _fake_response(_FIXTURE_RESPONSE)]
-    with patch("lib.providers.unsplash.urlopen", side_effect=side_effects) as mock_urlopen, \
-            patch("lib.providers.unsplash.time.sleep"):
+    with patch("lib.io.providers.unsplash.urlopen", side_effect=side_effects) as mock_urlopen, \
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert len(hits) == 1
@@ -353,7 +353,7 @@ def test_search_retry_then_success():
 
 def test_search_handles_malformed_json():
     """Server returned 200 but the body isn't valid JSON — degrade gracefully."""
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     p = UnsplashProvider({"access_key": "test-key"})
 
@@ -363,8 +363,8 @@ def test_search_handles_malformed_json():
     cm.__enter__.return_value = fake
     cm.__exit__.return_value = False
 
-    with patch("lib.providers.unsplash.urlopen", return_value=cm), \
-            patch("lib.providers.unsplash.time.sleep"):
+    with patch("lib.io.providers.unsplash.urlopen", return_value=cm), \
+            patch("lib.io.providers.unsplash.time.sleep"):
         hits = p.search("kitchen")
 
     assert hits == []
@@ -376,19 +376,19 @@ def test_search_handles_malformed_json():
 
 
 def test_unsplash_self_registers_via_package_import(monkeypatch):
-    """Importing :mod:`lib.providers` should register the built-in."""
+    """Importing :mod:`lib.io.providers` should register the built-in."""
     # Drop the package out of sys.modules so the import re-executes
     # against the freshly emptied registry from the autouse fixture.
     import sys
     for mod_name in list(sys.modules):
-        if mod_name == "lib.providers" or mod_name.startswith("lib.providers."):
+        if mod_name == "lib.io.providers" or mod_name.startswith("lib.io.providers."):
             sys.modules.pop(mod_name, None)
 
-    import lib.providers  # noqa: F401 — side-effect import
+    import lib.io.providers  # noqa: F401 — side-effect import
 
     assert "unsplash" in image_provider._REGISTRY
     instance = image_provider.get_provider("unsplash", {})
-    from lib.providers.unsplash import UnsplashProvider
+    from lib.io.providers.unsplash import UnsplashProvider
 
     assert isinstance(instance, UnsplashProvider)
 
@@ -406,7 +406,7 @@ def test_discover_providers_finds_bundled_unsplash(monkeypatch, tmp_path):
     real_bundled = Path(image_provider.__file__).resolve().parent / "providers"
     monkeypatch.setattr(image_provider, "_bundled_providers_root", lambda: real_bundled)
 
-    # Drop any cached imports of lib.providers.* so the side-effect
+    # Drop any cached imports of lib.io.providers.* so the side-effect
     # import inside discover_providers re-executes.
     import sys
     for mod_name in list(sys.modules):

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import yaml
 
-from lib.soffice import pptx_to_png
+from lib.io.soffice import pptx_to_png
 from lib.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,

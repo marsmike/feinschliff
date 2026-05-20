@@ -27,10 +27,10 @@ from unittest.mock import MagicMock
 import pytest
 from PIL import Image
 
-from lib import image_provider
+from lib.io import image_provider
 from lib.dsl.parser import parse_lines
 from lib.dsl.pptx_emit import DSLError, build_presentation
-from lib.image_provider import ImageHit, ImageProvider
+from lib.io.image_provider import ImageHit, ImageProvider
 from tests.test_emitter_restraint import _minimal_tokens
 
 
