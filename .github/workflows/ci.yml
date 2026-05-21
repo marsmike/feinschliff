@@ -43,7 +43,10 @@ jobs:
           echo "✓ All commits have DCO sign-off."
 
   feinschliff:
-    name: feinschliff tests
+    # Job display name kept as "feinschliff lib tests" because main's
+    # branch protection lists it as a required status check; renaming it
+    # would leave PRs Expected — Waiting for status to be reported forever.
+    name: feinschliff lib tests
     runs-on: ubuntu-latest
     env:
       # Surface feinschliff-extra brand packs to discover_brands(). Several
