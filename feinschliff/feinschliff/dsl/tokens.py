@@ -393,7 +393,25 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
             break
         parent = brands_dir / parent_name
         if not parent.is_dir():
-            raise FileNotFoundError(f"brand '{cur.name}' extends '{parent_name}' but not found in {brands_dir}")
+            # Cross-plugin extends: a brand in feinschliff-extra/brands/
+            # commonly extends `feinschliff` which lives in the core plugin's
+            # brands/ — a different brands_dir. Walk the same discovery
+            # sources brand_discovery scans, but stop at the path layer so
+            # we don't re-enter load_tokens (discover_brands() calls
+            # load_tokens for image_provider resolution → recursion).
+            from feinschliff.brand_discovery import _discovery_sources
+            parent = None
+            for _src, root in _discovery_sources():
+                cand = root / parent_name
+                if cand.is_dir():
+                    parent = cand
+                    brands_dir = root
+                    break
+            if parent is None:
+                raise FileNotFoundError(
+                    f"brand '{cur.name}' extends '{parent_name}' but not "
+                    f"found in {brands_dir} or via plugin discovery"
+                )
         cur = parent
 
     merged: dict[str, Any] = {}

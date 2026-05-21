@@ -236,9 +236,22 @@ def load_compounds_for_brand(
             break
         parent = brands_dir / parent_name
         if not parent.is_dir():
-            raise FileNotFoundError(
-                f"brand '{cur.name}' extends '{parent_name}' but not found in {brands_dir}"
-            )
+            # Cross-plugin extends — same fallback as load_tokens.
+            # Walk discovery sources directly (not discover_brands()) to
+            # avoid the tokens ↔ brand_discovery recursion path.
+            from feinschliff.brand_discovery import _discovery_sources
+            parent = None
+            for _src, root in _discovery_sources():
+                cand = root / parent_name
+                if cand.is_dir():
+                    parent = cand
+                    brands_dir = root
+                    break
+            if parent is None:
+                raise FileNotFoundError(
+                    f"brand '{cur.name}' extends '{parent_name}' but not "
+                    f"found in {brands_dir} or via plugin discovery"
+                )
         cur = parent
 
     # std first, then chain from root-of-chain → child (child wins on name).
