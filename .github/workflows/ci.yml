@@ -42,15 +42,15 @@ jobs:
           fi
           echo "✓ All commits have DCO sign-off."
 
-  feinschliff-lib:
-    name: feinschliff lib tests
+  feinschliff:
+    name: feinschliff tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Install feinschliff lib deps
+      - name: Install feinschliff deps
         working-directory: feinschliff
         run: uv sync --group dev
       - name: Lint (ruff)
@@ -59,7 +59,7 @@ jobs:
       - name: Run tests
         working-directory: feinschliff
         # Skip legacy test_skill_validator: pre-existing failures unrelated to
-        # PR-1 lib code; re-include once the legacy skills are reformatted.
+        # the lib code; re-include once the legacy skills are reformatted.
         # Skip render-dependent tests: CI doesn't install libcairo / playwright,
         # so the render-backend probe in these tests would auto-skip anyway —
         # ignoring at the file/test level is faster and keeps the report focused
@@ -69,10 +69,35 @@ jobs:
             --ignore=tests/test_skill_validator.py \
             --ignore=tests/test_layout_excalidraw_diagram.py \
             --ignore=tests/test_layout_svg_infographic.py \
-            --ignore=tests/test_examples_refurbish.py \
             --ignore=tests/test_diagrams_render.py \
             --ignore=tests/test_excalidraw_render.py \
             --ignore=tests/test_excalidraw_vocabulary_parity.py \
-            --ignore=tests/test_refurbish_polish_cli.py \
             --deselect tests/test_examples_decks.py::test_deck_builds
+
+  feinschliff-builder:
+    name: feinschliff-builder tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install feinschliff-builder deps
+        working-directory: feinschliff-builder
+        run: uv sync --group dev
+      - name: Lint (ruff)
+        working-directory: feinschliff-builder
+        run: uv run ruff check .
+      - name: Run tests
+        working-directory: feinschliff-builder
+        # Skip render/refurbish/chrome-dependent tests: CI doesn't install
+        # libcairo / playwright / chromium, so these auto-skip anyway —
+        # explicit ignore is faster and keeps the report focused on
+        # structural coverage.
+        run: |
+          uv run pytest -q \
+            --ignore=tests/test_examples_refurbish.py \
+            --ignore=tests/test_refurbish_polish_cli.py \
+            --ignore=tests/test_render_brand_atlas_cache.py \
+            --ignore=tests/test_verify_chrome.py
 

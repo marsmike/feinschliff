@@ -35,6 +35,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from feinschliff.dsl.ast import Document, Element
 
 
 # ---------------------------------------------------------------------------
@@ -456,7 +460,7 @@ def parse_document(text: str, *, source: str | None = None) -> "Document":
     Document
         A typed :class:`~feinschliff.dsl.ast.Document` wrapping the parsed nodes.
     """
-    from feinschliff.dsl.ast import Document, Slide, Element, ElementKind
+    from feinschliff.dsl.ast import Document, Slide
 
     nodes, _compounds = parse_lines(text, source=source)
 

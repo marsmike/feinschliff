@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.brand import BrandPack, FoundLayout, FoundCompound
+from feinschliff.brand import BrandPack
 
 
 # ---------------------------------------------------------------------------

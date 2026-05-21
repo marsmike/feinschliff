@@ -15,7 +15,6 @@ import yaml
 
 from feinschliff.deck.orchestrate import (
     signals_from_slide as _signals_from_slide_fn,
-    resolve_layout_path as _resolve_layout_path_fn,
     slot_budgets_for_layout as _slot_budgets_for_layout_fn,
 )
 from feinschliff.pipeline_log import (

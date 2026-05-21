@@ -11,7 +11,7 @@ from feinschliff.dsl.parser import (
     parse_wh,
     parse_xy,
 )
-from feinschliff.dsl.ast import Document, Element, ElementKind, Slide
+from feinschliff.dsl.ast import Document, ElementKind, Slide
 
 
 def test_parses_minimal_text_line():

@@ -48,7 +48,6 @@ def _make_plan(layout_rel: str, content: dict, brand: str = "feinschliff") -> di
 
 def test_static_verify_importable():
     """feinschliff_builder.verify.static must be importable and export static_verify."""
-    from feinschliff_builder.verify.static import static_verify  # noqa: F401
     assert callable(static_verify)
 
 
@@ -70,7 +69,6 @@ def test_clean_plan_returns_no_defects():
     pgmeta, title, footnote, footer_left, footer_right.  Filling all of them
     should yield zero defects.
     """
-    from feinschliff_builder.verify.static import static_verify
 
     plan = _make_plan(
         "end.slide.dsl",
@@ -96,7 +94,6 @@ def test_overflow_plan_returns_slot_overflow_defect():
     Uses executive-summary where action_title has max_lines=1, max_chars=84.
     A 150-char title must produce a SLOT_OVERFLOW defect.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     # action_title budget: max_lines=1, chars_per_line=84.
@@ -133,7 +130,6 @@ def test_empty_placeholder_plan_returns_defect():
     Uses end.slide.dsl: title is an interpolated slot.  Supplying an empty
     string triggers the EMPTY_PLACEHOLDER defect.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     plan = _make_plan(
@@ -156,7 +152,6 @@ def test_empty_placeholder_plan_returns_defect():
 
 def test_missing_slot_fires_empty_placeholder():
     """Completely absent required slot (not in content dict) also fires."""
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     # title not provided at all in end.slide.dsl
@@ -187,7 +182,6 @@ def test_combined_overflow_and_empty_placeholder():
     - action_title with 150 chars overflows the max_chars=84 budget.
     - summary="" triggers EMPTY_PLACEHOLDER.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     long_title = (
@@ -236,7 +230,6 @@ def test_multi_slide_slide_index_is_correct():
     Slide 1 is clean; slide 2 has an empty title → EMPTY_PLACEHOLDER on
     slide 2 only.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     plan = {
@@ -281,7 +274,6 @@ def test_multi_slide_slide_index_is_correct():
 
 def test_defects_are_warn_severity():
     """Static verify defects must be WARN, not FATAL."""
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import Severity
 
     plan = _make_plan(
@@ -393,7 +385,6 @@ def test_plan_dir_resolves_layout_relative_to_plan_file(tmp_path):
     pass), but here we use a layout name that does NOT exist under REPO_ROOT to
     prove the plan_dir path is actually taken.
     """
-    from feinschliff_builder.verify.static import static_verify
 
     # Create a subdirectory that mimics `layouts/` next to the plan
     layouts_dir = tmp_path / "layouts"
@@ -442,7 +433,8 @@ def test_validate_returns_diagnostic_bag():
     """validate() returns a DiagnosticBag, not a list."""
     name = _layout_name(LAYOUTS_DIR)
     if not name:
-        import pytest; pytest.skip("no bundled layouts")
+        import pytest
+        pytest.skip("no bundled layouts")
     plan = _make_plan(f"layouts/{name}.slide.dsl",
                       {"title": "T", "eyebrow": "E", "body": "B"})
     result = validate(plan, BRAND_PACK, plan_dir=REPO_ROOT)
@@ -453,7 +445,8 @@ def test_validate_accumulates_into_existing_bag():
     """When an existing bag is supplied, validate appends to it and returns it."""
     name = _layout_name(LAYOUTS_DIR)
     if not name:
-        import pytest; pytest.skip("no bundled layouts")
+        import pytest
+        pytest.skip("no bundled layouts")
     plan = _make_plan(f"layouts/{name}.slide.dsl", {"title": "T"})
     existing = DiagnosticBag()
     result = validate(plan, BRAND_PACK, existing, plan_dir=REPO_ROOT)
@@ -464,7 +457,8 @@ def test_validate_defects_have_valid_severity():
     """All defects in the bag have a recognised Severity value."""
     name = _layout_name(LAYOUTS_DIR)
     if not name:
-        import pytest; pytest.skip("no bundled layouts")
+        import pytest
+        pytest.skip("no bundled layouts")
     plan = _make_plan(f"layouts/{name}.slide.dsl", {})
     bag = validate(plan, BRAND_PACK, plan_dir=REPO_ROOT)
     assert isinstance(bag, DiagnosticBag)
@@ -482,7 +476,6 @@ def test_slot_overflow_meta_contains_budget_and_over_by():
     Task B1 (shorten_slot apply-fix) relies on these fields to compute the
     target character count for in-place trimming.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     long_title = (
@@ -568,7 +561,6 @@ def test_deck_build_strict_static_exits_nonzero_on_bad_plan(tmp_path):
 
 def test_optional_slots_dont_fire_empty_placeholder():
     """Well-known optional slots like 'eyebrow', 'so_what', 'pgmeta' must not fire."""
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     plan = _make_plan(
@@ -604,7 +596,6 @@ def test_structural_array_slot_fires_empty_placeholder():
     this causes a render crash.  The structural-array heuristic must flag
     bars[].width* as a required slot so the defect surfaces pre-render.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     plan = _make_plan(
@@ -632,7 +623,6 @@ def test_content_flexible_array_slot_does_not_fire():
     compound call (not in rect/line pos_args), so the array is content-flexible.
     An author who leaves items[] empty gets blank agenda boxes — not a crash.
     """
-    from feinschliff_builder.verify.static import static_verify
     from feinschliff.defects import DefectKind
 
     plan = _make_plan(
