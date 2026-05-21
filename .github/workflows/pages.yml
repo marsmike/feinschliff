@@ -22,11 +22,13 @@ jobs:
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Install feinschliff lib deps
-        working-directory: feinschliff
-        run: uv sync
+      - name: Install workspace (all packages)
+        # The gallery script lives in feinschliff-builder/scripts/ post-split
+        # and reads brand packs from both feinschliff/ and feinschliff-extra/,
+        # so install the whole workspace.
+        run: uv sync --all-packages
       - name: Build brand-gallery site
-        working-directory: feinschliff
+        working-directory: feinschliff-builder
         run: uv run python scripts/build_brand_gallery_site.py
       - name: Add root redirect to /brands/
         run: |

@@ -22,11 +22,25 @@ from html import escape
 from pathlib import Path
 from textwrap import dedent
 
-REPO = Path(__file__).resolve().parent.parent
-BRANDS_DIR = REPO / "brands"
-SHARED_LAYOUTS = REPO / "layouts"
-DOCS = REPO.parent / "docs" / "brands"  # /docs/brands at repo root
-PREVIEWS = REPO.parent / "docs" / "brand-previews"
+REPO = Path(__file__).resolve().parent.parent  # feinschliff-builder/
+WORKSPACE = REPO.parent                          # workspace root (post-split)
+# Brands are split across feinschliff/ (core: 3 brands) and
+# feinschliff-extra/ (10 brands) since v0.2.0. Index by name so the
+# rest of the script can look up a brand root without caring which
+# plugin ships it.
+BRAND_ROOTS: dict[str, Path] = {}
+for _plugin_brands in (
+    WORKSPACE / "feinschliff" / "brands",
+    WORKSPACE / "feinschliff-extra" / "brands",
+):
+    if _plugin_brands.is_dir():
+        for _d in sorted(_plugin_brands.iterdir()):
+            if _d.is_dir() and (_d / "tokens.json").is_file():
+                BRAND_ROOTS[_d.name] = _d
+# Shared toolkit layouts live with the core plugin.
+SHARED_LAYOUTS = WORKSPACE / "feinschliff" / "layouts"
+DOCS = WORKSPACE / "docs" / "brands"
+PREVIEWS = WORKSPACE / "docs" / "brand-previews"
 R2_ASSET_BASE = "https://assets.marsmike.com/feinschliff/brand-previews"
 LOCAL_ASSET_BASE = "../brand-previews"
 ASSET_BASE = R2_ASSET_BASE  # overridden in main() when --local is passed
@@ -133,7 +147,7 @@ def discover_layouts(brand: str) -> list[dict]:
     seen: dict[str, Path] = {}
     for dsl in sorted(SHARED_LAYOUTS.glob("*.slide.dsl")):
         seen[dsl.stem.removesuffix(".slide")] = dsl
-    brand_layouts = BRANDS_DIR / brand / "layouts"
+    brand_layouts = BRAND_ROOTS[brand] / "layouts"
     if brand_layouts.is_dir():
         for dsl in sorted(brand_layouts.glob("*.slide.dsl")):
             seen[dsl.stem.removesuffix(".slide")] = dsl
@@ -149,7 +163,7 @@ def discover_layouts(brand: str) -> list[dict]:
 
 
 def brand_meta(brand: str) -> dict:
-    root = BRANDS_DIR / brand
+    root = BRAND_ROOTS[brand]
     design = parse_design_md(root / "DESIGN.md")
     return {
         "id": brand,
@@ -571,7 +585,7 @@ def main() -> int:
         ASSET_BASE = LOCAL_ASSET_BASE
 
     DOCS.mkdir(parents=True, exist_ok=True)
-    brand_ids = sorted(b.name for b in BRANDS_DIR.iterdir() if b.is_dir())
+    brand_ids = sorted(BRAND_ROOTS)
     brands = [brand_meta(bid) for bid in brand_ids]
 
     light = [b for b in brands if not b["is_dark"]]
