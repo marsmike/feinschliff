@@ -45,14 +45,23 @@ jobs:
   feinschliff:
     name: feinschliff tests
     runs-on: ubuntu-latest
+    env:
+      # Surface feinschliff-extra brand packs to discover_brands(). Several
+      # cross-plugin tests reference brand names that live only in the
+      # extra plugin (catppuccin, nord, gruvbox, feinschliff-dark, …) —
+      # without this they fail with "brand not found".
+      FEINSCHLIFF_BRAND_PATH: ${{ github.workspace }}/feinschliff-extra/brands
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Install feinschliff deps
-        working-directory: feinschliff
-        run: uv sync --group dev
+      - name: Install workspace (all packages + dev groups)
+        # Both packages are needed: a few core tests exercise the
+        # integrated ship pipeline (build → verify-quality), which calls
+        # into feinschliff-builder. Single sync from the workspace root
+        # keeps lockfile resolution consistent across jobs.
+        run: uv sync --all-packages --all-groups
       - name: Lint (ruff)
         working-directory: feinschliff
         run: uv run ruff check .
@@ -77,14 +86,15 @@ jobs:
   feinschliff-builder:
     name: feinschliff-builder tests
     runs-on: ubuntu-latest
+    env:
+      FEINSCHLIFF_BRAND_PATH: ${{ github.workspace }}/feinschliff-extra/brands
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
-      - name: Install feinschliff-builder deps
-        working-directory: feinschliff-builder
-        run: uv sync --group dev
+      - name: Install workspace (all packages + dev groups)
+        run: uv sync --all-packages --all-groups
       - name: Lint (ruff)
         working-directory: feinschliff-builder
         run: uv run ruff check .
