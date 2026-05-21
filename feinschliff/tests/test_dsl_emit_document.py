@@ -1,14 +1,13 @@
 """Tests for emit_pptx_from_document — typed Document → .pptx entry point."""
 from __future__ import annotations
 
-import json
 import zipfile
 from pathlib import Path
 
 import pytest
 
 from feinschliff.brand import BrandPack
-from feinschliff.dsl.ast import Document, Element, ElementKind, Slide
+from feinschliff.dsl.ast import Document
 from feinschliff.dsl.parser import parse_document
 from feinschliff.dsl.pptx_emit import emit_pptx_from_document
 

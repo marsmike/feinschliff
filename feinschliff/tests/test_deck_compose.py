@@ -8,7 +8,7 @@ import pytest
 
 from feinschliff.brand import BrandPack
 from feinschliff.deck.compose import Deck
-from feinschliff.dsl.ast import Document, Element, ElementKind, Slide
+from feinschliff.dsl.ast import Document
 from feinschliff.dsl.parser import parse_document
 
 
@@ -96,43 +96,14 @@ def test_build_creates_parent_directories(tmp_path):
 
 
 def test_build_multi_slide_deck(tmp_path):
-    """A document with multiple canvas blocks produces a multi-slide PPTX."""
+    """Deck.build doesn't crash on the minimal single-slide fixture.
+
+    The original intent was a true multi-slide build using a ``---``
+    separator, but parse_document doesn't yet recognise that separator.
+    Restore the multi-slide construction once parse_document handles it.
+    """
     pack = _make_pack(tmp_path)
-    dsl = (
-        "canvas 1920x1080\nrect 0,0 1920x1080 fill:#ff0000\n"
-        "---\n"
-        "canvas 1920x1080\nrect 0,0 1920x1080 fill:#0000ff\n"
-    )
-    try:
-        doc = parse_document(dsl)
-    except Exception:
-        # If the DSL doesn't support multi-slide via "---" separator,
-        # just use a two-slide Document built directly.
-        from pptx import Presentation
-        doc = Document(slides=[
-            Slide(
-                layout="",
-                elements=[
-                    Element(
-                        kind=ElementKind.SHAPE,
-                        props={"x": 0, "y": 0, "w": 1920, "h": 1080,
-                               "fill": "#ff0000"},
-                    )
-                ],
-            ),
-            Slide(
-                layout="",
-                elements=[
-                    Element(
-                        kind=ElementKind.SHAPE,
-                        props={"x": 0, "y": 0, "w": 1920, "h": 1080,
-                               "fill": "#0000ff"},
-                    )
-                ],
-            ),
-        ])
     out = tmp_path / "multi.pptx"
-    # Just verify no crash for now; slide count may vary by DSL parsing.
     Deck(brand=pack, document=_minimal_doc()).build(out)
     assert out.is_file()
 

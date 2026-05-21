@@ -4,10 +4,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
 
 from feinschliff.brand import BrandPack
-from feinschliff.dsl.ast import Document, Element, ElementKind, Slide
+from feinschliff.dsl.ast import Document, ElementKind, Slide
 from feinschliff.dsl.expander import expand_document
 from feinschliff.dsl.parser import parse_document
 

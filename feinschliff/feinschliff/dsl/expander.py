@@ -123,7 +123,7 @@ def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
         A new Document with compound-call Elements replaced by their
         expanded primitive children.
     """
-    from feinschliff.dsl.ast import Document, Slide, Element, ElementKind
+    from feinschliff.dsl.ast import Document, Slide
 
     std_dir = Path(__file__).resolve().parents[2] / "compounds"
     compounds = load_compounds_for_brand(pack.root, std_dir=std_dir)

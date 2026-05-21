@@ -11,7 +11,6 @@ from feinschliff.diagrams.renderer import (
     PlaywrightRenderer,
     Renderer,
     RoughRenderer,
-    _REGISTRY,
     choose_renderer,
     register_renderer,
 )

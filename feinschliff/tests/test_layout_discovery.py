@@ -1,7 +1,6 @@
 """Tests for lib.layout_discovery — mirrors test_brand_discovery.py structure."""
 from pathlib import Path
 
-import pytest
 
 from feinschliff.layout_discovery import (
     LayoutSource,
