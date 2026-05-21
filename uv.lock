@@ -152,7 +152,7 @@ wheels = [
 
 [[package]]
 name = "feinschliff"
-version = "0.3.0"
+version = "0.2.0"
 source = { editable = "feinschliff" }
 dependencies = [
     { name = "cairosvg" },
@@ -193,7 +193,7 @@ dev = [
 
 [[package]]
 name = "feinschliff-builder"
-version = "0.3.0"
+version = "0.2.0"
 source = { editable = "feinschliff-builder" }
 dependencies = [
     { name = "feinschliff" },
