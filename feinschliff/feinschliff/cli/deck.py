@@ -38,6 +38,7 @@ Plan schema (build):
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 import tempfile
@@ -47,9 +48,6 @@ import yaml
 
 from feinschliff.deck.orchestrate import (
     patch_set_hash as _patch_set_hash_fn,
-    signals_from_slide as _signals_from_slide_fn,
-    resolve_layout_path as _resolve_layout_path_fn,
-    slot_budgets_for_layout as _slot_budgets_for_layout_fn,
     build_primitives_for_layout as _build_primitives_for_layout_fn,
     build_refurbished_deck as _build_refurbished_deck_fn,
 )
@@ -85,9 +83,7 @@ except ImportError:
     write_storyline_report = None  # type: ignore[assignment]
     judge_plan = None  # type: ignore[assignment]
     write_claim_evidence_report = None  # type: ignore[assignment]
-from feinschliff.pipeline_log import (
-    log_event, read_events, render_text_report, summarize,
-)
+from feinschliff.pipeline_log import log_event
 
 
 def _require_builder(feature: str) -> None:
@@ -344,68 +340,11 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     p_plan.set_defaults(func=cmd_storyline)
 
-    # ── Pipeline timing log ─────────────────────────────────────────────
-    p_log = sub.add_parser(
-        "log-event",
-        help="Append one event to the deck's timing.jsonl. Used by the "
-             "skill orchestrator to mark phase transitions (start/end).",
-    )
-    p_log.add_argument("phase", help="Phase name, e.g. 'step:2-plan'.")
-    p_log.add_argument("status", choices=["start", "end", "tick", "fail"],
-                       help="Event status.")
-    p_log.add_argument("--dir", required=True,
-                       help="Deck working directory (timing.jsonl lives here).")
-    p_log.add_argument("--elapsed-ms", type=int, default=None,
-                       help="For 'end' events: elapsed milliseconds.")
-    p_log.add_argument("--agent", default=None,
-                       help="Optional: agent identifier (for parallel fan-out).")
-    p_log.add_argument("--slide", type=int, default=None,
-                       help="Optional: slide index this event refers to.")
-    p_log.add_argument("--note", default=None,
-                       help="Optional one-line note for the event.")
-    p_log.set_defaults(func=cmd_log_event)
-
-    p_timing = sub.add_parser(
-        "timing",
-        help="Print stats from a deck's timing.jsonl — total wall clock, "
-             "per-phase breakdown, and parallelism speedup.",
-    )
-    p_timing.add_argument("dir", help="Deck working directory.")
-    p_timing.add_argument("--format", choices=["text", "json"], default="text",
-                          help="Output format (default text).")
-    p_timing.set_defaults(func=cmd_timing)
-
-    # ── Parallel-generation helpers ─────────────────────────────────────
-    p_skel = sub.add_parser(
-        "plan-skeleton",
-        help="Centrally pick a layout per slide from a content_plan.json "
-             "and emit a skeleton plan.yaml with empty `content:` blocks. "
-             "Fan-out authoring subagents fill the blocks in parallel.",
-    )
-    p_skel.add_argument("content_plan", help="Path to content_plan.json (or .yaml).")
-    p_skel.add_argument("-o", "--output", required=True,
-                        help="Output path for the skeleton plan.yaml.")
-    p_skel.add_argument("--brand", default=None,
-                        help="Override brand. Default: from content_plan or 'feinschliff'.")
-    p_skel.add_argument("--out-pptx", default=None,
-                        help="Sets the `out:` field of the skeleton (final pptx path).")
-    p_skel.set_defaults(func=cmd_plan_skeleton)
-
-    p_merge = sub.add_parser(
-        "plan-merge",
-        help="Merge per-slide content chunks (from parallel authoring "
-             "subagents) into the skeleton plan.yaml.",
-    )
-    p_merge.add_argument("skeleton", help="Path to the skeleton plan.yaml.")
-    p_merge.add_argument(
-        "--chunk", action="append", default=[],
-        metavar="PATH",
-        help="One per slide chunk YAML. Each chunk is "
-             "{index: N, content: {...}} OR a list of such entries.",
-    )
-    p_merge.add_argument("-o", "--output", required=True,
-                         help="Output path for the merged plan.yaml.")
-    p_merge.set_defaults(func=cmd_plan_merge)
+    # ── Pipeline timing logs + parallel plan authoring ──────────────────
+    # (`log-event`, `timing`, `plan-skeleton`, `plan-merge`) — extracted
+    # into deck_subcommands/plan_log.py to keep this file from growing.
+    from feinschliff.cli.deck_subcommands import plan_log
+    plan_log.register(sub)
 
     # ── Parallel-verify aspect helpers ──────────────────────────────────
     p_aspect = sub.add_parser(
@@ -514,6 +453,20 @@ def cmd_build(args) -> int:
         print(f"deck: plan not found: {plan_path}", file=sys.stderr)
         return 2
     plan = yaml.safe_load(plan_path.read_text()) or {}
+
+    # Surface the soft degradation: without feinschliff-builder, per-slide
+    # speaker-notes validation is silently skipped. Print a one-line hint so
+    # operators know what's missing instead of finding out via a downstream
+    # surprise. Suppress with FEINSCHLIFF_QUIET_NOTES_BUDGET=1 for CI runs
+    # that intentionally ship without builder.
+    if validate_notes is None and not os.environ.get("FEINSCHLIFF_QUIET_NOTES_BUDGET"):
+        print(
+            "deck build: notes-budget validation skipped "
+            "(feinschliff-builder not installed). "
+            "Install feinschliff-builder to enable per-slide notes lint, "
+            "or set FEINSCHLIFF_QUIET_NOTES_BUDGET=1 to silence this hint.",
+            file=sys.stderr,
+        )
 
     default_brand = plan.get("brand", "feinschliff")
     # Notes lint reads the deck-level verbosity (mirrors design_brief.verbosity)
@@ -1364,238 +1317,6 @@ def cmd_claim_evidence(args) -> int:
     print(f"wrote {out_path} (verdict: {overall}, {judged_count} judged / {slide_count} total)")
 
     return 0 if overall == "clean" else 1
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Timing log + statistics
-# ──────────────────────────────────────────────────────────────────────────────
-
-def cmd_log_event(args) -> int:
-    """`feinschliff deck log-event <phase> <status> --dir <deck-dir>` — used
-    by the skill orchestrator (or any shell script) to append a phase
-    transition marker to the deck's timing.jsonl.
-
-    Returns 0 always — logging failures must never abort the pipeline.
-    """
-    extra: dict = {}
-    if args.agent:
-        extra["agent"] = args.agent
-    if args.slide is not None:
-        extra["slide"] = args.slide
-    if args.note:
-        extra["note"] = args.note
-    log_event(
-        args.dir, args.phase, args.status,
-        elapsed_ms=args.elapsed_ms, **extra,
-    )
-    return 0
-
-
-def cmd_timing(args) -> int:
-    """`feinschliff deck timing <dir>` — render the timing.jsonl as a
-    human-readable phase summary, or emit the structured summary as JSON
-    via `--format json`."""
-    events = read_events(args.dir)
-    if not events:
-        print(f"deck timing: no timing.jsonl found in {args.dir}", file=sys.stderr)
-        return 1
-    summary = summarize(events)
-    if args.format == "json":
-        import json as _json
-        print(_json.dumps({"summary": summary, "events": events},
-                          indent=2, ensure_ascii=False))
-    else:
-        print(render_text_report(events, summary), end="")
-    return 0
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-# Parallel generation — plan-skeleton + plan-merge
-# ──────────────────────────────────────────────────────────────────────────────
-
-def _signals_from_slide(slide: dict) -> dict:
-    """Delegate to feinschliff.deck.orchestrate.signals_from_slide."""
-    return _signals_from_slide_fn(slide)
-
-
-def _resolve_layout_path(brand_root: Path, layout_name: str) -> Path | None:
-    """Delegate to feinschliff.deck.orchestrate.resolve_layout_path."""
-    return _resolve_layout_path_fn(brand_root, layout_name)
-
-
-def _slot_budgets_for_layout(
-    layout_name: str,
-    brand_root: Path,
-    tokens: "Tokens",
-) -> dict[str, dict[str, int]]:
-    """Delegate to feinschliff.deck.orchestrate.slot_budgets_for_layout."""
-    return _slot_budgets_for_layout_fn(layout_name, brand_root, tokens)
-
-
-def cmd_plan_skeleton(args) -> int:
-    """`feinschliff deck plan-skeleton <content_plan>` — centralized layout
-    pick. Reads a content_plan (JSON or YAML) and writes a skeleton
-    plan.yaml: one entry per slide, `layout:` filled, `content: {}` left
-    empty for parallel authoring subagents to fill in.
-
-    Layout selection runs a two-pass planner (`lib.layout_budget`) that
-    re-ranks per-slide picker output with a deck-wide usage budget, so
-    eligible-but-overlooked layouts (e.g. `vertical-bullets`,
-    `funnel`, `pyramid`) surface instead of the same 2-3 winners
-    repeating across the deck.
-
-    Each slide's ``_meta`` block carries a ``slot_budgets`` mapping derived
-    from the picked layout DSL + brand tokens.  Authoring subagents should
-    honour these limits when filling ``content`` slots to avoid
-    ``slot-overflow`` defects at pre-render content-lint time."""
-    import json as _json
-    from feinschliff.layout_budget import plan_deck_layouts
-    from feinschliff.brand_discovery import find_brand
-    from feinschliff.dsl.tokens import load_tokens
-
-    cp_path = Path(args.content_plan).resolve()
-    if not cp_path.is_file():
-        print(f"deck plan-skeleton: not found: {cp_path}", file=sys.stderr)
-        return 2
-    text = cp_path.read_text(encoding="utf-8")
-    plan = (yaml.safe_load(text) if cp_path.suffix in (".yaml", ".yml")
-            else _json.loads(text))
-    if not isinstance(plan, dict) or not isinstance(plan.get("slides"), list):
-        print(f"deck plan-skeleton: {cp_path}: missing `slides` list",
-              file=sys.stderr)
-        return 2
-
-    brand = args.brand or plan.get("brand") or "feinschliff"
-    out_pptx = args.out_pptx or "out/deck.pptx"
-
-    # Resolve brand root + tokens once; reused for every slide's budget calc.
-    try:
-        brand_obj = find_brand(brand)
-        brand_root = brand_obj.root
-        tokens = load_tokens(brand_root)
-    except Exception as exc:  # noqa: BLE001
-        print(
-            f"deck plan-skeleton: could not load brand {brand!r}: {exc}; "
-            "slot_budgets will be empty for all slides",
-            file=sys.stderr,
-        )
-        brand_root = None
-        tokens = None
-
-    signals = [_signals_from_slide(s) for s in plan["slides"]]
-    assignments = plan_deck_layouts(signals)
-
-    skeleton_slides: list[dict] = []
-    for slide, assignment in zip(plan["slides"], assignments):
-        layout = assignment["layout"]
-        if brand_root is not None and tokens is not None:
-            slot_budgets = _slot_budgets_for_layout(layout, brand_root, tokens)
-        else:
-            slot_budgets = {}
-        skeleton_slides.append({
-            "layout": f"layouts/{layout}.slide.dsl",
-            "content": {},  # left empty for the authoring subagent to fill
-            "_meta": {
-                "index": slide.get("index"),
-                "title": slide.get("title")
-                          or slide.get("title_draft")
-                          or "(untitled)",
-                "role": slide.get("role") or slide.get("purpose"),
-                "diagram_kind": slide.get("diagram_kind"),
-                "layout_rationale": assignment["rationale"],
-                "slot_budgets": slot_budgets,
-            },
-        })
-
-    out = {"brand": brand, "out": out_pptx, "slides": skeleton_slides}
-    out_path = Path(args.output).resolve()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        yaml.safe_dump(out, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-    chosen = [a["layout"] for a in assignments]
-    log_event(out_path.parent, "skeleton:write", "tick",
-              slides=len(skeleton_slides), brand=brand,
-              distinct_layouts=len(set(chosen)))
-    print(f"wrote {out_path} ({len(skeleton_slides)} slides, brand={brand})")
-    print(f"layouts ({len(set(chosen))} distinct): {', '.join(chosen)}")
-    return 0
-
-
-def cmd_plan_merge(args) -> int:
-    """`feinschliff deck plan-merge --skeleton X --chunk Y --chunk Z -o W` —
-    merge authored content chunks (from parallel subagents) into the
-    skeleton plan.yaml.
-
-    Each chunk is one of:
-      {index: N, content: {...}}                — single slide
-      [{index: 0, content: {...}}, {index: 1, ...}]  — multiple slides
-      {slides: [...]}                            — plan.yaml-style fragment
-    """
-    skel_path = Path(args.skeleton).resolve()
-    if not skel_path.is_file():
-        print(f"deck plan-merge: skeleton not found: {skel_path}", file=sys.stderr)
-        return 2
-    plan = yaml.safe_load(skel_path.read_text(encoding="utf-8")) or {}
-    slides = plan.get("slides") or []
-    if not slides:
-        print("deck plan-merge: skeleton has no slides", file=sys.stderr)
-        return 2
-
-    merged_count = 0
-    for chunk_path in args.chunk:
-        cp = Path(chunk_path).resolve()
-        if not cp.is_file():
-            print(f"deck plan-merge: chunk not found: {cp}", file=sys.stderr)
-            return 2
-        raw = yaml.safe_load(cp.read_text(encoding="utf-8"))
-        entries: list[dict] = []
-        if isinstance(raw, dict) and isinstance(raw.get("slides"), list):
-            entries = raw["slides"]
-        elif isinstance(raw, list):
-            entries = raw
-        elif isinstance(raw, dict) and "content" in raw:
-            entries = [raw]
-        else:
-            print(f"deck plan-merge: {cp}: unrecognized chunk shape",
-                  file=sys.stderr)
-            return 2
-        for entry in entries:
-            idx = entry.get("index")
-            content = entry.get("content")
-            if idx is None or content is None:
-                continue
-            if not (0 <= idx < len(slides)):
-                print(f"deck plan-merge: chunk index {idx} out of range",
-                      file=sys.stderr)
-                return 2
-            slides[idx]["content"] = content
-            # Optional: chunks may override the layout pick.
-            if "layout" in entry:
-                slides[idx]["layout"] = entry["layout"]
-            merged_count += 1
-
-    # Drop the `_meta` annotations from the skeleton — they were only
-    # there for the authoring subagents.
-    for s in slides:
-        s.pop("_meta", None)
-
-    out_path = Path(args.output).resolve()
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(
-        yaml.safe_dump(plan, sort_keys=False, allow_unicode=True),
-        encoding="utf-8",
-    )
-    empty = [i for i, s in enumerate(slides) if not s.get("content")]
-    log_event(out_path.parent, "plan-merge", "tick",
-              merged=merged_count, total=len(slides), empty=len(empty))
-    print(f"wrote {out_path} ({merged_count} chunk entries → "
-          f"{len(slides)} slides; {len(empty)} still empty)")
-    if empty:
-        print(f"  empty slides: {empty}", file=sys.stderr)
-        return 1
-    return 0
 
 
 # ──────────────────────────────────────────────────────────────────────────────

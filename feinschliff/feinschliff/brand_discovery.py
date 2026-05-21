@@ -3,34 +3,11 @@ from __future__ import annotations
 
 import os
 import warnings
-from dataclasses import dataclass
 from json import JSONDecodeError
 from pathlib import Path
 
 from feinschliff.brand import BrandPack
 from feinschliff.dsl.tokens import load_tokens
-
-
-@dataclass
-class Brand:
-    """Legacy dataclass kept for backwards compatibility.
-
-    New code should use :class:`feinschliff.brand.BrandPack` instead.
-    ``discover_brands`` now returns ``BrandPack`` objects; this class is
-    retained only for external scripts that may still reference it by name.
-    """
-    name: str
-    root: Path
-    tokens_path: Path | None = None
-    design_path: Path | None = None
-    layouts_path: Path | None = None   # brand-specific layouts/ (overrides toolkit)
-    compounds_path: Path | None = None # brand-specific compounds/
-    # `$image_provider`: extends-resolved block from tokens.json. None when
-    # the brand (and none of its parents) declares a provider. `config` is
-    # deep-merged across `extends`; `kind` is fully replaced by the child
-    # if specified (and a `kind` swap drops the parent's `config` since it
-    # was scoped to a different provider).
-    image_provider_config: dict | None = None
 
 
 def _bundled_brands_root() -> Path:
