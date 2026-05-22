@@ -1360,15 +1360,79 @@ def _emit_picture_placeholder(
     ), ctx)
 
 
+def _resolve_provider_image(
+    ctx: EmitContext,
+    query: str,
+    slot_id: str,
+    *,
+    slide,
+    node: DSLNode,
+    pos_xy: str,
+    pos_wh: str,
+) -> "Path | None":
+    """Search the active image provider for *query*, materialise the hit, and
+    return the local Path.  On any failure appends to ctx.missing_assets,
+    emits a placeholder rect, and returns None.  Caller must not emit a
+    further placeholder when None is returned."""
+    hit = _lookup_lock_then_search(ctx, slot_id, query)
+    if hit is None or isinstance(hit, _SearchError):
+        entry: dict = {
+            "kind": "search-error" if isinstance(hit, _SearchError) else "no-hit",
+            "query": query,
+            "slot_id": slot_id,
+            "provider": ctx.image_provider.name,  # type: ignore[union-attr]
+            "line_no": node.line_no,
+            "source": node.source,
+        }
+        if isinstance(hit, _SearchError):
+            entry["exc_type"] = hit.exc_type.__name__
+        ctx.missing_assets.append(entry)
+        _emit_picture_placeholder(slide, pos_xy=pos_xy, pos_wh=pos_wh, node=node, ctx=ctx)
+        return None
+    cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
+    if cache_dir is None:
+        cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
+        _THROWAWAY_CACHE_DIRS.append(cache_dir)
+        _register_throwaway_cache_cleanup()
+        warnings.warn(
+            "EmitContext.deck_dir is unset; HTTP image materialise will "
+            "use a throwaway tempdir cache (no rebuild reuse). Wire "
+            "deck_dir on the EmitContext (or pass it to "
+            "build_presentation/build_multi_slide) to persist cached "
+            "downloads in <deck_dir>/.cache/.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+    materialised, fetch_err = _materialise(hit, cache_dir)
+    if materialised is None:
+        fail_entry: dict = {
+            "kind": "fetch-failed",
+            "query": query,
+            "slot_id": slot_id,
+            "url": hit.url,
+            "provider": ctx.image_provider.name,  # type: ignore[union-attr]
+            "line_no": node.line_no,
+            "source": node.source,
+        }
+        if fetch_err is not None:
+            fail_entry["error"] = f"{type(fetch_err).__name__}: {fetch_err}"
+        ctx.missing_assets.append(fail_entry)
+        _emit_picture_placeholder(slide, pos_xy=pos_xy, pos_wh=pos_wh, node=node, ctx=ctx)
+        return None
+    return materialised
+
+
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     """picture X,Y WxH path:PATH cover:true
 
     `path` is the resolved image location — either a literal in the layout
     or interpolated from a `{{ slot }}` placeholder by the expander. If
-    `path` is missing, the node is skipped silently. If `path` resolves
-    to a non-existent file, a placeholder rect is emitted so the absence
-    is visible at review time. `cover:true` center-crops the source image
-    to the box aspect ratio (default behaviour is contain).
+    `path` is missing, the node is skipped silently. If `path` does not
+    resolve to a local file but an image provider is active, the value is
+    treated as a provider search query (e.g. Unsplash) so plan authors can
+    write ``image: "regensburg medieval bridge"`` without changing layouts.
+    `cover:true` center-crops the source image to the box aspect ratio
+    (default behaviour is contain).
 
     Diagram-emitted picture nodes (produced by ``expand_diagram_blocks``)
     store geometry in ``kw_args`` (x, y, w, h as ints) and carry a
@@ -1417,59 +1481,11 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 f"(or your `extends` ancestor) so the build can resolve it."
             )
         slot_id = node.label or _slot_id_from_query(query)
-        hit = _lookup_lock_then_search(ctx, slot_id, query)
-        if hit is None or isinstance(hit, _SearchError):
-            entry: dict = {
-                "kind": "search-error" if isinstance(hit, _SearchError) else "no-hit",
-                "query": query,
-                "slot_id": slot_id,
-                "provider": ctx.image_provider.name,
-                "line_no": node.line_no,
-                "source": node.source,
-            }
-            if isinstance(hit, _SearchError):
-                entry["exc_type"] = hit.exc_type.__name__
-            ctx.missing_assets.append(entry)
-            _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
-            return
-        cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
-        if cache_dir is None:
-            # No deck_dir means we can't cache HTTP downloads. Use a
-            # process-temp dir so the build still completes — but warn so
-            # library callers who forgot to wire deck_dir notice the
-            # misconfig (downloads won't be reused across rebuilds).
-            #
-            # Register the dir with the throwaway-cache cleanup so a
-            # long-running library-mode process (many builds, all with
-            # deck_dir=None) doesn't leak disk. The atexit handler runs
-            # once per process and walks the full registry.
-            cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
-            _THROWAWAY_CACHE_DIRS.append(cache_dir)
-            _register_throwaway_cache_cleanup()
-            warnings.warn(
-                "EmitContext.deck_dir is unset; HTTP image materialise will "
-                "use a throwaway tempdir cache (no rebuild reuse). Wire "
-                "deck_dir on the EmitContext (or pass it to "
-                "build_presentation/build_multi_slide) to persist cached "
-                "downloads in <deck_dir>/.cache/.",
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        materialised, fetch_err = _materialise(hit, cache_dir)
+        materialised = _resolve_provider_image(
+            ctx, query, slot_id,
+            slide=slide, node=node, pos_xy=_pos_xy, pos_wh=_pos_wh,
+        )
         if materialised is None:
-            fail_entry: dict = {
-                "kind": "fetch-failed",
-                "query": query,
-                "slot_id": slot_id,
-                "url": hit.url,
-                "provider": ctx.image_provider.name,
-                "line_no": node.line_no,
-                "source": node.source,
-            }
-            if fetch_err is not None:
-                fail_entry["error"] = f"{type(fetch_err).__name__}: {fetch_err}"
-            ctx.missing_assets.append(fail_entry)
-            _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
             return
         path = str(materialised)
 
@@ -1504,15 +1520,29 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         else:
             p = primary
     if not p.is_file():
-        if not optional:
-            ctx.missing_assets.append({
-                "kind": "missing-file",
-                "path": str(p),
-                "line_no": node.line_no,
-                "source": node.source,
-            })
-        _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
-        return
+        # When an image provider is active, treat the unresolved path value as
+        # a search query instead of failing. This lets plan authors write
+        # image: "regensburg aerial" and have it resolve through e.g. Unsplash
+        # without requiring query: in every layout DSL file.
+        if ctx.image_provider:
+            slot_id = node.label or _slot_id_from_query(path)
+            materialised = _resolve_provider_image(
+                ctx, path, slot_id,
+                slide=slide, node=node, pos_xy=_pos_xy, pos_wh=_pos_wh,
+            )
+            if materialised is None:
+                return
+            p = materialised
+        else:
+            if not optional:
+                ctx.missing_assets.append({
+                    "kind": "missing-file",
+                    "path": str(p),
+                    "line_no": node.line_no,
+                    "source": node.source,
+                })
+            _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh, node=node, ctx=ctx)
+            return
 
     cover = node.kw_args.get("cover", "false").lower() == "true"
     treatment = ctx.tokens.picture_treatment
