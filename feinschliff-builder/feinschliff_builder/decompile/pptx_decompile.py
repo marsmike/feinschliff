@@ -376,7 +376,7 @@ def decompile_pptx(pptx_path: Path, brand_pack_dir: Path,
             f"theme {tokens.brand_name}",
             "",
         ]
-        pic_count = 0
+        _pic_counter = [0]
         for shape in slide.shapes:
             x = _scaled(_px(shape.left), scale)
             y = _scaled(_px(shape.top), scale)
@@ -385,7 +385,7 @@ def decompile_pptx(pptx_path: Path, brand_pack_dir: Path,
             line = _emit_one(shape, x, y, w, h,
                              color_index=color_index, style_index=style_index,
                              assets_dir=assets_dir, slide_idx=slide_idx,
-                             pic_idx_ref=lambda inc=False, _c=[pic_count]:
+                             pic_idx_ref=lambda inc=False, _c=_pic_counter:
                                  (_c.__setitem__(0, _c[0] + 1) if inc else _c[0]))
             if line:
                 lines.append(line)
