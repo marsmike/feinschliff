@@ -216,8 +216,8 @@ def _flatten_content_keys(ctx: dict, prefix: str = "") -> dict[str, str]:
     elif isinstance(ctx, list):
         for item in ctx:
             out.update(_flatten_content_keys(item, f"{prefix}[]"))
-    elif isinstance(ctx, str):
-        out[prefix] = ctx
+    elif ctx is not None:
+        out[prefix] = str(ctx)
     return out
 
 

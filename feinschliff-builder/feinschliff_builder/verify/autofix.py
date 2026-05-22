@@ -378,18 +378,18 @@ def _find_smaller_layout(
     if not candidates:
         return None
 
+    try:
+        from feinschliff.layout_discovery import find_layout
+    except ImportError:
+        return None
+
     current_name = _layout_name(current_layout_rel)
     for c in candidates:
         layout_id = c["layout"]
         if layout_id == current_name:
             continue  # same as current
-        # Resolve path
-        rel = f"layouts/{layout_id}.slide.dsl"
-        # Verify the layout file exists (layouts live in the core plugin)
-        _builder_root = Path(__file__).resolve().parents[2]
-        _core_root = _builder_root.parent / "feinschliff"
-        if (_core_root / rel).is_file():
-            return rel
+        if find_layout(layout_id) is not None:
+            return f"layouts/{layout_id}.slide.dsl"
     return None
 
 
@@ -426,19 +426,18 @@ def _find_larger_layout(
     if not candidates:
         return None
 
+    try:
+        from feinschliff.layout_discovery import find_layout
+    except ImportError:
+        return None
+
     current_name = _layout_name(current_layout_rel)
     for c in candidates:
         layout_id = c["layout"]
         if layout_id == current_name:
             continue
-        rel = f"layouts/{layout_id}.slide.dsl"
-        # Layouts live in the core feinschliff plugin, which is siblings to
-        # this builder plugin. Resolve relative to this file's package root.
-        _builder_root = Path(__file__).resolve().parents[2]
-        _core_root = _builder_root.parent / "feinschliff"
-        layout_path = _core_root / rel
-        if layout_path.is_file():
-            return rel
+        if find_layout(layout_id) is not None:
+            return f"layouts/{layout_id}.slide.dsl"
     return None
 
 

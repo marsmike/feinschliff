@@ -139,6 +139,8 @@ def _extract_dominant_colors(img: Image.Image, n: int = 3) -> list[tuple[int, in
     """
     rgb_img = img.convert("RGB")
     total_pixels = rgb_img.width * rgb_img.height
+    if total_pixels == 0:
+        return []
 
     # Quantize to 16 colours and collect (count, palette_index) pairs.
     # PIL getcolors() returns (count, value) tuples — value is the palette

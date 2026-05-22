@@ -419,7 +419,12 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
     for b in reversed(chain):
         tj = b / "tokens.json"
         if tj.is_file():
-            data = json.loads(tj.read_text())
+            try:
+                data = json.loads(tj.read_text())
+            except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                raise ValueError(
+                    f"tokens.json in brand '{b.name}' is not valid JSON: {exc}"
+                ) from exc
             # `$image_provider` semantics: when the child swaps `kind`, the
             # parent's `config` must NOT carry over (it was scoped to a
             # different provider). Drop merged's `config` before deep-merge

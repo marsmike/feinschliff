@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -64,10 +65,17 @@ class VerifyCache:
         self._data[key] = asdict(verdict)
 
     def save(self) -> None:
-        self._path.write_text(
-            json.dumps(self._data, indent=2, ensure_ascii=False),
-            encoding="utf-8",
+        payload = json.dumps(self._data, indent=2, ensure_ascii=False)
+        tmp_fd, tmp_name = tempfile.mkstemp(
+            dir=self._path.parent, prefix=".verify_cache_", suffix=".tmp"
         )
+        try:
+            with open(tmp_fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            Path(tmp_name).replace(self._path)
+        except BaseException:
+            Path(tmp_name).unlink(missing_ok=True)
+            raise
 
     # ------------------------------------------------------------------
     # Internal

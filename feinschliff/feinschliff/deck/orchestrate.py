@@ -315,7 +315,7 @@ def build_refurbished_deck(
             local_compounds = dict(compounds)
             for cd in layout_compounds:
                 local_compounds[cd.name] = cd
-            interp = interpolate_nodes(layout_nodes, entry["content"])
+            interp = interpolate_nodes(layout_nodes, entry.get("content") or {})
             interp = expand_diagram_blocks(
                 interp,
                 brand_dir=brand_dir,

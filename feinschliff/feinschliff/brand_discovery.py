@@ -137,7 +137,7 @@ def discover_brands() -> list[BrandPack]:
             try:
                 resolved = load_tokens(d, brands_dir=root)
                 ip = resolved.raw.get("$image_provider") if isinstance(resolved.raw, dict) else None
-                if isinstance(ip, dict):
+                if isinstance(ip, dict) and "kind" in ip:
                     image_provider_config = ip
             except (OSError, ValueError, JSONDecodeError) as exc:
                 warnings.warn(

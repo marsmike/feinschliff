@@ -496,8 +496,10 @@ def expand_diagram_blocks(
         # body is authored in WxH coords and the renderer rasterizes at WxH.
         # PowerPoint downscales on insert. When absent, the slot IS the canvas
         # (legacy behavior, preserved bit-for-bit).
-        virtual_w: int = n.kw_args.get("virtual_w") or w  # type: ignore[assignment]
-        virtual_h: int = n.kw_args.get("virtual_h") or h  # type: ignore[assignment]
+        _vw = n.kw_args.get("virtual_w")
+        virtual_w: int = _vw if _vw is not None else w  # type: ignore[assignment]
+        _vh = n.kw_args.get("virtual_h")
+        virtual_h: int = _vh if _vh is not None else h  # type: ignore[assignment]
 
         # Resolve body: inline string or external file.
         body: str = n.kw_args.get("body") or ""  # type: ignore[assignment]
