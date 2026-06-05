@@ -28,10 +28,10 @@ def _build_rough_deck(tmp_path: Path) -> Path:
 
 def _require_rendering_backend():
     try:
-        import cairosvg
+        import cairosvg  # noqa: F401
     except (ImportError, OSError) as exc:
         try:
-            from playwright.sync_api import sync_playwright
+            from playwright.sync_api import sync_playwright  # noqa: F401
         except ImportError:
             pytest.skip(f"Neither cairosvg/cairo nor playwright is available: {exc}")
 
