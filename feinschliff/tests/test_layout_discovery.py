@@ -203,7 +203,7 @@ def test_layout_source_dataclass_fields(tmp_path, monkeypatch):
 
 
 def test_multiple_env_paths(tmp_path, monkeypatch):
-    """Colon-separated FEINSCHLIFF_LAYOUT_PATH yields multiple sources."""
+    """Platform-specific path separator-separated FEINSCHLIFF_LAYOUT_PATH yields multiple sources."""
     bundled = tmp_path / "bundled" / "layouts"
     bundled.mkdir(parents=True)
     env_a = tmp_path / "env-a"

@@ -48,9 +48,11 @@ def test_valid_inherited_brand_passes_schema(tmp_path):
         import shutil
         try:
             (combined / "feinschliff").symlink_to(BRANDS_DIR / "feinschliff")
-            (combined / "catppuccin-macchiato").symlink_to(macchiato_dir)
         except OSError:
             shutil.copytree(BRANDS_DIR / "feinschliff", combined / "feinschliff")
+        try:
+            (combined / "catppuccin-macchiato").symlink_to(macchiato_dir)
+        except OSError:
             shutil.copytree(macchiato_dir, combined / "catppuccin-macchiato")
         brands_search = combined
         macchiato_dir = combined / "catppuccin-macchiato"
