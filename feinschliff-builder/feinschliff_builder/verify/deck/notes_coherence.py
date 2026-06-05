@@ -147,7 +147,7 @@ def write_coherence_report(
         parts.append("")
         for s in suggestions:
             parts.append(f"- {s}")
-    path.write_text("\n".join(parts) + "\n")
+    path.write_text("\n".join(parts) + "\n", encoding="utf-8")
 
 
 def slides_from_design_brief(brief: dict) -> list[SlideForCoherence]:

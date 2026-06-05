@@ -69,6 +69,7 @@ def test_plugin_brands_roots_walks_marketplace_layout(tmp_path, monkeypatch):
     oss.mkdir(parents=True)
 
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
 
     from feinschliff.brand_discovery import _plugin_brands_roots
     roots = _plugin_brands_roots()
@@ -84,6 +85,7 @@ def test_plugin_brands_roots_includes_sideload_layout(tmp_path, monkeypatch):
     sideload.mkdir(parents=True)
 
     monkeypatch.setenv("HOME", str(fake_home))
+    monkeypatch.setenv("USERPROFILE", str(fake_home))
 
     from feinschliff.brand_discovery import _plugin_brands_roots
     roots = _plugin_brands_roots()

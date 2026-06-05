@@ -1,5 +1,6 @@
 {
   "name": "feinschliff-builder",
+  "version": "0.2.0",
   "description": "Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). Requires feinschliff.",
   "author": {
     "name": "Mike Mueller",

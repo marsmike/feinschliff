@@ -211,7 +211,8 @@ def test_multiple_env_paths(tmp_path, monkeypatch):
     env_b = tmp_path / "env-b"
     env_b.mkdir(parents=True)
 
-    monkeypatch.setenv("FEINSCHLIFF_LAYOUT_PATH", f"{env_a}:{env_b}")
+    import os
+    monkeypatch.setenv("FEINSCHLIFF_LAYOUT_PATH", f"{env_a}{os.pathsep}{env_b}")
     monkeypatch.setattr("feinschliff.layout_discovery._bundled_layouts_root", lambda: bundled)
     monkeypatch.setattr("feinschliff.layout_discovery._user_layouts_root", lambda: tmp_path / "no-such")
     monkeypatch.setattr("feinschliff.layout_discovery._plugin_layouts_roots", lambda: [])

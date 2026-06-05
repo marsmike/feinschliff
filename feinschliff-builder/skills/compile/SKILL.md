@@ -39,6 +39,6 @@ formats and tuning tips.
 
 - [`techniques/INDEX.md`](references/techniques/INDEX.md) — diagnostic patterns accumulated from prior brand-pack iterations (theme-effect bleed, native-shape preference, source-asset extraction, plateau categories, etc.). Read before scaffolding a new brand pack.
 - [`verification-pipeline.md`](references/verification-pipeline.md) — closed-loop visual-diff workflow: `brand_source_extract` → render → `brand_visual_diff` → `brand_plateau`. Use to iterate a scaffolded brand pack against its source deck.
-- [`../../cli/compile.py`](../../cli/compile.py)
+- [`../../feinschliff_builder/cli/compile.py`](../../feinschliff_builder/cli/compile.py)
 - [`../../scripts/dsl_golden_compare.py`](../../scripts/dsl_golden_compare.py)
-- [`../../references/brand-pack-spec.md`](../../references/brand-pack-spec.md)
+- [`../../../feinschliff/docs/brand-pack-contract.md`](../../../feinschliff/docs/brand-pack-contract.md)

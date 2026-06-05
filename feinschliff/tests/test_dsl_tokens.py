@@ -54,8 +54,13 @@ def test_load_tokens_walks_extends_chain_child_overrides_parent(tmp_path):
     if not (_macchiato_brands / "feinschliff").exists():
         combined = tmp_path / "brands"
         combined.mkdir()
-        (combined / "feinschliff").symlink_to(BRANDS_DIR / "feinschliff")
-        (combined / "catppuccin-macchiato").symlink_to(macchiato_dir)
+        import shutil
+        try:
+            (combined / "feinschliff").symlink_to(BRANDS_DIR / "feinschliff")
+            (combined / "catppuccin-macchiato").symlink_to(macchiato_dir)
+        except OSError:
+            shutil.copytree(BRANDS_DIR / "feinschliff", combined / "feinschliff")
+            shutil.copytree(macchiato_dir, combined / "catppuccin-macchiato")
         brands_search = combined
         macchiato_dir = combined / "catppuccin-macchiato"
     else:

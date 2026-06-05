@@ -61,10 +61,16 @@ def _make_defects_json(tmp_path: Path, defects: list[dict]) -> Path:
 
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     return subprocess.run(
         cmd,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        env=env,
         cwd=FEINSCHLIFF,
     )
 

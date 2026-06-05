@@ -43,13 +43,17 @@ def _run_skeleton(tmp_path: Path, plan: dict | None = None) -> tuple[int, str, s
     cp = tmp_path / "content_plan.json"
     cp.write_text(json.dumps(plan or _CONTENT_PLAN))
     out = tmp_path / "plan.skeleton.yaml"
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     result = subprocess.run(
         [
             sys.executable, "-m", "feinschliff.cli", "deck", "plan-skeleton",
             str(cp),
             "-o", str(out),
         ],
-        capture_output=True, text=True, cwd=FEINSCHLIFF,
+        capture_output=True, text=True, encoding="utf-8", env=env, cwd=FEINSCHLIFF,
     )
     return result.returncode, result.stdout, result.stderr, out
 
@@ -154,8 +158,12 @@ def _run_merge(tmp_path: Path, skel_path: Path, slide_count: int) -> tuple[int, 
         *[arg for f in chunk_files for arg in ("--chunk", f)],
         "-o", str(out),
     ]
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     result = subprocess.run(
-        cmd, capture_output=True, text=True, cwd=FEINSCHLIFF,
+        cmd, capture_output=True, text=True, encoding="utf-8", env=env, cwd=FEINSCHLIFF,
     )
     return result.returncode, result.stdout, result.stderr, out
 
@@ -186,13 +194,17 @@ def test_plan_merge_strips_meta_including_slot_budgets(tmp_path):
 def test_plan_skeleton_missing_plan(tmp_path):
     """plan-skeleton exits non-zero when the content_plan is missing."""
     out = tmp_path / "plan.skeleton.yaml"
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     result = subprocess.run(
         [
             sys.executable, "-m", "feinschliff.cli", "deck", "plan-skeleton",
             str(tmp_path / "nope.json"),
             "-o", str(out),
         ],
-        capture_output=True, text=True, cwd=FEINSCHLIFF,
+        capture_output=True, text=True, encoding="utf-8", env=env, cwd=FEINSCHLIFF,
     )
     assert result.returncode != 0
     assert "not found" in (result.stderr + result.stdout).lower()

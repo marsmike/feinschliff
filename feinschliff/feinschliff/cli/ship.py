@@ -35,7 +35,9 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def _run(argv: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
-    p = subprocess.run(argv, cwd=cwd, capture_output=True, text=True)
+    import os
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
+    p = subprocess.run(argv, cwd=cwd, capture_output=True, encoding="utf-8", env=env)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -100,7 +102,7 @@ def cmd_ship(args) -> int:
         # builder not installed — skip gate gracefully
         report["gates"]["verify-quality"] = {"status": "skipped"}
     else:
-        qr = json.loads(quality_json.read_text()) if quality_json.exists() else {"verdict": "fail"}
+        qr = json.loads(quality_json.read_text(encoding="utf-8")) if quality_json.exists() else {"verdict": "fail"}
         gate_status = "pass" if qr.get("verdict") in {"pass", "skipped-llm"} else "fail"
         report["gates"]["verify-quality"] = {
             "status": gate_status,
@@ -147,8 +149,8 @@ def _mirror_to_examples(pptx: Path, out_dir: Path, dst: Path) -> None:
 
 def _finalize(report: dict, out_dir: Path, *, verdict: str, code: int, json_out: bool) -> int:
     report["verdict"] = verdict
-    (out_dir / "ship_report.json").write_text(json.dumps(report, indent=2))
-    (out_dir / "ship_report.md").write_text(_render_md(report))
+    (out_dir / "ship_report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    (out_dir / "ship_report.md").write_text(_render_md(report), encoding="utf-8")
     if json_out:
         print(json.dumps(report, indent=2))
     else:

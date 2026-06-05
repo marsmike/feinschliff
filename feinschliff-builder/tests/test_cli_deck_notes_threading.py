@@ -45,15 +45,19 @@ slides:
       title: "Customer churn dropped 8 points"
 """
     plan_file = tmp_path / "plan.yaml"
-    plan_file.write_text(plan_yaml)
+    plan_file.write_text(plan_yaml, encoding="utf-8")
     out_file = tmp_path / "out.pptx"
+    import os
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
     result = subprocess.run(
         [
             sys.executable, "-m", "feinschliff.cli", "deck", "build",
             str(plan_file),
             "-o", str(out_file),
         ],
-        capture_output=True, text=True, cwd=FEINSCHLIFF,
+        capture_output=True, text=True, encoding="utf-8", env=env, cwd=FEINSCHLIFF,
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert out_file.is_file()
