@@ -26,16 +26,27 @@ EVIDENCE (read these for visual diff context):
   overlay: {{output_dir}}/diff/slide-{{source_slide_no_padded}}_{{layout_name}}_overlay.png
 
 CURRENT METRICS:
+  block_diff_ratio:    {{block_diff_pct}}%   ← the fixable signal; drive this down
+  edge_diff_ratio:     {{edge_diff_pct}}%    ← renderer/font-metric floor; you can't fix this
   struct_diff_ratio:   {{struct_diff_pct}}%
   picture_coverage:    {{picture_coverage_pct}}%
   target_threshold:    {{threshold_pct}}%
 
+STRUCTURAL MISMATCH REGIONS (block mask, biggest first — fix these):
+{{regions_block}}
+  Each is a contiguous region where render differs from source in a solid
+  block, not glyph anti-aliasing. The centroid/bbox tell you which
+  primitive to look at. If this list is empty, only the edge floor remains
+  and there is nothing a DSL edit can fix — report "at floor, no change".
+
 YOUR JOB
 1. Read the source PNG, render PNG, and overlay PNG. The overlay is a
    3-panel image: source | render | red-mask diff. Red pixels are where
-   render differs from source by more than 30/255.
+   render differs from source by more than 30/255. Focus on the block
+   regions above — a thin red halo tracing text edges is the font-metric
+   floor, not a defect; do not chase it.
 2. Read the current DSL. Identify the primitives that most plausibly
-   cause the red regions:
+   cause the block regions:
    - text positioning / size / weight / color (style: token mismatches)
    - rect/oval/line positions, fills, strokes
    - missing chrome (footer fields, page numbers, brand wordmark)
@@ -113,6 +124,9 @@ The parent computes these from `report.json` + `verify-map.yaml`:
 | `{{source_slide_no_padded}}` | `f"{source_slide_no:02d}"`                       |
 | `{{output_dir}}`             | resolved `--output-dir`                          |
 | `{{struct_diff_pct}}`        | `report.json[layout].struct_diff_ratio * 100`    |
+| `{{block_diff_pct}}`         | `report.json[layout].block_diff_ratio * 100`     |
+| `{{edge_diff_pct}}`          | `report.json[layout].edge_diff_ratio * 100`      |
+| `{{regions_block}}`          | `report.json[layout].regions` → one line each, e.g. `  - area 30000px at centroid (700,475), bbox [600,400,800,550]` (empty → `  (none — only the edge floor remains)`) |
 | `{{picture_coverage_pct}}`   | `report.json[layout].picture_coverage * 100`     |
 | `{{threshold_pct}}`          | `--threshold * 100`                              |
 
