@@ -1,3 +1,11 @@
+---
+role: content-columns
+ideal_count: [2, 3]
+data_band: none
+comparison: false
+narrative_role: recommendation
+narrative_act: resolution
+---
 # recommendation — Pyramid Principle closer-but-one. 2–3 named "moves"
 # side by side, each with a verb-led headline, supporting sub-initiatives,
 # an impact metric in accent, and an owner tag. Lead with the answer, not

@@ -1,3 +1,11 @@
+---
+role: data-timeline
+ideal_count: [3, 8]
+data_band: none
+comparison: true
+narrative_role: plan
+time_axis_role: strategic
+---
 # roadmap — strategic plan. Workstream rows × time-period columns with
 # per-phase status coloring and optional milestone diamonds above the
 # row band. Distinct from gantt (tactical, start/span bars) and from

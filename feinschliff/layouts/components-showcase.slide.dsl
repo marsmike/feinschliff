@@ -1,3 +1,9 @@
+---
+role: reference
+ideal_count: [1, 4]
+data_band: none
+comparison: false
+---
 # components-showcase — UI kit preview. Two paper-bg panels:
 #   left   BUTTONS (3 variants: primary, default, ghost) + TAGS (4 chips)
 #   right  RULES (3 rule variants: section 56×1 ink, emphasis 80×4 accent,

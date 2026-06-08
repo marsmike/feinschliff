@@ -1,3 +1,9 @@
+---
+role: data-timeline
+ideal_count: [3, 9]
+data_band: chart
+comparison: false
+---
 # waterfall — bridge chart: 2 anchor totals + 3-7 +/- step deltas.
 # Anchors are full-height gold bars; step bars are thin strips at
 # progressively rising/falling y to approximate the staircase.

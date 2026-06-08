@@ -1,3 +1,10 @@
+---
+role: agenda
+ideal_count: [3, 8]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # agenda — table of contents on the paper ground. Title block at top,
 # 2-column grid of 3–8 agenda items below.
 #

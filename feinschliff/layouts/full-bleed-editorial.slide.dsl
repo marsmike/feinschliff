@@ -1,3 +1,9 @@
+---
+role: title-with-visual
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+---
 # full-bleed-editorial — cinematic mid-deck punctuation slide.
 # Full-bleed image with a small title+caption card pinned to the bottom-left
 # corner. Distinct from full-bleed-cover: footer + pgmeta chrome stay visible

@@ -1,3 +1,10 @@
+---
+role: title-with-visual
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # full-bleed-cover — editorial cover with full-bleed image and an orange
 # lockup card holding the title bottom-left.
 #

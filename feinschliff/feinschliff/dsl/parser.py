@@ -321,14 +321,49 @@ def _collect_indented_body(lines: list[str], i: int) -> tuple[list[str], int]:
     return body_lines, i
 
 
+def split_frontmatter(text: str) -> tuple[str | None, str]:
+    """Split a leading ``--- … ---`` YAML frontmatter fence from DSL text.
+
+    Returns ``(frontmatter_text, body)``. When no leading fence is present
+    (or the fence is unterminated), returns ``(None, text)`` unchanged so a
+    fence-less file is never swallowed.
+
+    The fence may be preceded only by blank lines. To keep parser error
+    line-numbers accurate, the returned *body* replaces the fence region
+    (open fence through close fence, inclusive) with empty lines rather than
+    deleting them — the line-oriented parser already skips blanks.
+
+    The ``.slide.dsl`` layout-affinity profile (consumed by
+    :mod:`feinschliff.layout_profile`) lives in this fence; the parser
+    strips it so it never reaches node parsing.
+    """
+    lines = text.splitlines()
+    idx = 0
+    while idx < len(lines) and not lines[idx].strip():
+        idx += 1
+    if idx >= len(lines) or lines[idx].strip() != "---":
+        return None, text
+    for j in range(idx + 1, len(lines)):
+        if lines[j].strip() == "---":
+            fm = "\n".join(lines[idx + 1:j])
+            body_lines = [""] * (j + 1) + lines[j + 1:]
+            return fm, "\n".join(body_lines)
+    # Unterminated fence — don't swallow the document.
+    return None, text
+
+
 def parse_lines(text: str, *, source: str | None = None) -> tuple[list[DSLNode], list[CompoundDef]]:
     """Parse a DSL text into (top-level nodes, compound defs).
 
     Compound defs are recognised by the `compound <name>(<params>):` header
     plus indented body lines. Top-level nodes are everything else.
+
+    A leading ``--- … ---`` frontmatter fence (the layout-affinity profile)
+    is stripped before parsing; see :func:`split_frontmatter`.
     """
     nodes: list[DSLNode] = []
     compounds: list[CompoundDef] = []
+    _, text = split_frontmatter(text)
     lines = text.splitlines()
     i = 0
     while i < len(lines):

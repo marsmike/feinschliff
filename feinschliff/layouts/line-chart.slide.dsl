@@ -1,3 +1,9 @@
+---
+role: data-timeline
+ideal_count: [3, 8]
+data_band: chart
+comparison: false
+---
 # line-chart — trend over time with 2 series rendered as real polyline traces.
 # Series coordinates are hardcoded in the layout (DSL has no arithmetic over
 # `series[N].points`) — they render representative upward-trend curves; the

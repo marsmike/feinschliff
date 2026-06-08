@@ -1,3 +1,9 @@
+---
+role: reference
+ideal_count: [3, 8]
+data_band: table
+comparison: true
+---
 # table — 5 columns × N data rows. Header row + a `for` block that grows
 # with the input. Rows pitch every 80px starting at y=500; the canonical
 # content area accommodates up to ~7 rows before crowding the footer at

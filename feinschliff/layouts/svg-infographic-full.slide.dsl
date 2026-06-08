@@ -1,3 +1,11 @@
+---
+role: data-comparison
+ideal_count: [8, 24]
+data_band: chart
+comparison: true
+narrative_role: custom-viz
+diagram_complexity: deep
+---
 # svg-infographic-full — full-slide deep custom data viz / infographic.
 # Use when the chart needs 8+ data points, custom annotations, callouts,
 # legends, or composite primitives (stacked bars + paths + braces).

@@ -1,3 +1,9 @@
+---
+role: content-columns
+ideal_count: [4, 4]
+data_band: none
+comparison: false
+---
 # four-column-cards — quarterly/phased plan across 4 equal cards.
 #
 # Slot schema (data-slots from feinschliff-2026.html · 10):

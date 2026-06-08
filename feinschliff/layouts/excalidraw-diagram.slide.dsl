@@ -1,3 +1,11 @@
+---
+role: concept-diagram
+ideal_count: [2, 8]
+data_band: none
+comparison: false
+narrative_role: system
+diagram_complexity: simple
+---
 # excalidraw-diagram — free-form concept diagram (boxes, arrows, flows,
 # architectures). Use when content describes a system or relationship
 # that does not fit bar/line/funnel/2x2/process-flow.

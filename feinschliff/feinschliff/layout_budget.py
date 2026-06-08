@@ -49,7 +49,15 @@ _MAX_BUDGET_BONUS = 1.5
 # `test_three_chapter_openers_alternate_orange_and_ink`). Keep the two
 # sets in sync only at the "appears at most once" entries (agenda /
 # end / full-bleed-cover).
-_SINGLETON_LAYOUTS = frozenset({"agenda", "end", "full-bleed-cover"})
+#
+# The photo variants of the singleton slides (agenda-photo, end-image)
+# are singletons too — at most one agenda / closer per deck. Without this
+# they'd collect the under-used-layout budget bonus and outrank the plain
+# agenda / end on a generic request, silently defaulting decks to a photo
+# variant that needs imagery the slide may not have.
+_SINGLETON_LAYOUTS = frozenset({
+    "agenda", "agenda-photo", "end", "end-image", "full-bleed-cover",
+})
 
 # How many candidates we examine per slide. The picker's default top_k
 # is 3, but for budget-aware reranking we need to see every viable

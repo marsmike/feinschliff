@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 5]
+data_band: chart
+comparison: true
+---
 # stacked-bar — 5 periods × 4 series segments. Each bar is a stack of
 # (series A bottom + series B + series C + series D top). Total labeled
 # above; value labeled in each segment.

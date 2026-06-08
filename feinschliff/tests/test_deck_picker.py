@@ -24,6 +24,11 @@ def _mock_brand(*layout_names: str):
         return found_map.get(name)
 
     brand.find_layout.side_effect = _find_layout
+    # Ranking now reads the brand's full layout universe; use the real
+    # discovered toolkit profiles so candidates score, while path
+    # resolution still goes through the mocked find_layout above.
+    from feinschliff.layout_discovery import discover_layout_paths
+    brand.layout_table.return_value = dict(discover_layout_paths())
     return brand
 
 

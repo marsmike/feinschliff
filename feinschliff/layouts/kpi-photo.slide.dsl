@@ -1,3 +1,9 @@
+---
+role: data-quantity
+ideal_count: [2, 3]
+data_band: kpi
+comparison: false
+---
 # kpi-photo — 2–3 KPI rows on the left half + hero photo on the right half.
 # Best for metric reveals with human/scene context.
 #

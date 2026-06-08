@@ -1,3 +1,9 @@
+---
+role: data-quantity
+ideal_count: [2, 4]
+data_band: kpi
+comparison: false
+---
 # kpi-grid — 2–4 high-level quantitative figures, each with unit + label
 # + optional delta. Cells share a hairline grid border.
 #

@@ -1,3 +1,11 @@
+---
+role: concept-diagram
+ideal_count: [8, 20]
+data_band: none
+comparison: false
+narrative_role: system
+diagram_complexity: deep
+---
 # excalidraw-diagram-full — full-slide deep architecture diagram (10-20+
 # nodes, zones, typed arrows). Use when the audience is technical and the
 # diagram needs to preserve mechanisms, interfaces, and trade-offs that a

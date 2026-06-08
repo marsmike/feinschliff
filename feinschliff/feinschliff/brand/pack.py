@@ -197,6 +197,25 @@ class BrandPack:
             return FoundLayout(name=name, path=found.path, origin="toolkit")
         return None
 
+    def layout_table(self) -> dict[str, Path]:
+        """Map every layout name available to this brand → its ``.slide.dsl``.
+
+        Toolkit-discovered layouts overlaid with brand-local ones, where a
+        brand-local file shadows a toolkit file of the same stem (mirroring
+        :meth:`find_layout` precedence). This is the full ranking universe
+        the picker sees for this brand — including brand-only layouts that
+        the toolkit knows nothing about.
+        """
+        from feinschliff.layout_discovery import discover_layout_paths
+
+        paths = dict(discover_layout_paths())
+        if self.layouts_path is not None:
+            suffix = ".slide.dsl"
+            for candidate in sorted(self.layouts_path.glob(f"*{suffix}")):
+                name = candidate.name[: -len(suffix)]
+                paths[name] = candidate  # brand-local wins
+        return paths
+
     # ------------------------------------------------------------------
     # Compound discovery
     # ------------------------------------------------------------------

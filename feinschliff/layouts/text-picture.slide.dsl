@@ -1,3 +1,9 @@
+---
+role: content-with-visual
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+---
 # text-picture — single feature on the left, hero image on the right.
 # Title/body/buttons stacked at left; 780-wide picture column at right.
 #

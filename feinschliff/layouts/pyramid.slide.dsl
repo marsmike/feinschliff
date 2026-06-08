@@ -1,3 +1,9 @@
+---
+role: content-columns
+ideal_count: [3, 3]
+data_band: none
+comparison: false
+---
 # pyramid — 3 stacked tiers: apex triangle + 2 trapezoids, sized to
 # the Cheops Giza ratio (base : height ≈ 230 : 147 ≈ 1.57). A pyramid
 # is a low, wide silhouette — earlier 1.33-ratio version read as a

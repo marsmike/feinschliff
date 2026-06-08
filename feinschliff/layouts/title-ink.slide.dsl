@@ -1,3 +1,10 @@
+---
+role: title-primary
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # title-ink — opener on the dark ink ground. Gold rule + eyebrow, white
 # wordmark + display title.
 #

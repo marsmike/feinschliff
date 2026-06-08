@@ -43,6 +43,7 @@ layout_history  list  optional list of recently-used layout IDs (most
 """
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Literal
 
 # Allowed enum values for the three Phase 3 signals. Validated fail-loud
@@ -64,17 +65,19 @@ _VARIETY_EXEMPT = frozenset({
 })
 
 
-# Per-layout affinity profile. Each layout has:
+# Per-layout affinity profile. Each layout declares its profile in a YAML
+# frontmatter fence at the top of its `.slide.dsl` file (parsed by
+# `feinschliff.layout_profile`):
 #   role            : the canonical data-role it serves
 #   ideal_count     : sweet spot for concept_count (range, inclusive)
-#   data_band       : "none" | "kpi" | "table" | "chart"
-#   comparison      : True if the layout is built for comparison
-#   narrative_role  : optional — preferred narrative role string. Matches
-#                     contribute +2 when the caller passes the same role.
-#   narrative_act   : optional — preferred SCR act (situation |
-#                     complication | resolution). +1 when matched.
-#   time_axis_role  : optional — preferred time-axis (strategic |
-#                     chronological | tactical). +1 when matched.
+#   data ("data_band" in the fence) : "none" | "kpi" | "table" | "chart"
+#   comp ("comparison" in the fence): True if built for comparison
+#   narrative_role  : optional — preferred narrative role string (+2)
+#   narrative_act   : optional — preferred SCR act (+1)
+#   time_axis_role  : optional — preferred time-axis (+1)
+#   variety_exempt  : optional — structural layout, exempt from the
+#                     consecutive-use variety penalty
+#   when_not_to_use : optional — list of "<signal>=<value>" demotions
 #
 # Score is computed as the sum of:
 #   role match            +3
@@ -82,80 +85,35 @@ _VARIETY_EXEMPT = frozenset({
 #   concept_count near    +1 (one off)
 #   data band match       +2
 #   comparison flag match +1
-#   narrative_role match  +2 (Phase 4 layouts only)
-#   narrative_act match   +1 (Phase 4 layouts only)
-#   time_axis_role match  +1 (Phase 4 layouts only)
+#   narrative_role match  +2
+#   narrative_act match   +1
+#   time_axis_role match  +1
 #   audience_mode bonus   +0.5 (sparser fit when presentation, denser
 #                                when discussion; any layout, scaled
 #                                against its ideal_count range)
 # Negative if role mismatched.
-_LAYOUTS: dict[str, dict] = {
-    "title-orange":       {"role": "title-primary", "ideal_count": (1, 1), "data": "none",  "comp": False},
-    "title-ink":          {"role": "title-primary", "ideal_count": (1, 1), "data": "none",  "comp": False},
-    "full-bleed-cover":   {"role": "title-with-visual", "ideal_count": (1, 1), "data": "none", "comp": False},
-    "text-picture":       {"role": "content-with-visual", "ideal_count": (1, 2), "data": "none", "comp": False},
-    "chapter-orange":     {"role": "chapter-opener", "ideal_count": (1, 1), "data": "none", "comp": False},
-    "chapter-ink":        {"role": "chapter-opener", "ideal_count": (1, 1), "data": "none", "comp": False},
-    "agenda":             {"role": "agenda", "ideal_count": (3, 8), "data": "none", "comp": False},
-    "two-column-cards":   {"role": "content-columns", "ideal_count": (2, 2), "data": "none", "comp": True},
-    "three-column":       {"role": "content-columns", "ideal_count": (3, 3), "data": "none", "comp": True},
-    "four-column-cards":  {"role": "content-columns", "ideal_count": (4, 4), "data": "none", "comp": False},
-    "kpi-grid":           {"role": "data-quantity",  "ideal_count": (2, 4), "data": "kpi",  "comp": False},
-    "action-title":       {"role": "title-primary",  "ideal_count": (1, 2), "data": "kpi",  "comp": False},
-    "key-takeaways":      {"role": "closer",         "ideal_count": (2, 4), "data": "none", "comp": False},
-    "executive-summary":  {"role": "content-columns","ideal_count": (3, 5), "data": "kpi",  "comp": False},
-    "horizontal-bullets": {"role": "content-columns","ideal_count": (3, 3), "data": "none", "comp": True},
-    "vertical-bullets":   {"role": "content-columns","ideal_count": (3, 6), "data": "none", "comp": False},
-    "pyramid":            {"role": "content-columns","ideal_count": (3, 3), "data": "none", "comp": False},
-    "process-flow":       {"role": "data-timeline",  "ideal_count": (3, 7), "data": "none", "comp": False},
-    "2x2-matrix":         {"role": "data-comparison","ideal_count": (4, 4), "data": "table","comp": True},
-    "bar-chart":          {"role": "data-comparison","ideal_count": (3, 6), "data": "chart","comp": True},
-    "line-chart":         {"role": "data-timeline",  "ideal_count": (3, 8), "data": "chart","comp": False},
-    "stacked-bar":        {"role": "data-comparison","ideal_count": (3, 5), "data": "chart","comp": True},
-    "scorecard":          {"role": "data-comparison","ideal_count": (3, 5), "data": "table","comp": True},
-    "gantt":              {"role": "data-timeline",  "ideal_count": (3, 6), "data": "table","comp": False},
-    "funnel":             {"role": "data-comparison","ideal_count": (3, 6), "data": "chart","comp": False},
-    "venn":               {"role": "data-comparison","ideal_count": (3, 3), "data": "none","comp": True},
-    "waterfall":          {"role": "data-timeline",  "ideal_count": (3, 9), "data": "chart","comp": False},
-    "table":              {"role": "reference",      "ideal_count": (3, 8), "data": "table","comp": True},
-    "graphical":          {"role": "data-comparison","ideal_count": (3, 6), "data": "chart","comp": True},
-    "components-showcase":{"role": "reference",      "ideal_count": (1, 4), "data": "none", "comp": False},
-    "quote":              {"role": "quote",          "ideal_count": (1, 1), "data": "none", "comp": False},
-    "end":                {"role": "closer",         "ideal_count": (1, 1), "data": "none", "comp": False},
-    # --- Phase 4 layouts: C-suite narrative slides ---
-    # `narrative_role`, `narrative_act`, `time_axis_role` are picker
-    # fingerprints unique to Phase 4 — the scoring loop reads them only
-    # when present, so legacy entries above remain neutral against the
-    # new signals.
-    "recommendation":     {"role": "content-columns", "ideal_count": (2, 3), "data": "none", "comp": False,
-                           "narrative_role": "recommendation", "narrative_act": "resolution"},
-    "next-steps":         {"role": "closer",         "ideal_count": (3, 7), "data": "none", "comp": False,
-                           "narrative_role": "close-action", "narrative_act": "resolution"},
-    "risk-register":      {"role": "reference",      "ideal_count": (4, 8), "data": "table", "comp": False,
-                           "narrative_role": "risk"},
-    "risk-matrix":        {"role": "data-comparison","ideal_count": (4, 10), "data": "none", "comp": True,
-                           "narrative_role": "risk"},
-    "roadmap":            {"role": "data-timeline",  "ideal_count": (3, 8), "data": "none", "comp": True,
-                           "narrative_role": "plan", "time_axis_role": "strategic"},
-    "timeline":           {"role": "data-timeline",  "ideal_count": (3, 8), "data": "none", "comp": False,
-                           "narrative_role": "history", "time_axis_role": "chronological"},
-    # --- Phase 5 layouts: diagram/viz types ---
-    # Narrow band (1720x480 slot): for simple/medium concept diagrams up to
-    # 8 nodes, where a horizontal flow reads well in a third of the slide.
-    "excalidraw-diagram": {"role": "concept-diagram", "ideal_count": (2, 8), "data": "none", "comp": False,
-                           "narrative_role": "system", "diagram_complexity": "simple"},
-    "svg-infographic":    {"role": "data-comparison", "ideal_count": (3, 12), "data": "chart", "comp": True,
-                           "narrative_role": "custom-viz", "diagram_complexity": "simple"},
-    # Full-slide band (1720x720 slot, virtual 6880x2880 canvas): for deep
-    # architecture diagrams with zones, typed arrows, and 10-20+ nodes.
-    # Picked when the model passes `diagram_complexity=deep` OR when the
-    # concept_count exceeds the narrow band's ideal range. The 4× virtual
-    # canvas gives the author 16× more pixel area before crowding.
-    "excalidraw-diagram-full": {"role": "concept-diagram", "ideal_count": (8, 20), "data": "none", "comp": False,
-                                "narrative_role": "system", "diagram_complexity": "deep"},
-    "svg-infographic-full":    {"role": "data-comparison", "ideal_count": (8, 24), "data": "chart", "comp": True,
-                                "narrative_role": "custom-viz", "diagram_complexity": "deep"},
-}
+#
+# The scoring table is no longer hand-maintained here: it is derived at
+# runtime from the *discovered* layout set, so the picker's universe is the
+# on-disk universe by construction (toolkit + plugin + env + user layouts,
+# and — via the brand-aware `feinschliff.deck.picker.LayoutPicker` — brand
+# overrides and brand-only layouts). A layout on disk can never be unpickable.
+
+
+@lru_cache(maxsize=1)
+def _default_profile_table() -> dict[str, dict]:
+    """The picker table for the no-brand case: every discovered toolkit
+    layout's affinity profile, keyed by name.
+
+    Built lazily (first ``pick_layout`` call) and cached for the process.
+    ``strict=False`` so a single malformed third-party layout drops out of
+    the candidate set rather than failing every deck build; the toolkit's
+    own bundled layouts are held to ``strict=True`` by the test suite.
+    """
+    from feinschliff.layout_discovery import discover_layout_paths
+    from feinschliff.layout_profile import build_profile_table
+
+    return build_profile_table(discover_layout_paths(), strict=False)
 
 
 # Layouts that came in with Phase 4 — used by tests + docs to draw the
@@ -198,6 +156,7 @@ def pick_layout(
     diagram_complexity: Literal["simple", "medium", "deep"] | None = None,
     layout_history: list | None = None,
     top_k: int = 3,
+    profiles: dict[str, dict] | None = None,
 ) -> list[dict]:
     """Return up to `top_k` candidate layouts ranked by affinity score.
 
@@ -225,6 +184,12 @@ def pick_layout(
     layouts (title slides, chapter openers, agenda, end) are exempt
     from this penalty since they never rotate. The penalty never
     eliminates a layout — it only breaks ties in favour of variety.
+
+    `profiles` is the ``{name: affinity-profile}`` table to score against.
+    When ``None`` (the default), the cached toolkit-only table built from
+    the discovered layout set is used. The brand-aware
+    :class:`feinschliff.deck.picker.LayoutPicker` passes a brand-merged
+    table so brand overrides and brand-only layouts are ranked too.
     """
     if narrative_act is not None and narrative_act not in _VALID_NARRATIVE_ACTS:
         raise ValueError(
@@ -259,8 +224,10 @@ def pick_layout(
     data_band = _classify_data(data_quantity)
     cc = concept_count or 0
 
+    table = profiles if profiles is not None else _default_profile_table()
+
     scored: list[dict] = []
-    for layout_id, profile in _LAYOUTS.items():
+    for layout_id, profile in table.items():
         score = 0.0
         rationale_parts: list[str] = []
 
@@ -346,8 +313,11 @@ def pick_layout(
 
         # Variety penalty: nudge recently-used layouts down so the deck
         # avoids visual monotony (Presenton principle: adjacent slides
-        # should differ unless necessary). Structural layouts are exempt.
-        if layout_history and layout_id not in _VARIETY_EXEMPT:
+        # should differ unless necessary). Structural layouts are exempt —
+        # either by the static `_VARIETY_EXEMPT` set or by declaring
+        # `variety_exempt: true` in their frontmatter profile.
+        exempt = layout_id in _VARIETY_EXEMPT or profile.get("variety_exempt")
+        if layout_history and not exempt:
             if len(layout_history) >= 1 and layout_history[-1] == layout_id:
                 score -= 0.5
                 rationale_parts.append("variety-penalty(last)")

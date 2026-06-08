@@ -1,3 +1,11 @@
+---
+role: closer
+ideal_count: [3, 7]
+data_band: none
+comparison: false
+narrative_role: close-action
+narrative_act: resolution
+---
 # next-steps — closing slide. 3–7 immediate actions stacked vertically.
 # Each row leads with a verb in accent, body of what, and right-aligned
 # category eyebrow above who · when in detail style. Verb-first

@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 3]
+data_band: none
+comparison: true
+---
 # venn — 3 overlapping circles using real oval shapes in the brand
 # palette. Right column lists named intersections + a triple-overlap.
 #

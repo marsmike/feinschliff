@@ -1,3 +1,9 @@
+---
+role: title-primary
+ideal_count: [1, 2]
+data_band: kpi
+comparison: false
+---
 # action-title — McKinsey-style takeaway slide. Title carries the
 # so-what; supporting body + optional KPIs sit beneath; source line at
 # bottom.

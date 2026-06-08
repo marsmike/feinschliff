@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [4, 4]
+data_band: table
+comparison: true
+---
 # 2x2-matrix — classic prioritisation grid with axis labels and one focus
 # cell flagged. Cells in reading order: TL, TR, BL, BR.
 #

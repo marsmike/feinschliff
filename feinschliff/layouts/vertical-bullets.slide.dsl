@@ -1,3 +1,9 @@
+---
+role: content-columns
+ideal_count: [3, 6]
+data_band: none
+comparison: false
+---
 # vertical-bullets — title + subtitle + 6 numbered rows (counter, heading,
 # description) separated by hairlines. Matches the .pptx baseline pattern.
 #

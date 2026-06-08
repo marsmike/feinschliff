@@ -1,3 +1,9 @@
+---
+role: closer
+ideal_count: [2, 4]
+data_band: none
+comparison: false
+---
 # key-takeaways — end-of-section summary on the dark ink ground. 2–4
 # takeaway columns with gold rule, mono number, white heading, gray-blue
 # body, mono uppercase owner.

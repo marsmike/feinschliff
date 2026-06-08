@@ -54,7 +54,8 @@ def test_pick_layout_new_signals_dont_change_legacy_layout_scoring():
     layouts can re-shuffle the top-K (that's the point), but a legacy
     layout's own score must be deterministic w.r.t. legacy-only kwargs.
     """
-    from feinschliff.layout_picker import _LAYOUTS, _PHASE4_LAYOUTS
+    from feinschliff.layout_picker import _default_profile_table, _PHASE4_LAYOUTS
+    _LAYOUTS = _default_profile_table()
 
     base = pick_layout(role="data-quantity", concept_count=3, top_k=len(_LAYOUTS))
     with_new = pick_layout(
@@ -354,8 +355,8 @@ def test_layout_history_structural_layouts_exempt():
 def test_four_column_cards_role_is_content_columns():
     """four-column-cards serves 4-pillar content, not timelines.
     It must be classified as content-columns, not data-timeline."""
-    from feinschliff.layout_picker import _LAYOUTS
-    profile = _LAYOUTS["four-column-cards"]
+    from feinschliff.layout_picker import _default_profile_table
+    profile = _default_profile_table()["four-column-cards"]
     assert profile["role"] == "content-columns", (
         f"four-column-cards role should be content-columns, got {profile['role']!r}"
     )
@@ -364,8 +365,8 @@ def test_four_column_cards_role_is_content_columns():
 def test_four_column_cards_is_not_comparative():
     """four-column-cards shows 4 parallel items, not head-to-head comparisons.
     comp flag should be False."""
-    from feinschliff.layout_picker import _LAYOUTS
-    profile = _LAYOUTS["four-column-cards"]
+    from feinschliff.layout_picker import _default_profile_table
+    profile = _default_profile_table()["four-column-cards"]
     assert profile["comp"] is False, (
         "four-column-cards comp flag should be False"
     )

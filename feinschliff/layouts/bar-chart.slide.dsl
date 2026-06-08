@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 6]
+data_band: chart
+comparison: true
+---
 # bar-chart — horizontal bars showing 4–6 categories sharing one scale.
 # Each bar: label (left), bar fill, value (right of bar).
 #
