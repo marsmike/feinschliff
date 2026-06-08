@@ -1,6 +1,5 @@
 {
   "name": "feinschliff-extra",
-  "version": "0.2.0",
   "description": "Extra brand packs for feinschliff — light/dark themes, terminal palettes (catppuccin, nord, gruvbox, solarized), and bold corporate looks (binance, ferrari, spotify).",
   "author": {
     "name": "Mike Mueller",

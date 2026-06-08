@@ -1,6 +1,5 @@
 {
   "name": "feinschliff",
-  "version": "0.2.0",
   "description": "Brand-pluggable design system — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. Core deck/diagram generator. Ships with the feinschliff, blank, and claude brand packs.",
   "author": {
     "name": "Mike Mueller",
