@@ -10,6 +10,16 @@ and computes:
   - struct_diff_ratio    — same but with picture-slot regions masked out
                            (parses `picture X,Y WxH` primitives from the
                            layout DSL and zeros those pixels first)
+  - block_diff_ratio     — the part of struct that survives a morphological
+                           opening: solid mismatched regions a DSL edit can
+                           fix. The signal the improve-brand loop gates on.
+  - edge_diff_ratio      — struct minus block: the thin anti-aliasing /
+                           sub-pixel font-metric halo LibreOffice produces
+                           against the source PNG. The renderer floor — no
+                           DSL tweak removes it. When block ≈ 0 and edge is
+                           stuck, the layout is at its fidelity asymptote.
+  - regions              — connected components of the block mask, top-N by
+                           area: where the fixable mismatch actually is.
   - ssim                 — scikit-image structural similarity 0..1
 
 Per-layout artefacts in `<output-dir>/`:
@@ -45,6 +55,18 @@ from PIL import Image, ImageDraw, ImageFont
 
 DESIGN_W, DESIGN_H = 1920, 1080
 DIFF_THRESHOLD = 30
+# Morphological opening iterations used to split the structural diff into a
+# "block" component (solid mismatched regions — a misplaced/missing/wrong-fill
+# element, the part a DSL edit can fix) and an "edge" component (the thin
+# anti-aliasing / sub-pixel font-metric halo along every glyph contour, which
+# LibreOffice produces against the source PNG export and no DSL tweak removes
+# — the renderer floor). 2 iterations with the default 3×3 cross removes
+# features thinner than ~4px while preserving solid blocks.
+_BLOCK_OPEN_ITERS = 2
+# Region attribution: connected components of the block mask smaller than this
+# (px) are noise, not a reportable structural region.
+_REGION_MIN_AREA = 400
+_REGION_TOP_N = 5
 
 _PICTURE_RE = re.compile(
     r"^\s*picture\s+(\d+)\s*,\s*(\d+)\s+(\d+)\s*x\s*(\d+)\b", re.MULTILINE
@@ -74,8 +96,72 @@ def _load_norm(path: Path) -> np.ndarray:
     return np.asarray(im, dtype=np.uint8)
 
 
+def _open_mask(mask: np.ndarray, iters: int = _BLOCK_OPEN_ITERS) -> np.ndarray:
+    """Morphological opening — strip thin features, keep solid blocks.
+
+    The opened mask is the *block* component of the diff: the part that
+    survives because it's a contiguous filled region (a misplaced or missing
+    element), not a 1–few-px halo along a glyph edge. Returns the input
+    unchanged when scipy is unavailable (block then equals struct — the
+    metric degrades gracefully rather than failing).
+    """
+    if not mask.any():
+        return mask
+    try:
+        from scipy import ndimage
+    except ImportError:
+        return mask
+    return ndimage.binary_opening(mask, iterations=iters)
+
+
+def _block_regions(block_mask: np.ndarray,
+                   min_area: int = _REGION_MIN_AREA,
+                   top_n: int = _REGION_TOP_N) -> list[dict]:
+    """Connected components of the block mask → top-N structural regions.
+
+    Each region is ``{"area", "bbox": [x1,y1,x2,y2], "centroid": [cx,cy]}``.
+    These tell the improve-brand loop *where* the fixable mismatch is, so a
+    sub-agent can target the specific primitive instead of squinting at a
+    full-slide scalar.
+    """
+    try:
+        from scipy import ndimage
+    except ImportError:
+        return []
+    if not block_mask.any():
+        return []
+    labeled, n = ndimage.label(block_mask)
+    if n == 0:
+        return []
+    sizes = ndimage.sum(block_mask, labeled, range(1, n + 1))
+    indexed = sorted(
+        [(int(s), i + 1) for i, s in enumerate(sizes) if s >= min_area],
+        key=lambda x: -x[0],
+    )
+    regions = []
+    for area, lbl in indexed[:top_n]:
+        ys, xs = np.where(labeled == lbl)
+        regions.append({
+            "area": area,
+            "bbox": [int(xs.min()), int(ys.min()), int(xs.max()), int(ys.max())],
+            "centroid": [int(xs.mean()), int(ys.mean())],
+        })
+    return regions
+
+
 def _compute_metrics(src: np.ndarray, ren: np.ndarray,
-                     pic_mask: np.ndarray | None) -> tuple[dict, np.ndarray]:
+                     pic_mask: np.ndarray | None) -> tuple[dict, np.ndarray, np.ndarray]:
+    """Return ``(metrics, struct_per_pixel, block_mask)``.
+
+    ``struct_diff_ratio`` is the flat fraction of non-picture pixels above
+    the diff threshold (unchanged, for trace continuity). It is split into:
+
+      - ``block_diff_ratio`` — diff surviving a morphological opening: solid
+        mismatched regions a DSL edit can fix. **Gate the loop on this.**
+      - ``edge_diff_ratio``  — the thin remainder: the renderer/font-metric
+        floor. When block ≈ 0 and edge is stuck, the layout is at the
+        asymptote and further DSL tweaking is a budget sink.
+    """
     diff = np.abs(src.astype(np.int16) - ren.astype(np.int16)).astype(np.uint8)
     per_pixel = diff.max(axis=2)
     metrics = {
@@ -88,29 +174,37 @@ def _compute_metrics(src: np.ndarray, ren: np.ndarray,
         # source has the original illustration, so any diff inside the
         # picture bbox is by-design and tells us nothing about the DSL.
         # Score only the non-picture pixels.
-        coverage = float(pic_mask.mean())
-        metrics["picture_coverage"] = round(coverage, 3)
+        metrics["picture_coverage"] = round(float(pic_mask.mean()), 3)
         struct = per_pixel.copy()
         struct[pic_mask] = 0
         non_pic = int((~pic_mask).sum())
-        if non_pic == 0:
-            # Pathological: every pixel is inside a picture slot. Fall
-            # back to total so the metric remains defined.
-            metrics["struct_diff_ratio"] = metrics["total_diff_ratio"]
-        else:
-            metrics["struct_diff_ratio"] = round(
-                float((struct > DIFF_THRESHOLD).sum() / non_pic), 4
-            )
-        per_pixel = struct
     else:
-        metrics["struct_diff_ratio"] = metrics["total_diff_ratio"]
         metrics["picture_coverage"] = 0.0
+        struct = per_pixel
+        non_pic = int(per_pixel.size)
+
+    if non_pic == 0:
+        # Pathological: every pixel is inside a picture slot. Fall back to
+        # total so the metrics remain defined.
+        struct_ratio = metrics["total_diff_ratio"]
+        block_mask = np.zeros_like(struct, dtype=bool)
+        block_ratio = struct_ratio
+    else:
+        struct_mask = struct > DIFF_THRESHOLD
+        struct_ratio = float(struct_mask.sum() / non_pic)
+        block_mask = _open_mask(struct_mask)
+        block_ratio = float(block_mask.sum() / non_pic)
+
+    metrics["struct_diff_ratio"] = round(struct_ratio, 4)
+    metrics["block_diff_ratio"] = round(block_ratio, 4)
+    metrics["edge_diff_ratio"] = round(max(0.0, struct_ratio - block_ratio), 4)
+
     try:
         from skimage.metrics import structural_similarity as ssim_fn
         metrics["ssim"] = round(float(ssim_fn(src, ren, channel_axis=2, data_range=255)), 4)
     except ImportError:
         metrics["ssim"] = None
-    return metrics, per_pixel
+    return metrics, struct, block_mask
 
 
 def _three_panel(src: np.ndarray, ren: np.ndarray, diff_mask: np.ndarray,
@@ -320,8 +414,8 @@ def main() -> int:
     # src_array, ren_array, redline_image) tuple — building the actual
     # PIL pages here would balloon memory; defer to the writer below.
     loupe_pages: list[Image.Image] = []
-    print(f"{'layout':<28}{'slide':<7}{'total':>8}{'struct':>9}{'ssim':>8}{'cover':>8}")
-    print("-" * 70)
+    print(f"{'layout':<28}{'slide':<7}{'total':>8}{'struct':>9}{'block':>8}{'edge':>8}{'ssim':>8}{'cover':>8}")
+    print("-" * 86)
     for layout, slide_no in layouts_map.items():
         src_path = args.source_dir / f"slide-{slide_no:02d}.png"
         ren_path = args.render_dir / f"{layout}.png"
@@ -332,13 +426,16 @@ def main() -> int:
         ren = _load_norm(ren_path)
         boxes = _picture_boxes(layouts_dir / f"{layout}.slide.dsl")
         pic_mask = _picture_mask(boxes) if boxes else None
-        metrics, diff = _compute_metrics(src, ren, pic_mask)
-        report[layout] = {"slide": slide_no, "picture_slots": len(boxes), **metrics}
+        metrics, diff, block_mask = _compute_metrics(src, ren, pic_mask)
+        regions = _block_regions(block_mask)
+        report[layout] = {"slide": slide_no, "picture_slots": len(boxes),
+                          **metrics, "regions": regions}
 
         prefix = f"slide-{slide_no:02d}_{layout}"
         label = (f"{layout}   ·   slide-{slide_no:02d}   ·   "
-                 f"struct {metrics['struct_diff_ratio']*100:.1f}%   "
-                 f"(total {metrics['total_diff_ratio']*100:.1f}%)")
+                 f"block {metrics['block_diff_ratio']*100:.1f}%   "
+                 f"(struct {metrics['struct_diff_ratio']*100:.1f}%, "
+                 f"edge {metrics['edge_diff_ratio']*100:.1f}%)")
         _three_panel(src, ren, diff, label).save(
             args.output_dir / f"{prefix}_overlay.png", format="PNG", optimize=False)
         _ghost_overlay(src, ren, diff).save(
@@ -374,6 +471,8 @@ def main() -> int:
         print(f"{layout:<28}{slide_no:<7}"
               f"{metrics['total_diff_ratio']*100:>7.2f}%"
               f"{metrics['struct_diff_ratio']*100:>8.2f}%"
+              f"{metrics['block_diff_ratio']*100:>7.2f}%"
+              f"{metrics['edge_diff_ratio']*100:>7.2f}%"
               f"{ssim_s:>8}"
               f"{metrics['picture_coverage']*100:>7.1f}%")
 
@@ -382,7 +481,10 @@ def main() -> int:
     with open(trace_path, "a") as f:
         f.write(json.dumps({
             "ts": int(time.time()),
+            # `scores` stays struct_diff_ratio for plateau-tool continuity;
+            # `block_scores` tracks the fixable signal the loop now gates on.
             "scores": {k: v["struct_diff_ratio"] for k, v in report.items()},
+            "block_scores": {k: v["block_diff_ratio"] for k, v in report.items()},
         }) + "\n")
     print(f"\nwrote {len(report)} overlay+mask pairs to {args.output_dir}")
     print(f"wrote {args.output_dir / 'report.json'}")

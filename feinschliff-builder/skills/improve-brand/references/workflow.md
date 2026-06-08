@@ -30,20 +30,47 @@ Outputs land under `out/<brand>/verify-loop/`:
 - `render-png/<layout>.png` — one per layout in `verify-map.yaml`
 - `diff/slide-NN_<layout>_overlay.png` — 3-panel diff (source | render | red mask)
 - `diff/report.json` — keyed by layout name, each entry has
-  `struct_diff_ratio`, `picture_coverage`, `slide`, `picture_slots`,
-  `mean_abs_diff`, `total_diff_ratio`, `ssim`
+  `struct_diff_ratio`, `block_diff_ratio`, `edge_diff_ratio`, `regions`,
+  `picture_coverage`, `slide`, `picture_slots`, `mean_abs_diff`,
+  `total_diff_ratio`, `ssim`
 - `diff/score-trace.jsonl` — one row appended per run, used by
-  `brand_plateau.py`
+  `brand_plateau.py`. Carries both `scores` (struct) and `block_scores`.
+
+### Understand the signal before gating on it
+
+`struct_diff_ratio` counts every diff pixel equally — including the 1–2px
+anti-aliasing halo LibreOffice paints along every glyph edge against the
+source PNG. That halo is the **renderer floor**: no DSL edit removes it.
+The scorer splits it out:
+
+- **`block_diff_ratio`** — diff that survives a morphological opening:
+  solid mismatched regions (a misplaced / missing / wrong-fill element).
+  This is the **fixable** part. **Gate the loop on this.**
+- **`edge_diff_ratio`** — the thin remainder: the font-metric floor. When
+  `block_diff_ratio ≈ 0` and `edge_diff_ratio` is stuck, the layout is at
+  its fidelity asymptote — stop dispatching it. Chasing struct below the
+  floor is a budget sink (the known ceiling on b9ed686).
+- **`regions`** — connected components of the block mask, top-N by area,
+  each `{area, bbox, centroid}`. This is *where* the fixable mismatch is;
+  pass it into the per-slide prompt so the sub-agent edits the specific
+  primitive instead of guessing from a scalar.
 
 ## 3. Read the report
 
 ```python
 import json
 report = json.load(open("out/<brand>/verify-loop/diff/report.json"))
-work_set = [k for k, v in report.items() if v["struct_diff_ratio"] > 0.05]
+# Gate on the FIXABLE signal, not the floor-contaminated struct scalar.
+work_set = [k for k, v in report.items() if v["block_diff_ratio"] > 0.02]
+# Layouts with block ≈ 0 but non-trivial struct are at the renderer floor —
+# do NOT dispatch them; their struct will not improve with DSL edits.
+at_floor = [k for k, v in report.items()
+            if v["block_diff_ratio"] <= 0.02 and v["struct_diff_ratio"] > 0.05]
 ```
 
-The work set is the layouts you'll fan out to sub-agents this round.
+The work set is the layouts you'll fan out to sub-agents this round. Log
+`at_floor` so the operator sees which layouts the metric has given up on
+(rather than silently counting them as failures).
 
 ## 4. Fan out (the important part)
 
@@ -83,8 +110,9 @@ plateau verdict.
 
 ## 7. Plateau handling
 
-After each round, compute `delta = previous_struct_diff - current_struct_diff`
-per layout. Classify:
+After each round, compute `delta = previous_block_diff - current_block_diff`
+per layout (the fixable signal — struct deltas at the floor are renderer
+noise, not progress). Classify:
 
 | Δ                  | Verdict      | Action                                                                                            |
 | ------------------ | ------------ | ------------------------------------------------------------------------------------------------- |
