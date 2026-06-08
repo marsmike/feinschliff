@@ -70,8 +70,28 @@ class LayoutPicker:
     def __init__(self, brand: Any = None, *, top_k: int = 3) -> None:
         self.brand = brand
         self.top_k = top_k
+        self._profile_table_cache: dict[str, dict] | None = None
 
     # ── helpers ───────────────────────────────────────────────────────────
+
+    def _profile_table(self) -> dict[str, dict] | None:
+        """Affinity profiles for this brand's full layout universe.
+
+        Built from ``BrandPack.layout_table()`` (toolkit ∪ brand overrides ∪
+        brand-only layouts) so brand-only layouts are *ranked*, not merely
+        resolvable by name. Cached per instance. Returns ``None`` when there
+        is no brand — :func:`pick_layout` then falls back to its cached
+        toolkit-only default table.
+        """
+        if self.brand is None:
+            return None
+        if self._profile_table_cache is None:
+            from feinschliff.layout_profile import build_profile_table
+
+            self._profile_table_cache = build_profile_table(
+                self.brand.layout_table(), strict=False
+            )
+        return self._profile_table_cache
 
     def _resolve_path(self, layout_name: str) -> Path | None:
         """Return the filesystem path for *layout_name*.
@@ -144,6 +164,7 @@ class LayoutPicker:
             diagram_complexity=slot_hint.get("diagram_complexity"),
             layout_history=slot_hint.get("layout_history"),
             top_k=k,
+            profiles=self._profile_table(),
         )
         return [
             self._to_match(c, self._resolve_path(c["layout"]))

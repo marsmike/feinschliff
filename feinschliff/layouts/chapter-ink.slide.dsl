@@ -1,3 +1,10 @@
+---
+role: chapter-opener
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # chapter-ink — section divider on the dark ink ground. Layout mirrors
 # chapter-orange with inverted chrome plus an editorial image, right half.
 #

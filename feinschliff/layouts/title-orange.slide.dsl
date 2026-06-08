@@ -1,3 +1,10 @@
+---
+role: title-primary
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # title-orange — opener on the gold ground. Same dark-text chrome as
 # `end` and `quote`; differs by carrying a large 1–2 line title.
 #

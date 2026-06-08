@@ -1,3 +1,9 @@
+---
+role: data-timeline
+ideal_count: [3, 7]
+data_band: none
+comparison: false
+---
 # process-flow — 5 chevron stages pointing right; one highlighted as
 # active in the brand accent.
 #

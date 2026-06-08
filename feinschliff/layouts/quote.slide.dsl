@@ -1,3 +1,9 @@
+---
+role: quote
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+---
 # quote — single verbatim quote on the accent (gold) ground.
 # Block is vertically centered: rule, 40px gap, big light quote, 48px gap,
 # mono-caps attribution.

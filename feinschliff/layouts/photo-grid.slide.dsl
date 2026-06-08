@@ -1,3 +1,9 @@
+---
+role: content-columns
+ideal_count: [6, 6]
+data_band: none
+comparison: false
+---
 # photo-grid — six photo-cards (3×2) + summary headline at bottom.
 # Best for "six exemplars" / case-study grids.
 #

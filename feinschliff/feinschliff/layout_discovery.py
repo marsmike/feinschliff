@@ -146,3 +146,23 @@ def find_layout(name: str) -> Layout | None:
         if candidate.is_file():
             return Layout(name=name, path=candidate)
     return None
+
+
+_SUFFIX = ".slide.dsl"
+
+
+def discover_layout_paths() -> dict[str, Path]:
+    """Map every discoverable layout name to its ``.slide.dsl`` path.
+
+    Scans all discovery sources in priority order; the first source to
+    provide a given name wins (same precedence as :func:`find_layout`).
+
+    This is the picker's universe: the layout-affinity profiles are built
+    from exactly this set, so a layout on disk can never be unpickable.
+    """
+    paths: dict[str, Path] = {}
+    for src in discover_layouts():
+        for candidate in sorted(src.path.glob(f"*{_SUFFIX}")):
+            name = candidate.name[: -len(_SUFFIX)]
+            paths.setdefault(name, candidate)
+    return paths

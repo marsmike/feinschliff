@@ -1,3 +1,9 @@
+---
+role: agenda
+ideal_count: [3, 8]
+data_band: none
+comparison: false
+---
 # agenda-photo — numbered agenda items on the left half + hero photo on the right half.
 # Inviting deck-opener variant of the text-only `agenda` layout.
 #

@@ -1,3 +1,11 @@
+---
+role: data-timeline
+ideal_count: [3, 8]
+data_band: none
+comparison: false
+narrative_role: history
+time_axis_role: chronological
+---
 # timeline — chronological narrative. Horizontal axis with events as
 # labeled markers above/below the line (alternating to reduce overlap),
 # optional translucent phase bands behind the axis. Distinct from gantt

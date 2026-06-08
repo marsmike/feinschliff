@@ -1,3 +1,9 @@
+---
+role: data-timeline
+ideal_count: [3, 6]
+data_band: table
+comparison: false
+---
 # gantt — workstream timeline across 4 quarters with bars and milestones.
 # 4 workstream rows × 4 quarter columns; each bar has start/span driving x/width.
 #

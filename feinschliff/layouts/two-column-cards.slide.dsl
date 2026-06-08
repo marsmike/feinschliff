@@ -1,3 +1,9 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: true
+---
 # two-column-cards — paired ideas with parallel weight. Title block + two
 # .col.card panels side-by-side.
 #

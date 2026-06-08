@@ -1,3 +1,10 @@
+---
+role: reference
+ideal_count: [4, 8]
+data_band: table
+comparison: false
+narrative_role: risk
+---
 # risk-register — tabular risk register. Rows × columns:
 #   id, name, probability, impact, severity (colored cell), mitigation, owner.
 # Severity cell is filled with one of severity-low / severity-medium /

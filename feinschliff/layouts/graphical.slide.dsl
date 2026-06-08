@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 6]
+data_band: chart
+comparison: true
+---
 # graphical — companion to bar-chart. Data-comparison slide with 4 bars
 # and percent labels; structurally same as bar-chart's left half.
 #

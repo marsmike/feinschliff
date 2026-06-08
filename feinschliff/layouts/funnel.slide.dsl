@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 6]
+data_band: chart
+comparison: false
+---
 # funnel — 3-column composition matching the canonical baseline:
 #   left   funnel silhouette (4 narrowing rects; one stage in accent)
 #   middle data table (label / value / percent per row, hairlines)

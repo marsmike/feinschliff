@@ -1,3 +1,10 @@
+---
+role: chapter-opener
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+---
 # chapter-orange — section divider on the gold ground. Section number +
 # one-word chapter name in display, ghosted bignum counter bottom-right.
 #

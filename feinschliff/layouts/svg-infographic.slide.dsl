@@ -1,3 +1,11 @@
+---
+role: data-comparison
+ideal_count: [3, 12]
+data_band: chart
+comparison: true
+narrative_role: custom-viz
+diagram_complexity: simple
+---
 # svg-infographic — custom data viz (bars, axes, legends, stat cards) that
 # doesn't fit bar-chart / stacked-bar / kpi-grid / scorecard / funnel.
 #

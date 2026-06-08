@@ -1,3 +1,10 @@
+---
+role: data-comparison
+ideal_count: [4, 10]
+data_band: none
+comparison: true
+narrative_role: risk
+---
 # risk-matrix — 5×5 probability × impact grid with risks plotted as
 # numbered circles. Companion to risk-register (which gives the full
 # table); the matrix communicates exposure shape at a glance.

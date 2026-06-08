@@ -1,3 +1,9 @@
+---
+role: data-comparison
+ideal_count: [3, 5]
+data_band: table
+comparison: true
+---
 # scorecard — grid of workstreams × periods with status cells.
 #
 # Slot schema:
