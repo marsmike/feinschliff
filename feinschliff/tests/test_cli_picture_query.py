@@ -84,7 +84,7 @@ def staged_env(tmp_path):
             ImageHit, ImageProvider, register_provider,
         )
 
-        _FIXTURE_URL = "file://{fixture_png}"
+        _FIXTURE_URL = "file://{fixture_png.as_posix()}"
 
         @register_provider
         class TestProvider(ImageProvider):
@@ -186,7 +186,7 @@ def test_build_resolves_provider_and_writes_lock(staged_env, tmp_path):
     slot_id, entry = next(iter(lock["slots"].items()))
     assert slot_id == "kitchen_morning_light", slot_id
     assert entry["query"] == "kitchen morning light"
-    assert entry["url"] == f"file://{staged_env['fixture_png']}"
+    assert entry["url"] == f"file://{staged_env['fixture_png'].as_posix()}"
     assert entry["license"] == "Test License"
     assert entry["attribution"] == "Test Provider"
     assert entry["mime"] == "image/png"

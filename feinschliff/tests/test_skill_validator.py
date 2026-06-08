@@ -10,6 +10,10 @@ FEINSCHLIFF_ROOT = Path(__file__).parent.parent
 SKILLS = ["deck"]  # compile and improve-brand moved to feinschliff-builder
 
 
+import shutil
+
+
+@pytest.mark.skipif(shutil.which("npx") is None, reason="npx is not available in PATH")
 @pytest.mark.parametrize("skill_name", SKILLS)
 def test_skill_is_validator_clean(skill_name: str) -> None:
     result = subprocess.run(

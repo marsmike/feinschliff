@@ -47,14 +47,27 @@ def _load_tokens_extra(brand_root: Path) -> object:
     # If parent dir doesn't contain core brands (e.g. feinschliff), build a
     # combined dir via symlinks in a temp directory.
     if not (brands_dir / "feinschliff").exists() and _CORE_BRANDS.exists():
+        import shutil
         tmp = Path(tempfile.mkdtemp())
         for child in _CORE_BRANDS.iterdir():
-            (tmp / child.name).symlink_to(child)
+            try:
+                (tmp / child.name).symlink_to(child)
+            except OSError:
+                if child.is_dir():
+                    shutil.copytree(child, tmp / child.name)
+                else:
+                    shutil.copy2(child, tmp / child.name)
         if brands_dir.exists():
             for child in brands_dir.iterdir():
                 dest = tmp / child.name
                 if not dest.exists():
-                    dest.symlink_to(child)
+                    try:
+                        dest.symlink_to(child)
+                    except OSError:
+                        if child.is_dir():
+                            shutil.copytree(child, dest)
+                        else:
+                            shutil.copy2(child, dest)
         brands_dir = tmp
     return load_tokens(brand_root, brands_dir=brands_dir)
 

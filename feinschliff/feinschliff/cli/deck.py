@@ -1048,7 +1048,7 @@ def cmd_polish(args) -> int:
                 ext = ".svg.dsl"
                 layout_name = "svg-infographic.slide.dsl"
             artifact = refurbish_dir / f"slide-{idx}{ext}"
-            artifact.write_text(dsl)
+            artifact.write_text(dsl, encoding="utf-8")
             report_lines.append(
                 f"- slide {idx}: detected {len(ir.nodes)}-node {kind} "
                 f"(confidence {ir.confidence:.2f}) → {artifact.name}"
@@ -1083,7 +1083,7 @@ def cmd_polish(args) -> int:
                 f"(confidence {ir.confidence:.2f}) — no flag set, skipped"
             )
 
-    (out_path.parent / "refurbish_report.md").write_text("\n".join(report_lines))
+    (out_path.parent / "refurbish_report.md").write_text("\n".join(report_lines), encoding="utf-8")
 
     if not refurbished_slides:
         # Nothing extracted — fall back to copying input

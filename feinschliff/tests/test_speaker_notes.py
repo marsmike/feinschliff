@@ -41,14 +41,27 @@ def _load_tokens_extra(brand_root: Path) -> object:
     extends-chain resolution can locate parent brands in the core plugin."""
     brands_dir = brand_root.parent
     if not (brands_dir / "feinschliff").exists() and _CORE_BRANDS.exists():
+        import shutil
         tmp = Path(tempfile.mkdtemp())
         for child in _CORE_BRANDS.iterdir():
-            (tmp / child.name).symlink_to(child)
+            try:
+                (tmp / child.name).symlink_to(child)
+            except OSError:
+                if child.is_dir():
+                    shutil.copytree(child, tmp / child.name)
+                else:
+                    shutil.copy2(child, tmp / child.name)
         if brands_dir.exists():
             for child in brands_dir.iterdir():
                 dest = tmp / child.name
                 if not dest.exists():
-                    dest.symlink_to(child)
+                    try:
+                        dest.symlink_to(child)
+                    except OSError:
+                        if child.is_dir():
+                            shutil.copytree(child, dest)
+                        else:
+                            shutil.copy2(child, dest)
         brands_dir = tmp
     return load_tokens(brand_root, brands_dir=brands_dir)
 

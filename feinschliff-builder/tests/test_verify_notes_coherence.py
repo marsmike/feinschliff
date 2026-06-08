@@ -80,7 +80,7 @@ def test_write_coherence_report_headers(tmp_path: Path):
     write_coherence_report(
         out, red_line="Pain → demo → results.", contact_sheet=sheet,
     )
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert text.startswith("# Notes Coherence Report")
     assert "- Verdict: pending" in text
     assert "- Slides: 3" in text
@@ -94,7 +94,7 @@ def test_write_coherence_report_appends_suggestions(tmp_path: Path):
         out, red_line="arc", contact_sheet=sheet,
         verdict="dirty", suggestions=["Slide 3: add storyline-tracking notes."],
     )
-    text = out.read_text()
+    text = out.read_text(encoding="utf-8")
     assert "- Verdict: dirty" in text
     assert "## Suggestions" in text
     assert "Slide 3: add storyline-tracking notes." in text

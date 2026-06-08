@@ -90,4 +90,4 @@ def write_storyline_report(
         parts.append("")
         for s in suggestions:
             parts.append(f"- {s}")
-    path.write_text("\n".join(parts) + "\n")
+    path.write_text("\n".join(parts) + "\n", encoding="utf-8")
