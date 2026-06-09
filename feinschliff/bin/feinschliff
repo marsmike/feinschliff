@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# feinschliff launcher — the reusable "a plugin exposes a CLI" pattern for the
+# feinschmiede family. Requires bash (uses BASH_SOURCE).
+#
+# First run provisions a self-contained venv from the plugin's bundled wheels
+# (offline), then execs the real CLI; later runs just exec the installed CLI.
+# This file lives in bin/, so it is on PATH whenever the plugin is enabled —
+# sibling plugins/skills call `feinschliff …` as a bare command, never reaching
+# into our files. A readiness sentinel keyed on the wheelhouse signature rebuilds
+# the venv on a plugin update; a best-effort flock serializes concurrent first
+# runs; the venv is built in place (venvs are not relocatable) and rm -rf'd on a
+# partial bootstrap so every retry self-heals.
+set -euo pipefail
+
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"}"
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-"${XDG_DATA_HOME:-$HOME/.local/share}/feinschmiede/feinschliff"}"
+
+VENV="$DATA_DIR/venv"
+WHEELS="$PLUGIN_ROOT/wheels"
+CLI="$VENV/bin/feinschliff"
+READY="$VENV/.feinschliff-ready"
+
+_BOOTSTRAPPING=0
+_cleanup() { if [[ "$_BOOTSTRAPPING" -eq 1 && ! -f "$READY" ]]; then rm -rf "$VENV"; fi; }
+trap _cleanup EXIT
+
+_have_wheels() {
+  [[ -d "$WHEELS" ]] || return 1
+  local w
+  for w in "$WHEELS"/*.whl; do [[ -e "$w" ]] && return 0; done
+  return 1
+}
+
+_wheelhouse_sig() {
+  { for w in "$WHEELS"/*.whl; do
+      [[ -e "$w" ]] && printf '%s %s\n' "${w##*/}" "$(wc -c <"$w")"
+    done | sort; } | cksum | awk '{print $1}'
+}
+
+_build_wheels_from_source() {
+  # A marketplace/git install ships no wheels (they are gitignored). On first run
+  # build them from the bundled source — needs uv + network for the dep closure.
+  # PyPI Trusted Publishing (Phase 3) will replace this with a plain index install.
+  [[ -f "$PLUGIN_ROOT/build-wheels.sh" ]] || return 1
+  command -v uv >/dev/null 2>&1 || return 1
+  echo "feinschliff: no prebuilt wheels — building from bundled source (first run; needs network)…" >&2
+  bash "$PLUGIN_ROOT/build-wheels.sh" >&2
+}
+
+_bootstrap() {
+  local sig="$1"
+  if ! _have_wheels; then
+    echo "feinschliff: no bundled wheels at $WHEELS and could not build them (need uv + network)." >&2
+    echo "feinschliff: run build-wheels.sh in the plugin directory to populate them." >&2
+    exit 1
+  fi
+
+  mkdir -p "$DATA_DIR"
+  exec 9>"$DATA_DIR/.bootstrap.lock" || true
+  if command -v flock >/dev/null 2>&1; then flock 9 || true; fi
+  if [[ -f "$READY" && "$(cat "$READY" 2>/dev/null)" == "$sig" ]]; then
+    exec 9>&-
+    return 0
+  fi
+
+  echo "feinschliff: first run — provisioning venv at $VENV (offline, from bundled wheels)…" >&2
+  _BOOTSTRAPPING=1
+  rm -rf "$VENV"
+
+  local pyver=""
+  [[ -f "$WHEELS/.python-version" ]] && pyver="$(cat "$WHEELS/.python-version")"
+
+  if command -v uv >/dev/null 2>&1; then
+    uv venv ${pyver:+--python "$pyver"} "$VENV" >&2
+    uv pip install --reinstall --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinschliff >&2
+  else
+    local py=""
+    [[ -n "$pyver" ]] && py="$(command -v "python$pyver" || true)"
+    [[ -z "$py" ]] && py="$(command -v python3 || true)"
+    if [[ -z "$py" ]]; then
+      echo "feinschliff: need 'uv' or 'python3' (with venv support); neither was found." >&2
+      exit 1
+    fi
+    "$py" -m venv "$VENV" >&2
+    if ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+      "$VENV/bin/python" -m ensurepip --upgrade >&2 || {
+        echo "feinschliff: the venv has no pip and ensurepip failed — install 'uv' or python3-venv." >&2
+        exit 1
+      }
+    fi
+    "$VENV/bin/python" -m pip install --force-reinstall --no-index --find-links "$WHEELS" feinschliff >&2
+  fi
+
+  printf '%s\n' "$sig" > "$READY"
+  _BOOTSTRAPPING=0
+  exec 9>&-
+}
+
+# #6: build the wheelhouse from bundled source on a fresh marketplace install.
+if ! _have_wheels && [[ ! -f "$READY" ]]; then
+  _build_wheels_from_source || true
+fi
+
+SIG="$(_wheelhouse_sig)"
+if [[ ! -f "$READY" || "$(cat "$READY" 2>/dev/null)" != "$SIG" ]]; then
+  _bootstrap "$SIG"
+fi
+
+# Make this plugin's bundled toolkit layouts + brand packs discoverable by the
+# engine/office discovery (additive — a user's own paths still take precedence).
+# This is what lets the wheel-installed CLI find the data that ships beside the
+# package in the plugin dir.
+export FEINSCHLIFF_LAYOUT_PATH="${FEINSCHLIFF_LAYOUT_PATH:+$FEINSCHLIFF_LAYOUT_PATH:}$PLUGIN_ROOT/layouts"
+export FEINSCHLIFF_BRAND_PATH="${FEINSCHLIFF_BRAND_PATH:+$FEINSCHLIFF_BRAND_PATH:}$PLUGIN_ROOT/brands"
+exec "$CLI" "$@"
