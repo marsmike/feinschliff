@@ -89,12 +89,19 @@ _bootstrap() {
   _BOOTSTRAPPING=1
   rm -rf "$VENV"   # clear any partial/stale venv so the rebuild self-heals
 
+  # Pin the venv to the interpreter the bundled (ABI-specific) binary wheels
+  # target — see build-wheels.sh. Without this, uv's default Python may differ
+  # from the wheels' cp3XY tag and the offline install fails.
+  local pyver=""
+  [[ -f "$WHEELS/.python-version" ]] && pyver="$(cat "$WHEELS/.python-version")"
+
   if command -v uv >/dev/null 2>&1; then
-    uv venv "$VENV" >&2
+    uv venv ${pyver:+--python "$pyver"} "$VENV" >&2
     uv pip install --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinbild >&2
   else
-    local py
-    py="$(command -v python3 || true)"
+    local py=""
+    [[ -n "$pyver" ]] && py="$(command -v "python$pyver" || true)"
+    [[ -z "$py" ]] && py="$(command -v python3 || true)"
     if [[ -z "$py" ]]; then
       echo "feinbild: need 'uv' or 'python3' (with venv support); neither was found." >&2
       exit 1
