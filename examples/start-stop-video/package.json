@@ -1,0 +1,24 @@
+{
+  "name": "start-stop-video",
+  "version": "1.0.0",
+  "description": "Demo: cli-recorder + Remotion. Real CLI recording rendered as React-composited terminal.",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "remotion preview src/index.ts",
+    "render": "remotion render src/index.ts Main out/start-stop.mp4 --concurrency 1",
+    "still": "remotion still src/index.ts Main out/still.png --frame=300"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.0",
+    "@xterm/headless": "^5.5.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "typescript": "^5.0.0"
+  }
+}
