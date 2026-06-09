@@ -39,7 +39,9 @@ def test_record_missing_recipe(capsys):
 
 
 def test_analyze_missing_key(capsys, monkeypatch):
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    # Empty (but present) so cli.main()'s load_home_env() won't repopulate it
+    # from the dev's ~/.env — keeps the missing-key path deterministic.
+    monkeypatch.setenv("GEMINI_API_KEY", "")
     rc = cli.main(["analyze", "/nope/video.mp4"])
     err = capsys.readouterr().err
     assert rc == 1
