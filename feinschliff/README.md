@@ -13,13 +13,14 @@
 
 ## What it does
 
-A media-creation toolkit of Claude Code skills:
+Office/decks skills for Claude Code:
 
 - **`/deck`** — create or polish a brand-compliant `.pptx` from a brief or rough
   draft. Generates speaker notes and an annotated handout PDF via `deck book`.
-- **`/video`** — produce a programmatic video with Remotion (storyboard → build → verify).
-- **`/tts`** — generate voiceover audio with ElevenLabs text-to-speech.
-- **`/record`** — author a `recipe.toml` to record a CLI session (cli-recorder).
+
+Image/2D, video, and audio live in sibling plugins: **feinbild** (`/imagine`,
+`/svg`, `/excalidraw`), **feinschnitt** (`/video`, `/record`), and **feinklang**
+(`/tts`).
 
 Three CLI subcommands (`feinschliff <subcommand>`):
 
