@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 
@@ -46,21 +47,39 @@ def main() -> int:
     if not trace.is_file():
         print(f"no trace at {trace}")
         return 1
-    runs = [json.loads(ln) for ln in trace.read_text().splitlines() if ln.strip()]
+    # Tolerate a truncated/garbled tail line (e.g. a run killed mid-append)
+    # instead of crashing the whole tool.
+    runs = []
+    for ln in trace.read_text().splitlines():
+        ln = ln.strip()
+        if not ln:
+            continue
+        try:
+            runs.append(json.loads(ln))
+        except json.JSONDecodeError:
+            print("warning: skipping malformed score-trace line", file=sys.stderr)
     if len(runs) < 2:
         print(f"need ≥2 runs in trace; have {len(runs)}")
         return 0
 
-    window = runs[-args.window:]
-    print(f"checking last {len(window)} run(s) for plateau "
+    # `--window 0` would make `runs[-0:]` == all history; clamp to ≥1.
+    win = max(1, args.window)
+    print(f"checking last {win} run(s) per layout for plateau "
           f"(swing < {args.threshold*100:.1f}% = plateau)")
     print(f"{'layout':<28}{'current':>9}{'swing':>9}  category")
     print("-" * 65)
 
-    layouts = sorted(set().union(*(r["scores"].keys() for r in window)))
+    layouts = sorted(set().union(*(r.get("scores", {}).keys() for r in runs)))
     plateaued: list[tuple[str, float]] = []
     for layout in layouts:
-        scores = [r["scores"].get(layout) for r in window if layout in r["scores"]]
+        # The window is the last `win` runs that ACTUALLY MEASURED this layout,
+        # not the last `win` global rows. With subset (--only) iteration a
+        # layout may appear in only some recent rows; a row-based window would
+        # (a) drop a genuinely plateaued layout (len<2) and (b) take a stale
+        # value as `current`. Per-layout windowing fixes both.
+        layout_rows = [r["scores"][layout] for r in runs
+                       if layout in r.get("scores", {})]
+        scores = layout_rows[-win:]
         if len(scores) < 2:
             continue
         swing = max(scores) - min(scores)

@@ -99,3 +99,13 @@ feinschliff/examples/**/thumbnails/
 # tool) rather than the repo. Keep launch GIFs / promo PNGs out.
 feinschliff/docs/images/launch-*
 feinschliff/docs/images/teaser-*
+
+# Internal corporate brand packs — BSH and Bosch. Kept locally for
+# testing / layout work against our feinschliff version, never committed
+# (proprietary brand marks + source assets, large image dumps).
+feinschliff-bsh/
+feinschliff-bosch/
+
+# Repo-root scratch — ad-hoc renders, source decks, verify-loop output.
+# Mirrors the feinschliff/.debug/ convention at the worktree root.
+/.debug/
