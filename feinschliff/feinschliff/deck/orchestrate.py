@@ -212,11 +212,12 @@ def build_primitives_for_layout(
 
     from feinschmiede.brand_discovery import find_brand
     from feinschliff.dsl.expander import expand_compounds, interpolate_nodes, load_compounds_for_brand
+    import feinschmiede
     from feinschliff.dsl.parser import parse_file
     from feinschmiede.dsl.tokens import load_tokens
 
     def _bundled_compounds() -> Path:
-        return Path(__file__).resolve().parents[2] / "compounds"
+        return Path(feinschmiede.__file__).resolve().parent / "compounds"
 
     brand_dir = find_brand(brand).root
     tokens = load_tokens(brand_dir)
@@ -272,6 +273,7 @@ def build_refurbished_deck(
     )
     from feinschliff.dsl.parser import parse_file
     from feinschliff.dsl.pptx_emit import build_multi_slide
+    import feinschmiede
     from feinschmiede.dsl.tokens import load_tokens
     from feinschliff.io.image_provider import discover_providers, get_provider
     from feinschliff.layout_discovery import find_layout as _find_layout
@@ -280,7 +282,7 @@ def build_refurbished_deck(
         return Path(__file__).resolve().parents[2] / "assets"
 
     def _bundled_compounds() -> Path:
-        return Path(__file__).resolve().parents[2] / "compounds"
+        return Path(feinschmiede.__file__).resolve().parent / "compounds"
 
     try:
         brand_obj = find_brand(brand)
