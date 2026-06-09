@@ -24,12 +24,19 @@ _EMU_PER_PT = 12700
 # rendering a swatch and measuring. The "default" entry is the fallback for
 # unknown fonts.
 _FONT_WIDTH_RATIO: dict[str, dict[str, float]] = {
-    "Open Sans":      {"normal": 0.50, "bold": 0.54},
-    "Noto Sans":      {"normal": 0.51, "bold": 0.55},
-    "Consolas":       {"normal": 0.55, "bold": 0.55},
-    "Noto Sans Mono": {"normal": 0.60, "bold": 0.60},
-    "JetBrains Mono": {"normal": 0.60, "bold": 0.60},
-    "default":        {"normal": 0.52, "bold": 0.56},
+    "Open Sans":         {"normal": 0.50, "bold": 0.54},
+    "Noto Sans":         {"normal": 0.51, "bold": 0.55},
+    # Bosch corporate font (brand pack: feinschliff-bosch). Measured from the
+    # shipped TTFs (Regular/Bold) over a representative slide sample, plus the
+    # same conservative margin the other entries carry. It is noticeably
+    # narrower than the generic default, so registering it lets the slot-budget
+    # / verify-static predictors estimate width accurately instead of warning
+    # "font 'Bosch Office Sans' not in width-ratio table".
+    "Bosch Office Sans": {"normal": 0.48, "bold": 0.53},
+    "Consolas":          {"normal": 0.55, "bold": 0.55},
+    "Noto Sans Mono":    {"normal": 0.60, "bold": 0.60},
+    "JetBrains Mono":    {"normal": 0.60, "bold": 0.60},
+    "default":           {"normal": 0.52, "bold": 0.56},
 }
 
 

@@ -144,6 +144,29 @@ def test_compute_single_slot():
     assert b.width_px == 1200.0
 
 
+def test_compute_strips_jinja_default_filter():
+    """`{{ text_5 | default("…") }}` keys on the bare slot name `text_5`.
+
+    Brand-pack layouts write every slot with a `| default(…)` fallback. The key
+    must be the bare reference so content-lint / verify-static lookups (which
+    key on the normalised slot name) can match it — otherwise the overflow
+    check is silently skipped for every defaulted slot.
+    """
+    tokens = _tokens()
+    nodes = [_text_node('{{ text_5 | default("Placeholder") }}', maxwidth="472")]
+    budgets = compute_slot_budgets(nodes, tokens)
+    assert "text_5" in budgets
+    assert not any("default" in k for k in budgets)
+
+
+def test_compute_strips_filter_with_array_index():
+    """Filter stripping composes with index normalisation."""
+    tokens = _tokens()
+    nodes = [_text_node('{{ kpis[0].value | default("0") }}', maxwidth="300")]
+    budgets = compute_slot_budgets(nodes, tokens)
+    assert "kpis[].value" in budgets
+
+
 def test_compute_normalises_array_indices():
     """cells[0].heading → cells[].heading in normalised key."""
     tokens = _tokens()
