@@ -143,13 +143,13 @@ def _merge(target: dict, source: dict) -> None:
 def load_recipe(recipe_path: Path) -> Recipe:
     raw = tomllib.loads(recipe_path.read_text())
     if "recording" not in raw or "step" not in raw:
-        sys.exit(f"error: {recipe_path} missing required [recording] or [[step]] blocks")
+        raise RecorderError(f"{recipe_path} missing required [recording] or [[step]] blocks")
 
     rec_block: dict[str, Any] = dict(raw["recording"])
     profile_name = rec_block.get("profile", "generic")
     profile_path = PROFILES_DIR / f"{profile_name}.toml"
     if not profile_path.exists():
-        sys.exit(f"error: profile '{profile_name}' not found at {profile_path}")
+        raise RecorderError(f"profile '{profile_name}' not found at {profile_path}")
     profile_raw = tomllib.loads(profile_path.read_text())
 
     # Merge profile [recording] under recipe [recording] — recipe wins on conflict.

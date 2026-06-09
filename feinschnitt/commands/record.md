@@ -12,5 +12,5 @@ Author a `recipe.toml` for recording a CLI session, using the `cli-recorder` ski
 
 1. Treat the user's input as the recording intent (e.g. "a tour of git rebase -i").
 2. Engage the `cli-recorder` skill and walk through its interactive recipe-authoring Q&A.
-3. Stop after the recipe is written and validated — the user runs `train_recorder.py` themselves.
+3. Stop after the recipe is written and validated — the user runs `feinschnitt record` themselves.
 4. If nothing is provided, ask what CLI session they want to record.

@@ -32,7 +32,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return args.func(args)
     except (recorder.RecorderError, analyze.AnalyzeError,
-            FileNotFoundError, OSError, ValueError) as exc:
+            FileNotFoundError, OSError, ValueError, ImportError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1
 
