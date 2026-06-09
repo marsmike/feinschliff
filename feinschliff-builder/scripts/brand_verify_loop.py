@@ -41,6 +41,7 @@ each layout exists at `<brand>/layouts/<layout-name>.slide.dsl`.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import subprocess
@@ -67,31 +68,48 @@ def _newer(target: Path, *srcs: Path) -> bool:
 
 
 def export_source_pngs(source_pptx: Path, source_pdf: Path,
-                       source_png_dir: Path, slide_nos: list[int]) -> None:
-    """Render the source deck once → split into per-slide PNGs at 1920×1080."""
+                       source_png_dir: Path, slide_nos: list[int]) -> list[str]:
+    """Render the source deck once → split into per-slide PNGs at 1920×1080.
+
+    Returns a list of per-slide failure strings. A bad slide number (e.g.
+    out of the deck's page range) drops just that slide rather than aborting
+    the whole pipeline — mirroring the render loop. A failure of the
+    soffice PDF conversion itself is fatal (nothing can be scored).
+    """
     source_png_dir.mkdir(parents=True, exist_ok=True)
     if _newer(source_pdf, source_pptx):
         source_pdf.parent.mkdir(parents=True, exist_ok=True)
         print(f"[source] {source_pptx.name} → {source_pdf.name}")
+        # Fatal: without the source PDF there is nothing to compare against.
         _run([SOFFICE, "--headless", "--convert-to", "pdf",
               "--outdir", str(source_pdf.parent), str(source_pptx)],
              capture_output=True)
         produced = source_pdf.parent / (source_pptx.stem + ".pdf")
         if produced != source_pdf:
             produced.rename(source_pdf)
+    failures: list[str] = []
     for n in slide_nos:
         out_png = source_png_dir / f"slide-{n:02d}.png"
         if not _newer(out_png, source_pdf):
             continue
         stem = source_png_dir / f"_p{n}"
-        _run(["pdftoppm", "-png", "-f", str(n), "-l", str(n),
-              "-scale-to-x", "1920", "-scale-to-y", "1080",
-              str(source_pdf), str(stem)])
+        try:
+            _run(["pdftoppm", "-png", "-f", str(n), "-l", str(n),
+                  "-scale-to-x", "1920", "-scale-to-y", "1080",
+                  str(source_pdf), str(stem)])
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode() if e.stderr else ""
+            out_png.unlink(missing_ok=True)
+            failures.append(f"source slide {n}: pdftoppm failed — {stderr[-160:]}")
+            continue
         produced = list(source_png_dir.glob(f"_p{n}-*.png"))
         if not produced:
-            sys.exit(f"pdftoppm produced no file for page {n}")
+            out_png.unlink(missing_ok=True)
+            failures.append(f"source slide {n}: pdftoppm produced no file")
+            continue
         produced[0].rename(out_png)
         print(f"[source] slide {n:02d} → {out_png.name}")
+    return failures
 
 
 def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
@@ -112,14 +130,26 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
         f"{enclosing}{os.pathsep}{existing}" if existing else str(enclosing)
     )
     build_env = {**os.environ, "FEINSCHLIFF_BRAND_PATH": brand_env_path}
+    # A layout render depends on more than its own .slide.dsl: the brand's
+    # tokens.json (theme colors/fonts) and DESIGN.md (token frontmatter +
+    # extends) feed every build. Editing those without touching the layout
+    # must still invalidate the cached PNG, else the diff scores a stale
+    # render. (Parent tokens in an extends: chain change rarely; the brand's
+    # own tokens/DESIGN cover the common case.)
+    brand_inputs = [p for p in (brand_pack / "tokens.json",
+                                brand_pack / "DESIGN.md") if p.is_file()]
     failures: list[str] = []
     for layout in layouts:
         dsl = layouts_dir / f"{layout}.slide.dsl"
         out_png = render_png_dir / f"{layout}.png"
+        # A layout that fails to (re)render must NOT leave a stale PNG from a
+        # prior run on disk — the diff step would otherwise score the old
+        # render as if it were current. Drop it on every failure path below.
         if not dsl.is_file():
+            out_png.unlink(missing_ok=True)
             failures.append(f"{layout}: missing {dsl}")
             continue
-        if not _newer(out_png, dsl):
+        if not _newer(out_png, dsl, *brand_inputs):
             continue
         work = work_root / layout
         if work.exists():
@@ -134,6 +164,7 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
                  cwd=REPO, capture_output=True, env=build_env)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode() if e.stderr else ""
+            out_png.unlink(missing_ok=True)
             failures.append(f"{layout}: build failed — {stderr[-200:]}")
             continue
         try:
@@ -142,14 +173,22 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
                  capture_output=True)
         except subprocess.CalledProcessError as e:
             stderr = e.stderr.decode() if e.stderr else ""
+            out_png.unlink(missing_ok=True)
             failures.append(f"{layout}: soffice failed — {stderr[-200:]}")
             continue
         pdf = work / f"{layout}.pdf"
         stem = work / "_p"
-        _run(["pdftoppm", "-png", "-scale-to-x", "1920", "-scale-to-y", "1080",
-              str(pdf), str(stem)])
+        try:
+            _run(["pdftoppm", "-png", "-scale-to-x", "1920", "-scale-to-y", "1080",
+                  str(pdf), str(stem)])
+        except subprocess.CalledProcessError as e:
+            stderr = e.stderr.decode() if e.stderr else ""
+            out_png.unlink(missing_ok=True)
+            failures.append(f"{layout}: pdftoppm failed — {stderr[-200:]}")
+            continue
         produced = sorted(work.glob("_p-*.png"))
         if not produced:
+            out_png.unlink(missing_ok=True)
             failures.append(f"{layout}: pdftoppm produced nothing")
             continue
         produced[0].rename(out_png)
@@ -160,7 +199,13 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
 def run_diff(brand_pack: Path, source_png_dir: Path,
              render_png_dir: Path, diff_dir: Path,
              only: list[str] | None = None,
-             loupe: bool = False) -> None:
+             loupe: bool = False) -> int:
+    """Run the scorer; return its exit code (non-zero = some layout unscored).
+
+    Deliberately does NOT use check=True: the scorer writes report.json even
+    on a partial run and signals partial-ness via a non-zero code, which the
+    caller surfaces — a raised exception here would discard that signal.
+    """
     diff_dir.mkdir(parents=True, exist_ok=True)
     cmd = ["uv", "run", "python", str(SCRIPT_DIR / "brand_visual_diff.py"),
            "--brand-pack", str(brand_pack),
@@ -171,7 +216,7 @@ def run_diff(brand_pack: Path, source_png_dir: Path,
         cmd += ["--only", *only]
     if loupe:
         cmd.append("--loupe")
-    _run(cmd, cwd=REPO)
+    return subprocess.run(cmd, cwd=REPO).returncode
 
 
 def main() -> int:
@@ -220,25 +265,22 @@ def main() -> int:
     work_root = out_root / "work"
 
     mapping: dict[str, int] = yaml.safe_load(verify_map.read_text())["layouts"]
-    if args.only:
+    # `is not None` (not truthiness): `--only` with zero names yields [], which
+    # must error as "no layouts matched", NOT silently fall through to all.
+    if args.only is not None:
         wanted = set(args.only)
         mapping = {k: v for k, v in mapping.items() if k in wanted}
         if not mapping:
             sys.exit(f"--only matched no layouts (have: "
                      f"{sorted(yaml.safe_load(verify_map.read_text())['layouts'])})")
 
+    failures: list[str] = []
     if not args.skip_source_export:
-        export_source_pngs(source_pptx, source_pdf, source_png_dir,
-                           sorted(set(mapping.values())))
+        failures += export_source_pngs(source_pptx, source_pdf, source_png_dir,
+                                       sorted(set(mapping.values())))
     if not args.skip_render:
-        failures = render_derived_pngs(brand_pack, brand_name, work_root,
-                                       render_png_dir, list(mapping))
-        if failures:
-            for f in failures:
-                print(f"  ✗ {f}", file=sys.stderr)
-            print(f"\n{len(failures)} render failure(s); aborting before diff.",
-                  file=sys.stderr)
-            return 1
+        failures += render_derived_pngs(brand_pack, brand_name, work_root,
+                                        render_png_dir, list(mapping))
 
     if args.snapshot_baseline:
         baseline_dir = out_root / "render-png.before"
@@ -250,10 +292,55 @@ def main() -> int:
         print(f"[baseline] snapshotted {len(mapping)} renders → "
               f"{baseline_dir.name}/")
 
-    only = list(mapping) if args.only else None
-    run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir, only=only,
-             loupe=args.loupe)
+    # Diff ONLY layouts that have BOTH a fresh render PNG and a source PNG. A
+    # layout missing either had its stale PNG removed above, so it is excluded
+    # rather than silently scored against a stale/missing render. This is the
+    # key correctness invariant: report.json never presents stale or missing
+    # renders as current results.
+    renderable = [lyt for lyt in mapping
+                  if (render_png_dir / f"{lyt}.png").is_file()
+                  and (source_png_dir / f"slide-{mapping[lyt]:02d}.png").is_file()]
+    excluded = [lyt for lyt in mapping if lyt not in set(renderable)]
+
+    if failures:
+        diff_dir.mkdir(parents=True, exist_ok=True)
+        (diff_dir / "render-failures.txt").write_text(
+            "\n".join(failures) + "\n"
+        )
+        for f in failures:
+            print(f"  ✗ {f}", file=sys.stderr)
+
+    if not renderable:
+        print("\nNo layouts rendered successfully — nothing to diff. "
+              "report.json NOT updated.", file=sys.stderr)
+        return 1
+
+    diff_rc = run_diff(brand_pack, source_png_dir, render_png_dir, diff_dir,
+                       only=renderable, loupe=args.loupe)
     print(f"\n→ overlays: {diff_dir}")
+
+    # The scorer MERGES into report.json (so a subset run keeps un-run
+    # layouts). That merge would otherwise let a layout that failed THIS run
+    # retain its previous score. Strip excluded layouts so report.json never
+    # presents a stale score for something that just failed.
+    report_path = diff_dir / "report.json"
+    if excluded and report_path.is_file():
+        try:
+            rep = json.loads(report_path.read_text())
+            removed = [lyt for lyt in excluded if rep.pop(lyt, None) is not None]
+            if removed:
+                report_path.write_text(json.dumps(rep, indent=2))
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"warning: could not prune excluded layouts from "
+                  f"report.json: {e}", file=sys.stderr)
+
+    if failures or excluded or diff_rc != 0:
+        n_bad = len(set(excluded) | {f.split(':')[0] for f in failures})
+        print(f"\n⚠ {n_bad} layout(s) failed to render/score and were EXCLUDED "
+              f"from report.json (see {diff_dir / 'render-failures.txt'}). The "
+              f"{len(renderable)} that rendered were scored normally.",
+              file=sys.stderr)
+        return 1
     return 0
 
 

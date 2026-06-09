@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 import time
 from pathlib import Path
 
@@ -408,7 +409,15 @@ def main() -> int:
     layouts_dir = args.brand_pack / "layouts"
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
-    report = {}
+    # `scored_now` holds ONLY the layouts freshly scored this run. It is
+    # merged into any existing report.json at the end (so a subset run does
+    # not delete un-run layouts) and is what the score-trace row records (so
+    # plateau detection sees real per-run measurements, not carried-over
+    # values). `missing`/`errored` make a partial run fail loudly instead of
+    # exiting 0 as if complete.
+    scored_now: dict = {}
+    missing: list[str] = []
+    errored: list[str] = []
     # Loupe pages accumulate across layouts and flush to a single PDF at
     # the end. Each entry is a (layout, slide_no, hotspot_idx, total, dict,
     # src_array, ren_array, redline_image) tuple — building the actual
@@ -421,15 +430,24 @@ def main() -> int:
         ren_path = args.render_dir / f"{layout}.png"
         if not src_path.is_file() or not ren_path.is_file():
             print(f"{layout:<28}{slide_no:<7}MISSING")
+            missing.append(layout)
             continue
-        src = _load_norm(src_path)
-        ren = _load_norm(ren_path)
-        boxes = _picture_boxes(layouts_dir / f"{layout}.slide.dsl")
-        pic_mask = _picture_mask(boxes) if boxes else None
-        metrics, diff, block_mask = _compute_metrics(src, ren, pic_mask)
-        regions = _block_regions(block_mask)
-        report[layout] = {"slide": slide_no, "picture_slots": len(boxes),
-                          **metrics, "regions": regions}
+        # One corrupt/truncated PNG must not abort the whole batch and leave
+        # the prior report.json on disk looking current. Isolate per-layout.
+        try:
+            src = _load_norm(src_path)
+            ren = _load_norm(ren_path)
+            boxes = _picture_boxes(layouts_dir / f"{layout}.slide.dsl")
+            pic_mask = _picture_mask(boxes) if boxes else None
+            metrics, diff, block_mask = _compute_metrics(src, ren, pic_mask)
+            regions = _block_regions(block_mask)
+        except Exception as exc:  # noqa: BLE001 — surfaced + non-zero exit below
+            print(f"{layout:<28}{slide_no:<7}ERROR: {type(exc).__name__}: {exc}",
+                  file=sys.stderr)
+            errored.append(f"{layout}: {type(exc).__name__}: {exc}")
+            continue
+        scored_now[layout] = {"slide": slide_no, "picture_slots": len(boxes),
+                              **metrics, "regions": regions}
 
         prefix = f"slide-{slide_no:02d}_{layout}"
         label = (f"{layout}   ·   slide-{slide_no:02d}   ·   "
@@ -476,24 +494,50 @@ def main() -> int:
               f"{ssim_s:>8}"
               f"{metrics['picture_coverage']*100:>7.1f}%")
 
-    (args.output_dir / "report.json").write_text(json.dumps(report, indent=2))
+    # Merge into any existing report.json so a subset run (--only) UPDATES the
+    # scored layouts without deleting the rest. Reading the full layout set
+    # from report.json (e.g. the improve-brand selector) then still sees every
+    # known layout, with the ones scored this run refreshed.
+    report_path = args.output_dir / "report.json"
+    report: dict = {}
+    if report_path.is_file():
+        try:
+            report = json.loads(report_path.read_text())
+            if not isinstance(report, dict):
+                report = {}
+        except (json.JSONDecodeError, OSError):
+            report = {}
+    report.update(scored_now)
+    report_path.write_text(json.dumps(report, indent=2))
     trace_path = args.output_dir / "score-trace.jsonl"
+    # The trace row records ONLY layouts measured THIS run — plateau detection
+    # must not mistake a carried-over score for a fresh measurement.
     with open(trace_path, "a") as f:
         f.write(json.dumps({
             "ts": int(time.time()),
             # `scores` stays struct_diff_ratio for plateau-tool continuity;
             # `block_scores` tracks the fixable signal the loop now gates on.
-            "scores": {k: v["struct_diff_ratio"] for k, v in report.items()},
-            "block_scores": {k: v["block_diff_ratio"] for k, v in report.items()},
+            "scores": {k: v["struct_diff_ratio"] for k, v in scored_now.items()},
+            "block_scores": {k: v["block_diff_ratio"] for k, v in scored_now.items()},
         }) + "\n")
-    print(f"\nwrote {len(report)} overlay+mask pairs to {args.output_dir}")
-    print(f"wrote {args.output_dir / 'report.json'}")
+    print(f"\nwrote {len(scored_now)} overlay+mask pairs to {args.output_dir}")
+    print(f"wrote {report_path} ({len(scored_now)} scored this run, "
+          f"{len(report)} total)")
     print(f"appended to {trace_path}")
     if loupe_pages:
         loupe_pdf = args.output_dir / "loupe-hotspots.pdf"
         loupe_pages[0].save(loupe_pdf, format="PDF", save_all=True,
                             append_images=loupe_pages[1:], resolution=150)
         print(f"wrote loupe view → {loupe_pdf} ({len(loupe_pages)} pages)")
+    # A partial run must not read as a clean one. Surface skipped/errored
+    # layouts and exit non-zero so the orchestrator's check=True trips.
+    if missing or errored:
+        if missing:
+            print(f"\n⚠ {len(missing)} layout(s) had no source/render PNG and "
+                  f"were NOT scored: {', '.join(missing)}", file=sys.stderr)
+        for e in errored:
+            print(f"  ✗ {e}", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -471,6 +471,7 @@ def expand_diagram_blocks(
         ``out_dir.parent`` when not supplied.
     """
     import hashlib
+    import json as _json
 
     from feinschliff.diagrams import svg_expand, excalidraw_expand
     from feinschliff.diagrams.render import render
@@ -479,13 +480,63 @@ def expand_diagram_blocks(
         primitives_from_excalidraw_dsl,
     )
 
+    # Tokens hash for the diagram cache key. Diagram colours resolve through
+    # the FULL `extends:` chain (brand_bridge merges parent tokens), so hashing
+    # only the child brand's tokens.json would reuse a stale PNG when a PARENT
+    # token is edited — common for a brand that inherits its palette via
+    # `extends:`. Hash the merged, extends-resolved tokens instead. Computed
+    # once per call (constant across this slide's diagram nodes). Falls back
+    # to the child file alone if the chain can't be resolved, so a malformed
+    # parent degrades to a stale-cache risk rather than crashing the build.
+    try:
+        from feinschliff.dsl.tokens import load_tokens
+        _merged_raw = load_tokens(brand_dir).raw
+        _tokens_hash = hashlib.sha1(
+            _json.dumps(_merged_raw, sort_keys=True,
+                        separators=(",", ":")).encode()
+        ).hexdigest()[:12]
+    except Exception:  # noqa: BLE001 — never block a render on token resolution
+        _tj = brand_dir / "tokens.json"
+        _tokens_hash = (
+            hashlib.sha1(_tj.read_bytes()).hexdigest()[:12]
+            if _tj.exists() else ""
+        )
+    _layout_dir_name = layout_dir.name if layout_dir is not None else ""
+
+    # Clear THIS slide's prior diagram artifacts before writing fresh ones.
+    # Artifacts are content-hash-named (`s{slide_index}-{id}-{hash}.{svg,
+    # excalidraw,png}`) and out_dir is persistent on the `feinschliff build`
+    # path, so a changed diagram leaves the old hash file behind. The
+    # structural-lint loops glob `s{slide_index}-*`, so a stale artifact would
+    # be linted as if current. The `s{idx}-` prefix is glob-safe (`s5-*` does
+    # not match `s50-*`). Only runs when this slide actually has diagrams.
+    if out_dir.exists() and any(n.kind in ("svg", "excalidraw") for n in nodes):
+        for stale in out_dir.glob(f"s{slide_index}-*"):
+            stale.unlink(missing_ok=True)
+
     out: list[DSLNode] = []
     for n in nodes:
         if n.kind not in ("svg", "excalidraw"):
             out.append(n)
             continue
 
-        # All diagram geometry lives in kw_args (set by _parse_diagram_block).
+        # All diagram geometry lives in kw_args (set by _parse_diagram_block,
+        # which only runs when the line matched the multi-line block header:
+        # `<kind> <id> <x>,<y> <w>x<h> {` with the brace at END of line). If
+        # geometry is absent the header didn't match — almost always a
+        # single-line `{ … }` body or a multi-token id. Fail with the fix
+        # rather than a bare KeyError deep in the expander.
+        if "x" not in n.kw_args:
+            raise SyntaxError(
+                f"{n.source or '<dsl>'} line {n.line_no}: malformed '{n.kind}' "
+                f"diagram block — no geometry parsed. Use the multi-line form "
+                f"with the opening brace at END of line:\n"
+                f"  {n.kind} <id> <x>,<y> <w>x<h> {{\n"
+                f"    path p \"M 0,0 L 1,1 Z\" fill:accent\n"
+                f"  }}\n"
+                f"Single-line `{{ … }}` body and a missing/multi-token <id> are "
+                f"not supported here."
+            )
         x: int = n.kw_args["x"]  # type: ignore[assignment]
         y: int = n.kw_args["y"]  # type: ignore[assignment]
         w: int = n.kw_args["w"]  # type: ignore[assignment]
@@ -532,17 +583,10 @@ def expand_diagram_blocks(
         # diagram id + body but differ on brand, region size, or kind — the
         # later render then overwrites the earlier PNG (Review #0.1).
         # Virtual canvas dimensions also participate so identical bodies
-        # rendered at different scales don't collide.
-        # tokens.json hash ensures brand-token edits bust cached PNGs.
+        # rendered at different scales don't collide. `_tokens_hash` (merged
+        # extends chain) and `_layout_dir_name` are computed once above.
         # from_path and layout_dir prevent collisions across layouts that
         # embed the same external DSL file.
-        _tokens_json = brand_dir / "tokens.json"
-        _tokens_hash = (
-            hashlib.sha1(_tokens_json.read_bytes()).hexdigest()[:12]
-            if _tokens_json.exists()
-            else ""
-        )
-        _layout_dir_name = layout_dir.name if layout_dir is not None else ""
         key_blob = "|".join((
             str(slide_index),
             n.kind,
