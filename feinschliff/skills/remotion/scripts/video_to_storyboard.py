@@ -107,7 +107,7 @@ def analyze(file_obj, model_name: str) -> str:
 
 def extract_frames(video_path: str, storyboard_text: str, frames_dir: Path) -> str:
     """Parse timestamps from storyboard, extract midpoint frames with ffmpeg."""
-    print(f"[3/4] Extracting keyframes...")
+    print("[3/4] Extracting keyframes...")
     frames_dir.mkdir(exist_ok=True)
 
     pattern = re.compile(r"### Scene (\d+):[^\n]*\((\d+):(\d+)\s*[–-]\s*(\d+):(\d+)")

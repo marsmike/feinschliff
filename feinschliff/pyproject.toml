@@ -37,6 +37,10 @@ testpaths = ["tests"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402"]
 "scripts/**" = ["E402"]
+# Vendored, self-contained media-skill CLI scripts (copied verbatim from
+# agentic-toolkit). They do __future__/sys.path setup before imports, so E402
+# applies here for the same reason it does to scripts/**.
+"skills/*/scripts/**" = ["E402"]
 
 [tool.setuptools.packages.find]
 where = ["."]
