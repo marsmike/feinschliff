@@ -34,6 +34,11 @@ def cmd_excalidraw_expand(src: Path, out: Path | None = None, brand: str | None 
 
 
 def cmd_render(src: Path, out: Path | None = None) -> int:
+    # Check existence up front: otherwise a missing file falls through the
+    # cairosvg path into the (uninstalled) Playwright fallback and surfaces a
+    # confusing "No module named 'playwright'" instead of "file not found".
+    if not src.exists():
+        raise FileNotFoundError(f"input file not found: {src}")
     out = out or src.with_suffix(".png")
     _render(src, out)
     print(f"feinbild: wrote {out}", file=sys.stderr)
