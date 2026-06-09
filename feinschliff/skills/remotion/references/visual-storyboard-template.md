@@ -177,7 +177,7 @@ ${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "flat illust
 ${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "infographic illustration, <aspect>: <narrative_purpose>, <visualization_type>, <emotional_beat>, clean flat illustration, professional infographic", "provider": "replicate", "aspect_ratio": "<from resolution>", "output": "docs/storyboard/scene-N-concept.png"}'
 ```
 
-Default model: `black-forest-labs/flux-schnell` (~0.5s, ~$0.003/image). For client-facing storyboards: `recraft-ai/recraft-v4` (~10s, ~$0.04/image). Avoid requesting text in prompts — Flux renders text poorly.
+Default model: `black-forest-labs/flux-schnell` (~0.5s, ~$0.003/image). For client-facing storyboards: `black-forest-labs/flux-1.1-pro-ultra` (~$0.06/image, best quality, 4MP). Avoid requesting text in prompts — Flux renders text poorly.
 
 ### From Remotion compositions (Phase 3.5 eval loop)
 
@@ -200,7 +200,7 @@ done
 ### From existing videos (Phase 0 analysis)
 
 ```bash
-python3 remotion/skills/remotion/scripts/video_to_storyboard.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py \
   path/to/video.mp4 docs/reference.storyboard.md
 ```
 

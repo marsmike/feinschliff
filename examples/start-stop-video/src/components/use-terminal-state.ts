@@ -1,7 +1,7 @@
 /**
  * useTerminalState — replay an asciicast v3 file into a deterministic cell grid
  * at any playback time `t`. Demo implementation — concrete and working, less
- * elegant than the reference at remotion/skills/remotion/references/.
+ * elegant than the reference at feinschliff/skills/remotion/references/.
  */
 
 import {useEffect, useMemo, useState} from 'react';

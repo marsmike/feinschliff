@@ -5,12 +5,12 @@ Drive any CLI session in tmux+asciinema, capture it as an asciicast v3 with a st
 ## Quick start
 
 ```bash
-# 1. Author a recipe (interactive — uses the recipe-author skill)
+# 1. Author a recipe (interactive — uses the cli-recorder skill)
 claude
-> /recipe-author install-kubectl
+> /record install-kubectl
 
 # 2. Run the recorder
-python3 cli-recorder/scripts/train_recorder.py recipes/install-kubectl.recipe.toml
+python3 scripts/train_recorder.py recipes/install-kubectl.recipe.toml
 
 # 3. Outputs land in recordings/<name>/
 recordings/install-kubectl/
@@ -72,10 +72,9 @@ For each run the recorder writes:
 
 ## Pairing with Remotion
 
-The Remotion plugin's `TerminalScene` component reads `.cast` directly via `@xterm/headless` and renders it as composited React text — so all Remotion features (zoom, highlight, transitions, narration) work natively on terminal recordings. See `remotion/skills/remotion/references/components-extended.md` for the integration.
+The Remotion plugin's `TerminalScene` component reads `.cast` directly via `@xterm/headless` and renders it as composited React text — so all Remotion features (zoom, highlight, transitions, narration) work natively on terminal recordings. See [`components-extended.md`](../remotion/references/components-extended.md) for the integration.
 
 ## See also
 
 - [schema/recipe.schema.json](schema/recipe.schema.json) — recipe validation
-- [skills/recipe-author/SKILL.md](skills/recipe-author/SKILL.md) — interactive recipe authoring
-- [`docs/superpowers/specs/2026-05-10-cli-recorder-remotion-integration-design.md`](../docs/superpowers/specs/2026-05-10-cli-recorder-remotion-integration-design.md) — full design doc
+- [SKILL.md](SKILL.md) — interactive recipe authoring

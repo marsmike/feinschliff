@@ -11,7 +11,7 @@
 | `format` | no | `mp3_44100_128` | Output format (see below) |
 | `stability` | no | `0.5` | Voice stability 0-1 |
 | `similarity_boost` | no | `0.75` | Voice similarity 0-1 |
-| `speed` | no | `1.2` | Speech rate 0.7-1.2 |
+| `speed` | no | `1.0` | Speech rate 0.7-1.2 |
 | `play` | no | `false` | Play audio locally after generation |
 
 ## Models

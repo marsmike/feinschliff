@@ -138,7 +138,7 @@ For each scene N, generate two AI concept images using the `/imagine` skill. Bui
 
 **Model selection:**
 - Default: `black-forest-labs/flux-schnell` (~0.5s, ~$0.003/image) — fast, cheap, good flat illustration
-- High quality: `recraft-ai/recraft-v4` (~10s, ~$0.04/image) — better design quality, use for final/client-facing storyboards
+- High quality: `black-forest-labs/flux-1.1-pro-ultra` (~$0.06/image, 4MP) — best quality, use for final/client-facing storyboards
 - Free: Gemini provider with `gemini-2.5-flash-image` (500 free/day)
 
 **Rate limiting:** Replicate allows ~6 requests/minute on low-credit accounts. Generate images sequentially with 10s pauses between calls.

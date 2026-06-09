@@ -211,9 +211,9 @@ done
 # Build filter graph
 # For 2 scenes: simple single xfade
 # For N scenes: chained xfade filters
-INPUTS=""
+INPUTS=()
 for scene in "${SCENES[@]}"; do
-  INPUTS="$INPUTS -i $OUT_DIR/${scene}.mp4"
+  INPUTS+=(-i "$OUT_DIR/${scene}.mp4")
 done
 
 if [ "$SCENE_COUNT" -eq 2 ]; then
@@ -231,14 +231,14 @@ if [ "$SCENE_COUNT" -eq 2 ]; then
 
   if [ "$HAS_AUDIO" = true ]; then
     AFILTER="[0:a][1:a]acrossfade=d=${TRANS_DUR}[aout]"
-    ffmpeg -y $INPUTS \
+    ffmpeg -y "${INPUTS[@]}" \
       -filter_complex "${VFILTER};${AFILTER}" \
       -map "[vout]" -map "[aout]" \
       -c:v libx264 -crf "$CRF" -preset "$PRESET" \
       -c:a aac -b:a 192k \
       "$OUTPUT"
   else
-    ffmpeg -y $INPUTS \
+    ffmpeg -y "${INPUTS[@]}" \
       -filter_complex "${VFILTER}" \
       -map "[vout]" \
       -c:v libx264 -crf "$CRF" -preset "$PRESET" \
@@ -286,14 +286,14 @@ else
   echo "Offsets computed. Running ffmpeg..."
 
   if [ "$HAS_AUDIO" = true ]; then
-    ffmpeg -y $INPUTS \
+    ffmpeg -y "${INPUTS[@]}" \
       -filter_complex "${VFILTER};${AFILTER}" \
       -map "[${LAST_VTAG}]" -map "[${LAST_ATAG}]" \
       -c:v libx264 -crf "$CRF" -preset "$PRESET" \
       -c:a aac -b:a 192k \
       "$OUTPUT"
   else
-    ffmpeg -y $INPUTS \
+    ffmpeg -y "${INPUTS[@]}" \
       -filter_complex "${VFILTER}" \
       -map "[${LAST_VTAG}]" \
       -c:v libx264 -crf "$CRF" -preset "$PRESET" \

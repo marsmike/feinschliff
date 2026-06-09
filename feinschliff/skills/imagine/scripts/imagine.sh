@@ -1,6 +1,6 @@
 #!/bin/bash
 # AI Image Generation — Multi-provider
-# Usage: ./imagine.sh '{"prompt": "...", "provider": "replicate|gemini|kling", ...}'
+# Usage: ./imagine.sh '{"prompt": "...", "provider": "replicate|gemini", ...}'
 
 set -e
 
@@ -20,7 +20,7 @@ if [ -z "$JSON_INPUT" ]; then
   echo "  prompt: string — Image description"
   echo ""
   echo "Optional:"
-  echo "  provider: replicate (default), gemini, kling"
+  echo "  provider: replicate (default), gemini"
   echo "  model: string — Provider-specific model"
   echo "  aspect_ratio: 1:1 (default), 16:9, 9:16, 4:3, 3:4, 3:2, 2:3"
   echo "  output: string — Output file path"
@@ -178,124 +178,13 @@ generate_gemini() {
 }
 
 # ---------------------------------------------------------------------------
-# Kling AI
-# ---------------------------------------------------------------------------
-generate_kling() {
-  if [ -z "${KLING_ACCESS_KEY:-}" ] || [ -z "${KLING_SECRET_KEY:-}" ]; then
-    echo "Error: KLING_ACCESS_KEY and KLING_SECRET_KEY must be set in ~/.env" >&2
-    exit 1
-  fi
-
-  local model="${MODEL:-kling-v2-1}"
-  local output_file="${OUTPUT:-/tmp/imagine_${TIMESTAMP}.png}"
-
-  echo "Provider: Kling | Model: $model" >&2
-  echo "Prompt: $PROMPT" >&2
-  echo "Generating..." >&2
-
-  # Generate JWT token (HS256)
-  local header
-  header=$(echo -n '{"alg":"HS256","typ":"JWT"}' | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
-
-  local now
-  now=$(date +%s)
-  local exp=$((now + 1800))
-  local nbf=$((now - 5))
-
-  local payload
-  payload=$(echo -n "{\"iss\":\"${KLING_ACCESS_KEY}\",\"exp\":${exp},\"nbf\":${nbf}}" | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
-
-  local signature
-  signature=$(echo -n "${header}.${payload}" | openssl dgst -sha256 -hmac "$KLING_SECRET_KEY" -binary | base64 | tr -d '=' | tr '/+' '_-' | tr -d '\n')
-
-  local jwt="${header}.${payload}.${signature}"
-
-  # Create image generation task
-  local response
-  response=$(curl -s -X POST \
-    -H "Authorization: Bearer $jwt" \
-    -H "Content-Type: application/json" \
-    -d "$(jq -n \
-      --arg prompt "$PROMPT" \
-      --arg model "$model" \
-      --arg aspect "$ASPECT_RATIO" \
-      '{model_name: $model, prompt: $prompt, aspect_ratio: $aspect, n: 1}')" \
-    "https://api.klingai.com/v1/images/generations")
-
-  local task_id
-  task_id=$(echo "$response" | jq -r '.data.task_id // empty')
-  if [ -z "$task_id" ]; then
-    local error
-    error=$(echo "$response" | jq -r '.message // .error // "Unknown error"')
-    echo "Error: Kling API: $error" >&2
-    echo "$response" | jq . >&2
-    exit 1
-  fi
-
-  echo "Task: $task_id — polling for result..." >&2
-
-  # Poll for completion (max 60 attempts, 2s interval = 2 min timeout)
-  local attempts=0
-  local max_attempts=60
-  local status=""
-  local result=""
-
-  while [ $attempts -lt $max_attempts ]; do
-    sleep 2
-    result=$(curl -s \
-      -H "Authorization: Bearer $jwt" \
-      "https://api.klingai.com/v1/images/generations/$task_id")
-
-    status=$(echo "$result" | jq -r '.data.task_status // "unknown"')
-
-    case "$status" in
-      succeed)
-        break
-        ;;
-      failed)
-        local error
-        error=$(echo "$result" | jq -r '.data.task_status_msg // "Generation failed"')
-        echo "Error: Kling generation failed: $error" >&2
-        exit 1
-        ;;
-      *)
-        attempts=$((attempts + 1))
-        ;;
-    esac
-  done
-
-  if [ "$status" != "succeed" ]; then
-    echo "Error: Kling generation timed out after $((max_attempts * 2))s (status: $status)" >&2
-    exit 1
-  fi
-
-  # Download the image
-  local image_url
-  image_url=$(echo "$result" | jq -r '.data.task_result.images[0].url // empty')
-  if [ -z "$image_url" ]; then
-    echo "Error: No image URL in Kling response" >&2
-    echo "$result" | jq . >&2
-    exit 1
-  fi
-
-  curl -s -o "$output_file" "$image_url"
-
-  local file_size
-  file_size=$(wc -c < "$output_file" | tr -d ' ')
-
-  echo "Generated: $output_file ($file_size bytes)"
-  echo "Provider: kling | Model: $model"
-}
-
-# ---------------------------------------------------------------------------
 # Route to provider
 # ---------------------------------------------------------------------------
 case "$PROVIDER" in
   replicate) generate_replicate ;;
   gemini)    generate_gemini ;;
-  kling)     generate_kling ;;
   *)
-    echo "Error: Unknown provider '$PROVIDER'. Use: replicate, gemini, kling" >&2
+    echo "Error: Unknown provider '$PROVIDER'. Use: replicate, gemini" >&2
     exit 1
     ;;
 esac

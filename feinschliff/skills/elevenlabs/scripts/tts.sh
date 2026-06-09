@@ -28,14 +28,14 @@ if [ -z "$JSON_INPUT" ]; then
   echo "  text: string - Text to convert to speech"
   echo ""
   echo "Optional:"
-  echo "  voice_id: string (default: Mike)"
+  echo "  voice_id: string (default: Hale)"
   echo "  model_id: eleven_multilingual_v2 (default), eleven_v3, eleven_flash_v2_5"
   echo "  output: string - Output file path (default: /tmp/tts_<timestamp>.mp3)"
   echo "  format: mp3_44100_128 (default), mp3_44100_192, wav_44100, pcm_44100"
   echo "  stability: 0-1 (default: 0.5)"
   echo "  similarity_boost: 0-1 (default: 0.75)"
   echo "  speed: 0.7-1.2 (default: 1.0)"
-  echo "  play: true/false (default: true)"
+  echo "  play: true/false (default: false)"
   exit 1
 fi
 
