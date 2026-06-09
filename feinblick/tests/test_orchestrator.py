@@ -240,3 +240,5 @@ def test_introduced_gate_without_diff_or_ref_gates_nothing(tmp_path, monkeypatch
     assert res.meta["introduced"] == 0
     # but the full (deduped) finding set is still reported
     assert len(res.findings) == 1
+    # ...and a vacuous PASS is flagged so it isn't misread as "tree is clean"
+    assert "gate_note" in res.meta and "does not reflect" in res.meta["gate_note"]

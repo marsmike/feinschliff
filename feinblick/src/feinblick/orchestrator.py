@@ -28,6 +28,15 @@ from feinblick.rules import run_rules
 from feinblick.runner import Runner
 
 
+class OrchestrationError(RuntimeError):
+    """A tooling failure that aborts the run under ``--strict``.
+
+    Raised when an engine is unavailable or errors and the caller asked for
+    strict mode. The CLI catches this and exits with a distinct non-findings
+    code rather than crashing with a traceback.
+    """
+
+
 @dataclass
 class Result:
     findings: list[Finding]
@@ -87,7 +96,7 @@ def run_pipeline(
             if not ok:
                 meta["unavailable"].append({"engine": engine_name, "reason": reason})
                 if strict:
-                    raise RuntimeError(reason)
+                    raise OrchestrationError(reason)
                 continue
             raw = eng.run(runner, targets, version)
             # An engine that errored at runtime (crash / missing path / unparseable
@@ -97,7 +106,7 @@ def run_pipeline(
             if err is not None:
                 meta["errors"].append({"engine": engine_name, "reason": err})
                 if strict:
-                    raise RuntimeError(f"{engine_name}: {err}")
+                    raise OrchestrationError(f"{engine_name}: {err}")
                 continue
             findings += eng.parse(raw, targets)
             meta["engines"].append(engine_name)
@@ -113,6 +122,16 @@ def run_pipeline(
     candidates = _gate_candidates(
         gate, merged, introduced, repo_root, since_ref, diff_file
     )
+
+    # A `--gate introduced` run with no diff source attributes nothing, so the
+    # verdict is a vacuous PASS — flag it so a forgotten --changed-since isn't
+    # misread as "tree is clean".
+    if gate == "introduced" and not (since_ref or diff_file):
+        meta["gate_note"] = (
+            "gate=introduced but no --changed-since/--diff-file given — nothing was "
+            "attributed; this verdict does not reflect overall tree health "
+            f"({len(merged)} findings exist; use --gate all or pass a diff ref)"
+        )
 
     verdict = _verdict(gate, candidates, config)
     meta["introduced"] = len(candidates)
@@ -152,4 +171,4 @@ def _verdict(gate: str | None, candidates: list[Finding], config: Config) -> str
     return "warn" if warns else "pass"
 
 
-__all__ = ["Result", "run_pipeline"]
+__all__ = ["OrchestrationError", "Result", "run_pipeline"]

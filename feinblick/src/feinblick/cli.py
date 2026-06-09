@@ -24,7 +24,7 @@ from pathlib import Path
 
 from feinblick import __version__, baseline
 from feinblick.config import load_config
-from feinblick.orchestrator import run_pipeline
+from feinblick.orchestrator import OrchestrationError, run_pipeline
 from feinblick.report import render
 from feinblick.runner import Runner
 
@@ -283,7 +283,12 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 0
-    return handler(args)
+    try:
+        return handler(args)
+    except OrchestrationError as exc:
+        # --strict tooling failure: a clean, distinct exit (2) — never a traceback.
+        print(f"feinblick: tooling error (--strict): {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
