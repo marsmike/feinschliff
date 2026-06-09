@@ -77,7 +77,7 @@ digraph build_terminal_scene {
   rankdir=TB;
   start [label="Storyboard says scene N is terminal_recording"];
   check [label="Does .cast exist AND mtime(cast) > mtime(recipe)?", shape=diamond];
-  invoke [label="Invoke ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/scripts/train_recorder.py recipe.toml"];
+  invoke [label="Run feinschnitt record recipe.toml"];
   parsed [label="Read .scene-index.json"];
   emit [label="Generate src/scenes/Scene{N}.tsx wrapping <TerminalScene>"];
   start -> check;
@@ -161,7 +161,7 @@ The verification report (`docs/VERIFICATION_REPORT.md`) gains a per-step section
 
 ## Worked example
 
-The `cli-recorder` skill ships with `recipes/claude-commands.recipe.toml`. Run `scripts/train_recorder.py recipes/claude-commands.recipe.toml` to generate the corresponding `.cast` / `.scene-index.json` under `recordings/claude-commands/`. To turn those into a polished educational video:
+The `cli-recorder` skill ships with `recipes/claude-commands.recipe.toml`. Run `feinschnitt record recipes/claude-commands.recipe.toml` to generate the corresponding `.cast` / `.scene-index.json` under `recordings/claude-commands/`. To turn those into a polished educational video:
 
 ```yaml
 # docs/STORYBOARD.md
@@ -224,7 +224,7 @@ cta: "code.claude.com"
 duration_s: 4
 ```
 
-One recipe, five `terminal_recording` scenes, four chapter titles, per-step narration, one zoom focal point. The Build phase invokes `train_recorder.py` once (cached for the rest), Eval samples 8 keyframes (the unique steps across all scenes), Verify confirms each step's frame matches its label.
+One recipe, five `terminal_recording` scenes, four chapter titles, per-step narration, one zoom focal point. The Build phase invokes `feinschnitt record` once (cached for the rest), Eval samples 8 keyframes (the unique steps across all scenes), Verify confirms each step's frame matches its label.
 
 ## Open issues
 

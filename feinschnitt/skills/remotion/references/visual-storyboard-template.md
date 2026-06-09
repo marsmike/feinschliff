@@ -200,7 +200,7 @@ done
 ### From existing videos (Phase 0 analysis)
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py \
+feinschnitt analyze \
   path/to/video.mp4 docs/reference.storyboard.md
 ```
 

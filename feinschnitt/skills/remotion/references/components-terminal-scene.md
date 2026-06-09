@@ -19,7 +19,7 @@ Use the existing `Typewriter` / `CodeBlock` components when:
 
 | Input | What | Source |
 |-------|------|--------|
-| `castUrl` | Path/URL to a `.cast` file (asciicast v3) | Produced by `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/scripts/train_recorder.py` |
+| `castUrl` | Path/URL to a `.cast` file (asciicast v3) | Produced by `feinschnitt record` |
 | `sceneIndexUrl` | Path/URL to the `.scene-index.json` sidecar | Produced alongside the .cast |
 | `startStep` / `endStep` | Step IDs from the recipe | Used to trim playback to a chapter |
 
