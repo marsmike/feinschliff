@@ -92,6 +92,15 @@ def run_pipeline(
                 continue
             version = config.engine_version(engine_name)
             targets = Targets(repo_root, existing_roots, section.test_globs, config)
+            # "Not applicable to this repo" (e.g. tach without a tach.toml) is a
+            # documented degradation with guidance — recorded as unavailable but
+            # never escalated by strict, which is about tooling failures only.
+            applicable_check = getattr(eng, "is_applicable", None)
+            if callable(applicable_check):
+                applicable, why = applicable_check(targets)
+                if not applicable:
+                    meta["unavailable"].append({"engine": engine_name, "reason": why})
+                    continue
             ok, reason = eng.ensure_available(runner, targets, version)
             if not ok:
                 meta["unavailable"].append({"engine": engine_name, "reason": reason})

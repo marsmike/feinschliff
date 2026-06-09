@@ -193,6 +193,36 @@ def test_baseline_save_writes_fingerprints(tmp_path, monkeypatch, capsys):
     assert "1" in capsys.readouterr().out  # count printed
 
 
+def test_audit_rejects_removed_baseline_flag(tmp_path, monkeypatch):
+    # `audit --baseline` was an accepted-but-ignored flag; it must now be rejected.
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["audit", "--baseline", "x.json"])
+    assert exc.value.code == 2
+
+
+def test_baseline_save_rejects_removed_gate_flag(tmp_path, monkeypatch):
+    # `baseline save --gate` was never read by the handler; reject it.
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["baseline", "save", "--gate", "all"])
+    assert exc.value.code == 2
+
+
+def test_skill_emit_without_out_requires_plugin_root(tmp_path, monkeypatch, capsys):
+    # Installed in a venv the package's grandparent is NOT the plugin dir;
+    # emitting there would scribble into the venv. Demand --out instead.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "_default_skill_out", lambda: None)
+    assert cli.main(["skill", "emit"]) == 2
+    assert "--out" in capsys.readouterr().err
+
+
+def test_default_skill_out_is_the_plugin_root_in_dev_checkout():
+    out = cli._default_skill_out()
+    assert out is not None and (out / ".claude-plugin").is_dir()
+
+
 def test_explain_finds_by_rule_id(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 

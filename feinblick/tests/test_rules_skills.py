@@ -54,6 +54,17 @@ def test_weak_description_flagged(tmp_path):
     assert any(f.category == Category.DESCRIPTION for f in fs)
 
 
+def test_unreadable_skill_md_degrades_to_finding(tmp_path):
+    # One non-UTF-8 SKILL.md must surface as a finding, not crash the pipeline.
+    d = tmp_path / "skills" / "broken"
+    d.mkdir(parents=True)
+    (d / "SKILL.md").write_bytes(b"\xff\xfe\x00broken")
+    fs = check_skills(tmp_path, ["skills"], _cfg(tmp_path))
+    assert any(
+        f.rule_id == "FB-SK-READ001" and f.severity == Severity.ERROR for f in fs
+    )
+
+
 def test_all_findings_are_skill_domain_from_rules_engine(tmp_path):
     root = tmp_path / "skills"
     _skill(root, "Bad_Name", "Does stuff", dirname="something")

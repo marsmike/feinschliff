@@ -3,10 +3,11 @@
 ``tach check --output json`` emits **two disjoint shapes**: a JSON **array** of
 ``{"Located": {...}}`` rows for boundary violations, versus a flat
 ``{"error", "dependencies"}`` **object** when a cycle is detected. Config/fatal
-errors (e.g. a missing ``tach.toml``) print **text on stderr** with empty
-stdout, so an empty stdout always means "no findings" here. ``tach init/mod`` is
-interactive, so feinblick hand-writes a ``tach.toml`` via
-:func:`scaffold_tach_toml` rather than shelling out to it.
+errors (e.g. a broken ``tach.toml``) print **text on stderr** with empty
+stdout — :meth:`TachEngine.is_error` classifies blank stdout as a tool failure
+(a clean run emits ``[]``). ``tach init/mod`` is interactive, so feinblick
+hand-writes a ``tach.toml`` via :func:`scaffold_tach_toml` rather than shelling
+out to it.
 """
 
 from __future__ import annotations
@@ -41,15 +42,11 @@ def scaffold_tach_toml(roots: list[str]) -> str:
 class TachEngine:
     name = "tach"
 
-    def ensure_available(
-        self, runner: Runner, targets: Targets, version: str
-    ) -> tuple[bool, str]:
-        if not runner.tool_available("uvx"):
-            return (False, "uvx not found — tach requires uv; skipping code engine")
+    def is_applicable(self, targets: Targets) -> tuple[bool, str]:
         # tach needs an authored module map (tach.toml at the repo root) to do
         # meaningful boundary/circular analysis; with only source_roots it emits
-        # config warnings, not findings. Treat a missing tach.toml as "not
-        # applicable to this repo" rather than running it for noise.
+        # config warnings, not findings. A missing tach.toml is "not applicable
+        # to this repo" — a documented degradation, never a strict-mode abort.
         if not (targets.repo_root / "tach.toml").is_file():
             return (
                 False,
@@ -58,8 +55,15 @@ class TachEngine:
             )
         return (True, "")
 
+    def ensure_available(
+        self, runner: Runner, targets: Targets, version: str
+    ) -> tuple[bool, str]:
+        if not runner.tool_available("uvx"):
+            return (False, "uvx not found — tach requires uv; skipping code engine")
+        return (True, "")
+
     def run(self, runner: Runner, targets: Targets, version: str) -> RawOutput:
-        # ensure_available guarantees a repo-root tach.toml. tach discovers it
+        # is_applicable guarantees a repo-root tach.toml. tach discovers it
         # from the cwd (it has no project-root flag), so run with cwd=repo_root.
         args = ["check", "--output", "json"]
         argv = runner.uvx("tach", version, args)
@@ -67,7 +71,8 @@ class TachEngine:
 
     def parse(self, raw: RawOutput, targets: Targets) -> list[Finding]:
         if not raw.stdout.strip():
-            # Config/fatal errors go to stderr; empty stdout == no findings.
+            # Blank stdout is a tool failure (see is_error); the orchestrator
+            # never reaches parse() with it. Direct callers get no findings.
             return []
         try:
             data = json.loads(raw.stdout)

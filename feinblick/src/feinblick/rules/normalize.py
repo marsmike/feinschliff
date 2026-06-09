@@ -1,15 +1,19 @@
 """Finding dedupe + severity reconciliation.
 
-Multiple engines (and the native checks) can independently report the *same*
-underlying problem — e.g. cytoscnpy and ruff both flagging the same unused
-function. They share a symbol-anchored :pyattr:`Finding.fingerprint`, so we
-collapse them into a single Finding:
+The same finding can enter the pool more than once — overlapping scan roots,
+a path reachable from two configured roots, repeated engine output rows. Such
+repeats share a :pyattr:`Finding.fingerprint`, so we collapse them into one.
+
+Note the deliberate limit: the fingerprint includes ``source_engine`` and
+``rule_id`` (stable baseline identity beats clever matching), so two *different*
+engines flagging the same underlying problem do **not** collapse — each keeps
+its own finding. Reconciliation below therefore guards same-fingerprint repeats
+only:
 
 * **severity** — reconciled to the highest of the group (max by
-  :pyattr:`Severity.rank`); a problem two engines disagree on is as bad as its
-  worst reporter says.
+  :pyattr:`Severity.rank`), should duplicates ever disagree.
 * **source_engine** — merged into a stable, comma-joined string in first-seen
-  order (``"cytoscnpy,ruff"``) so the reader sees who corroborated it.
+  order.
 * **actions** — unioned, dropping byte-identical duplicates while keeping the
   first-seen order (so the same remediation isn't listed twice).
 

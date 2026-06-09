@@ -50,6 +50,23 @@ def test_parse_carries_location_and_suggestion(tmp_path):
     assert hk.actions[0].description == hk.evidence
 
 
+def test_severity_degrades_on_unknown_or_missing_level(tmp_path):
+    # agnix is pinned to `latest`, so an unexpected/missing `level` must degrade
+    # (via Severity.from_engine) instead of crashing the pipeline.
+    import json
+
+    payload = json.dumps({"diagnostics": [
+        {"rule": "AS-004", "level": "critical", "file": "x/SKILL.md", "message": "m"},
+        {"rule": "AS-008", "level": "weird", "file": "x/SKILL.md", "message": "m"},
+        {"rule": "AS-012", "file": "x/SKILL.md", "message": "m"},
+    ]})
+    fs = AgnixEngine().parse(RawOutput(payload, "", 1), _targets(tmp_path))
+    by_rule = {f.rule_id: f for f in fs}
+    assert by_rule["AS-004"].severity == Severity.ERROR    # critical -> error
+    assert by_rule["AS-008"].severity == Severity.WARNING  # unknown -> warning
+    assert by_rule["AS-012"].severity == Severity.WARNING  # missing -> warning
+
+
 def test_parse_blank_stdout_yields_no_findings(tmp_path):
     assert AgnixEngine().parse(RawOutput("", "", 0), _targets(tmp_path)) == []
     assert AgnixEngine().parse(RawOutput("   \n", "", 0), _targets(tmp_path)) == []

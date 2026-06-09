@@ -169,6 +169,24 @@ def test_strict_raises_on_unavailable(tmp_path, monkeypatch):
         run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner, strict=True)
 
 
+def test_strict_tolerates_not_applicable_engine(tmp_path, monkeypatch):
+    # "Not applicable to this repo" (e.g. tach without a tach.toml) is a
+    # documented degradation, not a tooling failure — --strict must not abort.
+    class NotApplicableEngine(FakeEngine):
+        def is_applicable(self, targets):
+            return (False, "no tach.toml at repo root")
+
+    na = NotApplicableEngine([])
+    _patch_engines(monkeypatch, {"tach": na})
+    cfg = _config(tmp_path, engines=("tach",))
+    runner = Runner(repo_root=tmp_path, cache=False)
+    res = run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner, strict=True)
+    assert res.meta["unavailable"] == [
+        {"engine": "tach", "reason": "no tach.toml at repo root"}
+    ]
+    assert na.ran is False
+
+
 def test_unknown_engine_name_is_skipped(tmp_path, monkeypatch):
     _patch_engines(monkeypatch, {})  # registry empty -> ENGINES.get returns None
     cfg = _config(tmp_path, engines=("cytoscnpy",))

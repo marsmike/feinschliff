@@ -28,7 +28,20 @@ _DEAD_KINDS: dict[str, str] = {
     "unused_parameters": "CSP-U006",
 }
 
-_FIX_CMD = "cytoscnpy <roots> --make-whitelist"
+def _exclude_folders(test_globs: list[str]) -> list[str]:
+    """First concrete (glob-free) folder segment of each test glob.
+
+    ``**/tests/**`` names the folder ``tests``; ``**/test_*.py`` is a file
+    pattern and names no folder. Glob segments (``**``, ``test_*``) must never
+    reach ``--exclude-folders``, which matches literal folder names.
+    """
+    folders: set[str] = set()
+    for glob in test_globs:
+        for segment in glob.split("/")[:-1]:  # last segment is the file part
+            if segment and not any(ch in segment for ch in "*?["):
+                folders.add(segment)
+                break
+    return sorted(folders)
 
 
 class CytoScnPyEngine:
@@ -42,8 +55,7 @@ class CytoScnPyEngine:
         return (True, "")
 
     def run(self, runner: Runner, targets: Targets, version: str) -> RawOutput:
-        exclude = sorted({os.path.dirname(g).split("/")[0] for g in targets.test_globs
-                          if os.path.dirname(g)})
+        exclude = _exclude_folders(targets.test_globs)
         args = [
             *targets.roots,
             "--json",
@@ -81,6 +93,10 @@ class CytoScnPyEngine:
 
     def _parse_dead_code(self, data: dict, targets: Targets) -> list[Finding]:
         out: list[Finding] = []
+        # Removal is manual (the engine can't apply it); the whitelist command
+        # *suppresses* the findings, so it is offered as a distinct action with
+        # the real scan roots inlined — runnable as-is, no placeholders.
+        whitelist_cmd = f"cytoscnpy {' '.join(targets.roots)} --make-whitelist"
         for kind, rule_id in _DEAD_KINDS.items():
             for row in data.get(kind, []) or []:
                 name = row.get("name")
@@ -105,9 +121,16 @@ class CytoScnPyEngine:
                         actions=[
                             Action(
                                 description=f"Remove unused {kind}",
+                                auto_fixable=False,
+                            ),
+                            Action(
+                                description=(
+                                    "Or suppress as accepted: regenerate the "
+                                    "cytoscnpy whitelist"
+                                ),
                                 auto_fixable=True,
-                                engine_fix_cmd=_FIX_CMD,
-                            )
+                                engine_fix_cmd=whitelist_cmd,
+                            ),
                         ],
                     )
                 )
