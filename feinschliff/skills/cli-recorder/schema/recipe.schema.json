@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agentic-toolkit.local/cli-recorder/recipe.schema.json",
+  "title": "CLI Recorder Recipe",
+  "description": "Declarative description of a CLI session for the cli-recorder train_recorder.py to drive in tmux+asciinema.",
+  "type": "object",
+  "required": ["recording", "step"],
+  "properties": {
+    "recording": {
+      "type": "object",
+      "required": ["title", "command"],
+      "properties": {
+        "title":   { "type": "string", "description": "Stored in cast metadata; used as scene title in Remotion." },
+        "command": { "type": "string", "description": "The CLI binary to spawn inside tmux (e.g. 'claude', 'bash', 'kubectl')." },
+        "profile": {
+          "type": "string",
+          "enum": ["claude-code", "generic", "interactive-tui"],
+          "default": "generic",
+          "description": "Preset of behaviors loaded from cli-recorder/profiles/<profile>.toml. Recipe fields override profile fields."
+        },
+        "cols":            { "type": "integer", "minimum": 40, "maximum": 240, "default": 100 },
+        "rows":            { "type": "integer", "minimum": 16, "maximum": 80,  "default": 28 },
+        "typing_wpm":      { "type": "number",  "minimum": 30, "maximum": 400, "default": 125 },
+        "idle_speedup":    { "type": "number",  "minimum": 1.0, "maximum": 20.0, "default": 4.0 },
+        "idle_threshold":  { "type": "number",  "minimum": 0.05, "maximum": 5.0, "default": 0.4 },
+        "idle_time_limit": { "type": "number",  "minimum": 0.5, "maximum": 30.0, "default": 2.5,
+                             "description": "asciinema rec metadata cap for any single pause at playback time." },
+
+        "wait_for_banner":  { "type": "string",
+                              "description": "Override profile's banner string. Set to empty to skip banner wait when starting in a shell that later launches the target." },
+        "banner_timeout":   { "type": "number",  "minimum": 0,   "maximum": 120 },
+        "idle_stable_secs": { "type": "number",  "minimum": 0.5, "maximum": 30.0,
+                              "description": "Override profile's idle-stable threshold. Bigger = more patient (claude responses); smaller = snappier (plain shell)." },
+        "graceful_exit":    { "type": "boolean",
+                              "description": "Override profile's graceful_exit. Set false when the recipe ends with its own explicit exit step." }
+      },
+      "additionalProperties": false
+    },
+    "step": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/step" }
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "step": {
+      "type": "object",
+      "required": ["id", "label", "action"],
+      "properties": {
+        "id":     { "type": "string", "pattern": "^[a-z][a-z0-9_-]*$",
+                    "description": "Stable identifier (used as key in scene-index.json). Lowercase, no spaces." },
+        "label":  { "type": "string", "description": "Human-readable. Becomes a chapter marker / VO beat title." },
+        "action": { "type": "string", "enum": ["type_prompt", "send_key", "wait_for_pattern", "pause"] }
+      },
+      "oneOf": [
+        { "$ref": "#/$defs/typePromptStep" },
+        { "$ref": "#/$defs/sendKeyStep" },
+        { "$ref": "#/$defs/waitForPatternStep" },
+        { "$ref": "#/$defs/pauseStep" }
+      ]
+    },
+
+    "typePromptStep": {
+      "type": "object",
+      "properties": {
+        "action":      { "const": "type_prompt" },
+        "text":        { "type": "string", "minLength": 1,
+                         "description": "What to type. Sent character-by-character at typing_wpm, then Enter." },
+        "dismiss_key": { "type": "string",
+                         "description": "Optional named tmux key (e.g. 'Escape') sent after the prompt settles. Use for modal dialogs that block subsequent input (Claude /help, /status, /cost)." },
+        "pause_before":{ "type": "number", "minimum": 0, "default": 1.5,
+                         "description": "Seconds to wait after Claude is idle before typing this prompt." }
+      },
+      "required": ["text"]
+    },
+
+    "sendKeyStep": {
+      "type": "object",
+      "properties": {
+        "action": { "const": "send_key" },
+        "key":    { "type": "string", "description": "tmux named key — 'Enter', 'Escape', 'Tab', 'C-c', 'C-d', 'F1', etc." },
+        "pause_before": { "type": "number", "minimum": 0, "default": 0.5 }
+      },
+      "required": ["key"]
+    },
+
+    "waitForPatternStep": {
+      "type": "object",
+      "properties": {
+        "action":  { "const": "wait_for_pattern" },
+        "pattern": { "type": "string", "description": "Regex matched against pane content. Step blocks until matched." },
+        "timeout": { "type": "number", "minimum": 1, "default": 60 }
+      },
+      "required": ["pattern"]
+    },
+
+    "pauseStep": {
+      "type": "object",
+      "properties": {
+        "action":   { "const": "pause" },
+        "duration": { "type": "number", "minimum": 0.1, "description": "Seconds to sleep mid-recording. Useful for visual breathing room." }
+      },
+      "required": ["duration"]
+    }
+  }
+}

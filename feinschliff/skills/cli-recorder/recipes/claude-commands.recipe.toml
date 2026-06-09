@@ -1,0 +1,64 @@
+# Claude Code commands & settings tour.
+# Ported from scripts/train-recorder-poc.py's TRAIN_SCRIPT_COMMANDS.
+# Used as the canonical M1 acceptance test for cli-recorder.
+
+[recording]
+title    = "Claude Code: Commands & Settings Tour"
+command  = "claude"
+profile  = "claude-code"
+# All cadence and idle settings inherit from cli-recorder/profiles/claude-code.toml.
+
+# Scene 1 — discover all commands (modal dialog → Escape dismissed automatically
+# by the claude-code profile; can be made explicit per step too)
+[[step]]
+id     = "discover"
+label  = "Discover commands with /help"
+action = "type_prompt"
+text   = "/help"
+
+# Scene 2 — current model, context %, cost
+[[step]]
+id     = "inspect"
+label  = "Inspect session state"
+action = "type_prompt"
+text   = "/status"
+
+# Scene 3 — conversational use
+[[step]]
+id           = "ask"
+label        = "Ask which slash commands matter most"
+action       = "type_prompt"
+text         = "what are the 3 most important slash commands a new Claude Code user should know?"
+pause_before = 1.5
+
+# Scene 4 — coding task: live code generation
+[[step]]
+id           = "code"
+label        = "Watch Claude write a CSV reader"
+action       = "type_prompt"
+text         = "write a Python function that reads a CSV and returns the column names"
+pause_before = 1.5
+
+# Scene 5 — context management
+[[step]]
+id           = "compact"
+label        = "Compact the context"
+action       = "type_prompt"
+text         = "/compact"
+pause_before = 1.5
+
+# Scene 6 — continuity check after compact
+[[step]]
+id           = "continuity"
+label        = "Confirm continuity after compact"
+action       = "type_prompt"
+text         = "what did we build together just now?"
+pause_before = 1.0
+
+# Scene 7 — usage stats / billing visibility
+[[step]]
+id           = "cost"
+label        = "Check session cost"
+action       = "type_prompt"
+text         = "/cost"
+pause_before = 1.0

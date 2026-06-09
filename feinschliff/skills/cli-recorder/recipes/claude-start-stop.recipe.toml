@@ -1,0 +1,72 @@
+# How to start and stop Claude Code.
+#
+# Pedagogical narrative:
+#   1. Here's a fresh shell.
+#   2. Type `claude` to start it.
+#   3. Wait for the banner — confirm it's running.
+#   4. Try a quick interaction so the viewer sees a real response.
+#   5. Type /exit to stop.
+#   6. Back at the shell prompt.
+#
+# Profile choice: claude-code (most of the recording is *inside* Claude, so we
+# want its longer idle_stable_secs to avoid false-idle on the thinking spinner)
+# but with [recording]-level overrides because we start in a shell, not Claude:
+#   - wait_for_banner = "" → don't block startup waiting for "Claude Code"
+#   - graceful_exit = false → recipe ends with its own explicit /exit step
+
+[recording]
+title           = "Claude Code: Start and Stop"
+command         = "bash --noprofile --norc"
+profile         = "claude-code"
+typing_wpm      = 110             # Slightly slower than default 125 for tutorial pacing
+idle_speedup    = 4.0
+idle_threshold  = 0.4
+idle_time_limit = 2.0
+wait_for_banner = ""              # we start in bash, not Claude
+graceful_exit   = true            # bash gets `exit` typed to close cleanly (we end in bash, not claude)
+
+[[step]]
+id       = "show-shell"
+label    = "Start at a fresh shell prompt"
+action   = "pause"
+duration = 2.0
+
+[[step]]
+id           = "launch"
+label        = "Run `claude` to start Claude Code"
+action       = "type_prompt"
+text         = "claude"
+pause_before = 0.5
+
+[[step]]
+id      = "wait-for-banner"
+label   = "Claude Code starts up — wait for the banner"
+action  = "wait_for_pattern"
+pattern = "Claude Code v"             # universal — "What's new" only appears on first-launch boxed banner
+timeout = 30
+
+[[step]]
+id       = "settle"
+label    = "Banner appears, ready for input"
+action   = "pause"
+duration = 3.5
+
+[[step]]
+id           = "ask"
+label        = "Quick check: ask what Claude Code is"
+action       = "type_prompt"
+text         = "in 2 sentences, what is Claude Code?"
+pause_before = 0.5
+
+[[step]]
+id           = "stop"
+label        = "Type /exit to stop Claude Code"
+action       = "type_prompt"
+text         = "/exit"
+pause_before = 2.0
+
+[[step]]
+id       = "back-to-shell"
+label    = "Back at the shell prompt — Claude is stopped"
+action   = "pause"
+duration = 3.0
