@@ -30,14 +30,23 @@ class Targets:
 class Engine(Protocol):
     name: str
 
+    def is_applicable(self, targets: Targets) -> tuple[bool, str]:
+        """Optional hook: is this engine meaningful for ``targets`` at all?
+
+        ``(False, reason)`` (e.g. tach with no ``tach.toml``) is recorded as
+        unavailable-with-guidance and skipped — even under ``--strict``, which
+        only escalates tooling failures, never repos the engine doesn't apply
+        to. Engines without this hook are always applicable.
+        """
+        ...
+
     def ensure_available(
         self, runner: Runner, targets: Targets, version: str
     ) -> tuple[bool, str]:
-        """Probe whether the engine can meaningfully run for ``targets``.
+        """Probe whether the engine's *tooling* can run (e.g. uvx/npx present).
 
-        Receives ``targets`` so an engine can decide it is *not applicable* to
-        this repo (e.g. tach with no ``tach.toml``) and report that as
-        ``(False, reason)`` — recorded as unavailable, not a tool error.
+        ``(False, reason)`` is recorded as unavailable; under ``--strict`` it
+        aborts the run.
         """
         ...
 

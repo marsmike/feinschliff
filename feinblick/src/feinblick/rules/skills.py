@@ -222,9 +222,23 @@ def check_skills(repo_root: Path, roots: list[str], config: object) -> list[Find
             if resolved in seen:
                 continue
             seen.add(resolved)
-            text = skill_md.read_text(encoding="utf-8")
-            meta, body_lines = _parse_frontmatter(text)
             location = _location(skill_md, repo_root)
+            try:
+                text = skill_md.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                # One unreadable SKILL.md must degrade to a finding, not crash
+                # the whole pipeline.
+                findings.append(
+                    _finding(
+                        Category.FRONTMATTER,
+                        Severity.ERROR,
+                        location,
+                        f"SKILL.md could not be read as UTF-8 text: {exc}",
+                        "FB-SK-READ001",
+                    )
+                )
+                continue
+            meta, body_lines = _parse_frontmatter(text)
 
             findings.extend(_check_progressive_disclosure(body_lines, budget, location))
             findings.extend(_check_frontmatter(meta, skill_md, location))

@@ -88,10 +88,6 @@ def _handle_audit(args) -> int:
         diff_file=args.diff_file,
         strict=args.strict,
     )
-    if args.baseline:
-        # informational override applied by the operator via flag is honored at
-        # the config layer; nothing further to do here for v1.
-        pass
     print(render(args.format, result.findings, result.verdict, result.health, result.meta))
     return 1 if result.verdict == "fail" else 0
 
@@ -150,14 +146,27 @@ def _handle_skill_emit(args) -> int:
     from feinblick import skillgen
 
     out = Path(args.out) if args.out else _default_skill_out()
+    if out is None:
+        print(
+            "feinblick: not running from the plugin checkout — the default output "
+            "would land inside the installed package; pass --out DIR.",
+            file=sys.stderr,
+        )
+        return 2
     skillgen.emit(out)
     print(f"Emitted agent-skill + commands -> {out}")
     return 0
 
 
-def _default_skill_out() -> Path:
-    """The feinblick plugin directory (two levels up from this module's package)."""
-    return Path(__file__).resolve().parents[2]
+def _default_skill_out() -> Path | None:
+    """The feinblick plugin directory (two levels up from this module's package).
+
+    Only valid in a dev checkout (``src/feinblick/cli.py``); installed in a venv
+    the grandparent is ``lib/python3.x/`` — detected via the ``.claude-plugin``
+    marker, returning ``None`` so the caller demands an explicit ``--out``.
+    """
+    root = Path(__file__).resolve().parents[2]
+    return root if (root / ".claude-plugin").is_dir() else None
 
 
 def _handle_init(args) -> int:
@@ -238,7 +247,6 @@ def build_parser() -> argparse.ArgumentParser:
     audit.add_argument("--gate", choices=["introduced", "all"], default="introduced")
     audit.add_argument("--format", choices=["terminal", "json", "sarif", "markdown"],
                        default="terminal")
-    audit.add_argument("--baseline", metavar="PATH", default=None)
     audit.add_argument("--strict", action="store_true")
     audit.set_defaults(_handler=_handle_audit)
 
@@ -257,7 +265,6 @@ def build_parser() -> argparse.ArgumentParser:
     bl = sub.add_parser("baseline", help="Manage the accepted-finding baseline.")
     bl_sub = bl.add_subparsers(dest="baseline_command")
     bl_save = bl_sub.add_parser("save", help="Write the current findings as the baseline.")
-    bl_save.add_argument("--gate", choices=["all"], default="all")
     bl_save.set_defaults(_handler=_handle_baseline_save)
 
     skill = sub.add_parser("skill", help="Agent-skill tooling.")

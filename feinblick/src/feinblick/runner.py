@@ -73,8 +73,11 @@ class Runner:
         f = self._cache_dir / f"{key}.json"
         if not f.is_file():
             return None
-        d = json.loads(f.read_text())
-        return RawOutput(d["stdout"], d["stderr"], d["exit_code"])
+        try:
+            d = json.loads(f.read_text())
+            return RawOutput(d["stdout"], d["stderr"], d["exit_code"])
+        except (ValueError, KeyError, OSError):
+            return None  # corrupt/unreadable cache entry -> recompute
 
     def _write_cache(self, key, out):
         self._cache_dir.mkdir(parents=True, exist_ok=True)

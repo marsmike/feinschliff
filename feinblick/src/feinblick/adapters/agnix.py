@@ -97,7 +97,9 @@ class AgnixEngine:
                 Finding(
                     domain=Domain.SKILL,
                     category=category_for_rule(rule),
-                    severity=Severity(diag.get("level")),
+                    # agnix is pinned to `latest`; an unexpected or missing
+                    # level must degrade (-> WARNING), never crash the pipeline.
+                    severity=Severity.from_engine(diag.get("level")),
                     location=Location(
                         path=diag.get("file", ""),
                         line=diag.get("line"),
