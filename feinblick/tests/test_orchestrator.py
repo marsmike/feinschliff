@@ -173,6 +173,21 @@ def test_unknown_engine_name_is_skipped(tmp_path, monkeypatch):
     assert res.meta["engines"] == []
 
 
+def test_skills_domain_engine_runs_without_test_globs_attr(tmp_path, monkeypatch):
+    # Regression: the orchestrator builds Targets(..., section.test_globs, ...)
+    # for EVERY domain. SkillsCfg must expose test_globs or an available skills
+    # engine (agnix) crashes with AttributeError the moment npx is present.
+    agnix = FakeEngine([_finding(category=Category.FRONTMATTER, engine="agnix")])
+    _patch_engines(monkeypatch, {"agnix": agnix})
+    cfg = _config(tmp_path)
+    cfg.skills.engines = ["agnix"]
+    cfg.skills.roots = ["."]
+    runner = Runner(repo_root=tmp_path, cache=False)
+    res = run_pipeline(tmp_path, cfg, domains={"skills"}, runner=runner)
+    assert agnix.ran is True
+    assert res.meta["engines"] == ["agnix"]
+
+
 def test_introduced_gate_without_diff_or_ref_gates_nothing(tmp_path, monkeypatch):
     # gate=introduced but neither since_ref nor diff_file -> no attribution set
     # -> nothing is treated as a candidate -> pass even with an error present.
