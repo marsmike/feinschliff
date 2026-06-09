@@ -1,0 +1,22 @@
+[project]
+name = "feinblick"
+version = "0.0.1"
+description = "Codebase intelligence CLI for the feinschmiede plugin family — unified Python + Claude-skill findings, an audit gate, and an agent-consumable report."
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mike Mueller", email = "mike@objektarium.de" }]
+dependencies = []
+
+[project.scripts]
+feinblick = "feinblick.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["feinblick*"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6"]
