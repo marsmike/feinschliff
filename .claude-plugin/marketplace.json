@@ -11,6 +11,7 @@
     { "name": "feinklang", "description": "Audio voiceover — ElevenLabs text-to-speech via the clean `feinklang` CLI.", "source": "./feinklang" },
     { "name": "feinklang-consumer", "description": "Throwaway Phase-0 smoke test: depends on feinklang and calls it as a bare command. Not for distribution.", "source": "./feinklang-consumer" },
     { "name": "feinbild", "description": "Image & 2D — AI images (Replicate/Gemini), SVG, and Excalidraw diagrams via the `feinbild` CLI.", "source": "./feinbild" },
-    { "name": "feinschnitt", "description": "Video — programmatic Remotion videos and CLI session recordings via the `feinschnitt` CLI. Composes feinbild + feinklang.", "source": "./feinschnitt" }
+    { "name": "feinschnitt", "description": "Video — programmatic Remotion videos and CLI session recordings via the `feinschnitt` CLI. Composes feinbild + feinklang.", "source": "./feinschnitt" },
+    { "name": "feinblick", "description": "Codebase intelligence — unified Python + skill findings, audit gate, agent report via the `feinblick` CLI.", "source": "./feinblick" }
   ]
 }
