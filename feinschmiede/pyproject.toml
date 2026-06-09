@@ -20,5 +20,11 @@ build-backend = "setuptools.build_meta"
 where = ["."]
 include = ["feinschmiede*"]
 
+[tool.setuptools.package-data]
+# Non-.py engine data read at runtime (brand token-schema validation + bundled
+# compound DSL snippets). Without this the wheel ships code but not the data the
+# diagram/brand path loads, breaking any wheel-installed consumer (feinbild).
+feinschmiede = ["schemas/*.json", "compounds/*.dsl"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
