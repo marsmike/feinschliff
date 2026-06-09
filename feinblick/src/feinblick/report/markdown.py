@@ -95,6 +95,11 @@ def render(findings: list[Finding], verdict: str, health: dict, meta: dict) -> s
             lines.extend(_table(group))
             lines.append("")
 
+    gate_note = meta.get("gate_note")
+    if gate_note:
+        lines.append(f"> ℹ {gate_note}")
+        lines.append("")
+
     token = (verdict or "").strip().upper()
     introduced = meta.get("introduced")
     if token == "FAIL" and introduced:

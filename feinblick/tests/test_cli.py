@@ -50,6 +50,20 @@ def test_no_subcommand_prints_help(capsys):
     assert "audit" in out and "check" in out
 
 
+def test_strict_tooling_error_exits_cleanly(tmp_path, monkeypatch, capsys):
+    # --strict + an OrchestrationError must be a clean exit 2, NOT a traceback.
+    from feinblick.orchestrator import OrchestrationError
+    monkeypatch.chdir(tmp_path)
+
+    def boom(*a, **k):
+        raise OrchestrationError("agnix unavailable")
+
+    monkeypatch.setattr(cli, "run_pipeline", boom)
+    rc = cli.main(["check", "skills", "--strict"])
+    assert rc == 2
+    assert "tooling error" in capsys.readouterr().err
+
+
 def test_check_json_over_empty_tree(tmp_path, monkeypatch, capsys):
     _empty_engines(monkeypatch)
     monkeypatch.chdir(tmp_path)
