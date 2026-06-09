@@ -34,7 +34,9 @@ _FIX_CMD = "cytoscnpy <roots> --make-whitelist"
 class CytoScnPyEngine:
     name = "cytoscnpy"
 
-    def ensure_available(self, runner: Runner, version: str) -> tuple[bool, str]:
+    def ensure_available(
+        self, runner: Runner, targets: Targets, version: str
+    ) -> tuple[bool, str]:
         if not runner.tool_available("uvx"):
             return (False, "uvx not found — cytoscnpy requires uv; skipping code engine")
         return (True, "")
@@ -175,6 +177,21 @@ class CytoScnPyEngine:
                 )
             )
         return out
+
+    def is_error(self, raw: RawOutput) -> str | None:
+        # A successful cytoscnpy run always emits the JSON envelope on stdout
+        # (even with zero findings). Blank or non-JSON stdout means the tool
+        # failed — e.g. a missing scan root exits 1 with empty stdout.
+        text = raw.stdout.strip()
+        if not text:
+            return raw.stderr.strip() or f"cytoscnpy exited {raw.exit_code} with no output"
+        try:
+            json.loads(text)
+        except json.JSONDecodeError:
+            detail = raw.stderr.strip()[:200]
+            base = f"cytoscnpy emitted non-JSON output (exit {raw.exit_code})"
+            return f"{base}: {detail}" if detail else base
+        return None
 
 
 ENGINE = CytoScnPyEngine()

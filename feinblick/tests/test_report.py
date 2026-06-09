@@ -70,7 +70,24 @@ def _health() -> dict:
 
 
 def _meta() -> dict:
-    return {"engines": ["cytoscnpy", "tach"], "unavailable": ["agnix"], "introduced": 1}
+    return {
+        "engines": ["cytoscnpy", "tach"],
+        "unavailable": [{"engine": "agnix", "reason": "npx not found"}],
+        "errors": [],
+        "missing_roots": [],
+        "introduced": 1,
+    }
+
+
+def _degraded_meta() -> dict:
+    return {
+        "engines": [],
+        "unavailable": [{"engine": "agnix", "reason": "npx not found"}],
+        "errors": [{"engine": "cytoscnpy", "reason": "cytoscnpy exited 1 with no output"}],
+        "missing_roots": ["code:feinschliff/lib"],
+        "domains": ["code"],
+        "introduced": 0,
+    }
 
 
 # --- registry / dispatcher -------------------------------------------------
@@ -165,6 +182,22 @@ def test_terminal_warn_and_pass_tokens():
 
 
 # --- markdown --------------------------------------------------------------
+
+
+def test_terminal_surfaces_partial_results_without_crashing():
+    # No findings + a degraded run must NOT read as a clean bill of health.
+    out = report.render("terminal", [], "pass", {"score": 100, "hotspots": []}, _degraded_meta())
+    assert "PARTIAL" in out
+    assert "cytoscnpy" in out and "cytoscnpy exited 1 with no output" in out
+    assert "agnix" in out and "npx not found" in out
+    assert "code:feinschliff/lib" in out
+
+
+def test_markdown_surfaces_partial_results():
+    out = report.render("markdown", [], "pass", {"score": 100, "hotspots": []}, _degraded_meta())
+    assert "Partial results" in out
+    assert "cytoscnpy exited 1 with no output" in out
+    assert "code:feinschliff/lib" in out
 
 
 def test_markdown_has_score_and_category_heading():

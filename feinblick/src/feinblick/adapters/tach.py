@@ -41,27 +41,29 @@ def scaffold_tach_toml(roots: list[str]) -> str:
 class TachEngine:
     name = "tach"
 
-    def ensure_available(self, runner: Runner, version: str) -> tuple[bool, str]:
+    def ensure_available(
+        self, runner: Runner, targets: Targets, version: str
+    ) -> tuple[bool, str]:
         if not runner.tool_available("uvx"):
             return (False, "uvx not found — tach requires uv; skipping code engine")
+        # tach needs an authored module map (tach.toml at the repo root) to do
+        # meaningful boundary/circular analysis; with only source_roots it emits
+        # config warnings, not findings. Treat a missing tach.toml as "not
+        # applicable to this repo" rather than running it for noise.
+        if not (targets.repo_root / "tach.toml").is_file():
+            return (
+                False,
+                "no tach.toml at repo root — run `feinblick init` to scaffold one "
+                "(declare modules to enable boundary/circular checks)",
+            )
         return (True, "")
 
     def run(self, runner: Runner, targets: Targets, version: str) -> RawOutput:
-        repo_root = targets.repo_root
-        # Use a repo-root tach.toml when present; otherwise scaffold one into the
-        # gitignored cache region and point tach at it via --project-root.
-        if (repo_root / "tach.toml").is_file():
-            target_dir = repo_root
-        else:
-            cache_dir = repo_root / ".feinblick"
-            cache_dir.mkdir(parents=True, exist_ok=True)
-            toml_path = cache_dir / "tach.toml"
-            if not toml_path.is_file():
-                toml_path.write_text(scaffold_tach_toml(targets.roots))
-            target_dir = cache_dir
-        args = ["check", "--output", "json", "--project-root", str(target_dir)]
+        # ensure_available guarantees a repo-root tach.toml. tach discovers it
+        # from the cwd (it has no project-root flag), so run with cwd=repo_root.
+        args = ["check", "--output", "json"]
         argv = runner.uvx("tach", version, args)
-        return runner.run_raw(argv, cache_key="tach", cwd=repo_root)
+        return runner.run_raw(argv, cache_key="tach", cwd=targets.repo_root)
 
     def parse(self, raw: RawOutput, targets: Targets) -> list[Finding]:
         if not raw.stdout.strip():
@@ -126,6 +128,14 @@ class TachEngine:
                 )
             )
         return out
+
+    def is_error(self, raw: RawOutput) -> str | None:
+        # A clean tach run emits "[]"; a violation emits JSON; a config/fatal
+        # error emits empty stdout with a plain-text message on stderr. So blank
+        # stdout means tach failed, not "no findings".
+        if not raw.stdout.strip():
+            return raw.stderr.strip() or f"tach exited {raw.exit_code} with no output"
+        return None
 
 
 ENGINE = TachEngine()

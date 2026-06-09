@@ -48,3 +48,16 @@ def test_parses_quality_complexity_and_secrets(tmp_path):
     assert any(f.category == Category.COMPLEXITY for f in fs)  # CSP-Q301/Q302/Q304 -> Complexity
     # secrets/danger are out of v1 quality focus: assert they are NOT emitted as findings
     assert all(f.rule_id is None or not f.rule_id.startswith("CSP-S") for f in fs)
+
+
+def test_is_error_distinguishes_failure_from_findings_present():
+    eng = CytoScnPyEngine()
+    # findings-present run: exit 1 BUT valid JSON -> not an error
+    assert eng.is_error(RawOutput('{"schema_version":"2"}', "", 1)) is None
+    # missing path: exit 1, empty stdout -> error
+    assert eng.is_error(RawOutput("", "", 1)) is not None
+    # crash with a message on stderr surfaces that message
+    err = eng.is_error(RawOutput("", "boom: no such path", 1))
+    assert err is not None and "boom" in err
+    # non-JSON stdout -> error
+    assert eng.is_error(RawOutput("Traceback...", "", 1)) is not None

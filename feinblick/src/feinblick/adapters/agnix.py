@@ -64,7 +64,9 @@ def category_for_rule(code: str) -> Category:
 class AgnixEngine:
     name = "agnix"
 
-    def ensure_available(self, runner: Runner, version: str) -> tuple[bool, str]:
+    def ensure_available(
+        self, runner: Runner, targets: Targets, version: str
+    ) -> tuple[bool, str]:
         if not runner.tool_available("npx"):
             return (False, "npx not found — agnix requires Node.js; skipping skill engine")
         return (True, "")
@@ -109,6 +111,13 @@ class AgnixEngine:
                 )
             )
         return findings
+
+    def is_error(self, raw: RawOutput) -> str | None:
+        # A successful agnix run emits the JSON envelope (even with zero
+        # diagnostics). Blank stdout means the tool failed at runtime.
+        if not raw.stdout.strip():
+            return raw.stderr.strip() or f"agnix exited {raw.exit_code} with no output"
+        return None
 
 
 ENGINE = AgnixEngine()

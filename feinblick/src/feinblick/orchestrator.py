@@ -59,23 +59,46 @@ def run_pipeline(
     """
     repo_root = Path(repo_root)
     findings: list[Finding] = []
-    meta: dict = {"engines": [], "unavailable": [], "domains": sorted(domains)}
+    meta: dict = {
+        "engines": [],
+        "unavailable": [],
+        "errors": [],
+        "missing_roots": [],
+        "domains": sorted(domains),
+    }
 
     for domain in domains:
         section = getattr(config, domain)
+        # Drop configured roots that don't exist so a stale config can never
+        # silently "scan nothing" and report a misleading clean run.
+        existing_roots = [r for r in section.roots if (repo_root / r).exists()]
+        for r in section.roots:
+            if r not in existing_roots:
+                meta["missing_roots"].append(f"{domain}:{r}")
+        if not existing_roots:
+            continue
         for engine_name in section.engines:
             eng = ENGINES.get(engine_name)
             if eng is None:
                 continue
             version = config.engine_version(engine_name)
-            ok, reason = eng.ensure_available(runner, version)
+            targets = Targets(repo_root, existing_roots, section.test_globs, config)
+            ok, reason = eng.ensure_available(runner, targets, version)
             if not ok:
                 meta["unavailable"].append({"engine": engine_name, "reason": reason})
                 if strict:
                     raise RuntimeError(reason)
                 continue
-            targets = Targets(repo_root, section.roots, section.test_globs, config)
             raw = eng.run(runner, targets, version)
+            # An engine that errored at runtime (crash / missing path / unparseable
+            # output) must not masquerade as a clean run — record and degrade.
+            err_check = getattr(eng, "is_error", None)
+            err = err_check(raw) if callable(err_check) else None
+            if err is not None:
+                meta["errors"].append({"engine": engine_name, "reason": err})
+                if strict:
+                    raise RuntimeError(f"{engine_name}: {err}")
+                continue
             findings += eng.parse(raw, targets)
             meta["engines"].append(engine_name)
 

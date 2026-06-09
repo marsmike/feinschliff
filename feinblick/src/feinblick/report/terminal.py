@@ -12,6 +12,13 @@ from feinblick.model import Finding, Severity
 _ORDER = (Severity.ERROR, Severity.WARNING, Severity.INFO)
 
 
+def _engine_entry(item: object) -> str:
+    """Render an errors/unavailable entry, tolerating dict or bare-string shapes."""
+    if isinstance(item, dict):
+        return f"{item.get('engine')} — {item.get('reason')}"
+    return str(item)
+
+
 def _format_finding(f: Finding) -> str:
     loc = f.location
     where = loc.path
@@ -34,10 +41,20 @@ def render(findings: list[Finding], verdict: str, health: dict, meta: dict) -> s
         lines.append(f"health: {score}/100")
     engines = meta.get("engines") or []
     unavailable = meta.get("unavailable") or []
+    errors = meta.get("errors") or []
+    missing_roots = meta.get("missing_roots") or []
     if engines:
         lines.append(f"engines: {', '.join(engines)}")
-    if unavailable:
-        lines.append(f"unavailable: {', '.join(unavailable)}")
+    # A degraded run must be visible — otherwise "no findings / 100" reads as a
+    # clean bill of health when in fact an engine never ran.
+    if errors or unavailable or missing_roots:
+        lines.append("⚠ PARTIAL RESULTS — coverage is incomplete:")
+        for e in errors:
+            lines.append(f"    engine error: {_engine_entry(e)}")
+        for u in unavailable:
+            lines.append(f"    unavailable: {_engine_entry(u)}")
+        if missing_roots:
+            lines.append(f"    missing roots: {', '.join(missing_roots)}")
     lines.append("")
 
     by_sev: dict[Severity, list[Finding]] = {sev: [] for sev in _ORDER}
