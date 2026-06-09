@@ -1,18 +1,14 @@
 #!/usr/bin/env python3
-"""
-video_to_storyboard.py — Analyze a video with Gemini and produce a .storyboard.md
+"""analyze — Analyze a video with Gemini and produce a .storyboard.md.
 
-Ported from iopho-team/iopho-skills (MIT license) and adapted for the Remotion pipeline.
-
-Usage:
-    python3 video_to_storyboard.py <video_path> [output_path] [--no-frames] [--model MODEL]
+Backs the ``feinschnitt analyze`` subcommand. Ported from
+iopho-team/iopho-skills (MIT license) and adapted for the feinschmiede video
+pipeline.
 """
 
-import argparse
 import os
 import re
 import subprocess
-import sys
 import time
 from pathlib import Path
 
