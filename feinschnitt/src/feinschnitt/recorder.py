@@ -43,6 +43,7 @@ How it works
 
 import argparse
 import json
+import os
 import random
 import re
 import shlex
@@ -68,10 +69,26 @@ CLAUDE_BIN = shutil.which("claude") or "/Users/mike/.local/bin/claude"
 IDLE_POLL_INTERVAL = 0.4
 IDLE_TIMEOUT_SECS  = 120
 
-PLUGIN_ROOT  = Path(__file__).resolve().parent.parent
-PROFILES_DIR = PLUGIN_ROOT / "profiles"
+def _recorder_home() -> Path:
+    """Locate skills/cli-recorder/ (which holds profiles/ + schema/).
+
+    The launcher exports FEINSCHNITT_RECORDER_HOME; fall back to the repo
+    layout (feinschnitt/src/feinschnitt/recorder.py -> feinschnitt/skills/cli-recorder)
+    for dev/test runs without the launcher.
+    """
+    env = os.environ.get("FEINSCHNITT_RECORDER_HOME")
+    if env:
+        return Path(env)
+    return Path(__file__).resolve().parents[2] / "skills" / "cli-recorder"
+
+PROFILES_DIR = _recorder_home() / "profiles"
 
 _CURSOR_RE = re.compile(r'\x1b\[7m(.)\x1b\[27m')
+
+
+class RecorderError(RuntimeError):
+    """User-facing recorder error (clean message, no traceback)."""
+
 
 # ── Recipe + profile loading ─────────────────────────────────────────────────
 
@@ -509,12 +526,13 @@ def render_mp4(gif_path: Path, mp4_path: Path) -> None:
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+def add_parser(sub) -> None:
+    ap = sub.add_parser("record", description=__doc__,
+                        formatter_class=argparse.RawDescriptionHelpFormatter,
+                        help="Record a CLI session from a recipe into an asciicast.")
     ap.add_argument("recipe", type=Path, help="path to recipe.toml")
     ap.add_argument("--out-dir", type=Path, default=None,
-                    help="output directory (default: recordings/<recipe-name>/)")
+                    help="output dir (default: $CLAUDE_PROJECT_DIR/.recordings/<recipe-name>/)")
     ap.add_argument("--session", default=None,
                     help="tmux session name (default: cli-rec-<recipe-name>)")
     ap.add_argument("--dry-run", action="store_true",
@@ -523,13 +541,20 @@ def main() -> None:
                     help="skip GIF/MP4 rendering")
     ap.add_argument("--keep", action="store_true",
                     help="keep the tmux session after run (useful for debugging)")
-    args = ap.parse_args()
+    ap.set_defaults(func=run_record)
 
+
+def _default_out_dir(name: str) -> Path:
+    base = Path(os.environ.get("CLAUDE_PROJECT_DIR", "."))
+    return base / ".recordings" / name
+
+
+def run_record(args) -> int:
     if not args.recipe.exists():
-        sys.exit(f"error: recipe not found: {args.recipe}")
+        raise RecorderError(f"recipe not found: {args.recipe}")
 
     recipe = load_recipe(args.recipe)
-    out_dir = args.out_dir or (args.recipe.parent.parent / "recordings" / recipe.name)
+    out_dir = args.out_dir or _default_out_dir(recipe.name)
     session = args.session or f"cli-rec-{recipe.name}"
     out_dir.mkdir(parents=True, exist_ok=True)
     cast_path  = out_dir / f"{recipe.name}.cast"
@@ -561,7 +586,7 @@ def main() -> None:
             elif s.action == "pause":
                 extra = f" duration={s.duration}"
             print(f"    {i:>2}. [{s.action:<16}] {s.id:<20} {s.label!r}{extra}")
-        return
+        return 0
 
     spawn_session(recipe, session, cast_path)
     t_origin = time.monotonic()
@@ -576,7 +601,7 @@ def main() -> None:
                 kill_session(session)
 
     if not cast_path.exists():
-        sys.exit(f"error: cast file was not produced at {cast_path}")
+        raise RecorderError(f"cast file was not produced at {cast_path}")
 
     saved, total = postprocess_cast(cast_path, clean_path, recipe)
     clean_path.replace(cast_path)
@@ -587,7 +612,4 @@ def main() -> None:
         render_mp4(gif_path, mp4_path)
 
     print(f"\n[done] artifacts in {out_dir}")
-
-
-if __name__ == "__main__":
-    main()
+    return 0
