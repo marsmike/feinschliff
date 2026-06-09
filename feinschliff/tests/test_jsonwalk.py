@@ -1,6 +1,6 @@
 import pytest
 
-from feinschliff.jsonwalk import walk
+from feinschmiede.jsonwalk import walk
 
 
 def test_walk_single_key():

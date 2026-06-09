@@ -2,7 +2,7 @@
 the expander threads it to expand_diagram_blocks via canvas_override, and
 the validators receive the right canvas dimensions in _diagram_meta.
 
-These tests stub `lib.diagrams.render.render` so CI doesn't need a
+These tests stub `feinschmiede.diagrams.render.render` so CI doesn't need a
 rendering backend installed (the parser/expander/meta path is what we're
 validating; rasterization is covered by the render-backend tests
 themselves, which CI skips for the same reason)."""
@@ -24,7 +24,7 @@ def _brand_dir() -> Path:
 def _stub_render(monkeypatch):
     """Bypass real rendering — these tests don't care about the PNG."""
     monkeypatch.setattr(
-        "feinschliff.diagrams.render.render",
+        "feinschmiede.diagrams.render.render",
         lambda src, out: out.write_bytes(b"\x89PNG\r\n\x1a\n") or out,
     )
 

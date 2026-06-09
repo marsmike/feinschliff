@@ -51,8 +51,8 @@ from .tokens import Tokens
 
 if TYPE_CHECKING:
     from ..io.image_provider import ImageHit, ImageProvider
-    from feinschliff.brand import BrandPack
-    from feinschliff.dsl.ast import Document, Element
+    from feinschmiede.brand import BrandPack
+    from feinschmiede.dsl.ast import Document, Element
 
 
 class DSLError(Exception):
@@ -1942,7 +1942,7 @@ def emit_pptx_from_document(
     *,
     image_provider: "ImageProvider | None" = None,
 ) -> Path:
-    """Emit a PPTX file from a typed :class:`~feinschliff.dsl.ast.Document`.
+    """Emit a PPTX file from a typed :class:`~feinschmiede.dsl.ast.Document`.
 
     Delegates to :func:`build_presentation` (single-slide) or
     :func:`build_multi_slide` (multi-slide) via DSLNode reconstruction.
@@ -1967,7 +1967,7 @@ def emit_pptx_from_document(
     asset_lock.json persistence or a build cache should use build_presentation /
     build_multi_slide directly with an explicit deck_dir argument.
     """
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
 
     tokens = load_tokens(pack.root)
     asset_root = pack.root / "assets" if (pack.root / "assets").is_dir() else None

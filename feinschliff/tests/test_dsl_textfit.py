@@ -13,7 +13,7 @@ from pptx.util import Pt
 
 from feinschliff.dsl.parser import DSLNode
 from feinschliff.dsl.pptx_emit import EmitContext, _emit_text, _px_to_pt, _px
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

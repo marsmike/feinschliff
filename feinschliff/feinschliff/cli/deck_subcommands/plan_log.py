@@ -82,8 +82,8 @@ def cmd_plan_skeleton(args) -> int:
     ``slot-overflow`` defects at pre-render content-lint time."""
     import json as _json
     from feinschliff.layout_budget import plan_deck_layouts
-    from feinschliff.brand_discovery import find_brand
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.brand_discovery import find_brand
+    from feinschmiede.dsl.tokens import load_tokens
 
     cp_path = Path(args.content_plan).resolve()
     if not cp_path.is_file():

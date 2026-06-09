@@ -1,6 +1,6 @@
 # SVG DSL Reference
 
-Compact grammar that expands to full SVG markup via `lib.diagrams.svg_expand`.
+Compact grammar that expands to full SVG markup via `feinschmiede.diagrams.svg_expand`.
 
 ## Header
 
@@ -138,7 +138,7 @@ The DSL uses semantic names only. Literal hex / rgb / hsl rejected. The
 | Neutral | `neutral`, `neutral-soft`, `neutral-strong` |
 | Status  | `status-on`, `status-off`, `status-pending` |
 
-Each name resolves to a hex via `lib.diagrams.brand_bridge` against the
+Each name resolves to a hex via `feinschmiede.diagrams.brand_bridge` against the
 active brand's `tokens.json`.
 
 ## Virtual viewport (full-slide layouts)

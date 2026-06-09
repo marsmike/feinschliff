@@ -19,8 +19,8 @@ The user wants to visualize a system, architecture, request flow, or any concept
 
 ```bash
 cd /path/to/feinschliff
-uv run python -m lib.diagrams.excalidraw_expand flow.exc.dsl
-uv run python -m lib.diagrams.render flow.excalidraw
+uv run python -m feinschmiede.diagrams.excalidraw_expand flow.exc.dsl
+uv run python -m feinschmiede.diagrams.render flow.excalidraw
 ```
 
 ## Brand override

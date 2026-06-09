@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from feinschliff.diagnostics import Defect, DefectKind, DiagnosticBag, Severity
+from feinschmiede.diagnostics import Defect, DefectKind, DiagnosticBag, Severity
 
 
 def _error(msg: str = "an error") -> Defect:

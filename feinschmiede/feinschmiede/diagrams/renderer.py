@@ -110,7 +110,7 @@ class RoughRenderer:
     # ── render ────────────────────────────────────────────────────────────
 
     def render_png(self, src: Path, out: Path) -> Path:
-        from feinschliff.diagrams.render_rough import render_excalidraw
+        from feinschmiede.diagrams.render_rough import render_excalidraw
         return render_excalidraw(src, out, style="clean")
 
 
@@ -135,10 +135,10 @@ class PlaywrightRenderer:
     def render_png(self, src: Path, out: Path) -> Path:
         ext = src.suffix.lower()
         if ext == ".excalidraw":
-            from feinschliff.diagrams.render_playwright import render_excalidraw
+            from feinschmiede.diagrams.render_playwright import render_excalidraw
             return render_excalidraw(src, out)
         # .svg path: inline SVG → Playwright screenshot
-        from feinschliff.diagrams.render import _render_svg_playwright
+        from feinschmiede.diagrams.render import _render_svg_playwright
         return _render_svg_playwright(src, out)
 
 

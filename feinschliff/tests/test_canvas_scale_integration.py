@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.diagrams import svg_expand
-from feinschliff.diagrams.diagram_wireframe import (
+from feinschmiede.diagrams import svg_expand
+from feinschmiede.diagrams.diagram_wireframe import (
     primitives_from_excalidraw_dsl,
     primitives_from_svg_dsl,
 )
@@ -35,7 +35,7 @@ def _brand_dir() -> Path:
 def _stub_render(monkeypatch):
     """Bypass real rendering — these tests check pipeline plumbing, not pixels."""
     monkeypatch.setattr(
-        "feinschliff.diagrams.render.render",
+        "feinschmiede.diagrams.render.render",
         lambda src, out: out.write_bytes(b"\x89PNG\r\n\x1a\n") or out,
     )
 

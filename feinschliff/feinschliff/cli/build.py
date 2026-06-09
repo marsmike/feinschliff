@@ -15,7 +15,7 @@ from pathlib import Path
 import yaml
 
 from feinschliff.dsl.parser import parse_file
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.dsl.expander import load_compounds_for_brand
 from feinschliff.dsl.pptx_emit import build_presentation
 from feinschliff.content_validator import validate_content, emit_defects_and_abort_message
@@ -64,7 +64,7 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def cmd_build(args) -> int:
-    from feinschliff.brand_discovery import find_brand
+    from feinschmiede.brand_discovery import find_brand
 
     layout_path = Path(args.layout).resolve()
     try:

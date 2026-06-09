@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -148,7 +148,7 @@ def test_load_tokens_deep_merges_nested_maps(tmp_path):
 
 def test_typography_display_tracking_curve_optional():
     """display_tracking_curve is optional; absence is not an error."""
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
 
     minimal = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
@@ -165,7 +165,7 @@ def test_typography_display_tracking_curve_optional():
 
 
 def test_typography_display_tracking_curve_present():
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
 
     raw = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
@@ -194,7 +194,7 @@ def test_typography_display_tracking_curve_present():
 
 
 def test_chart_tokens_default_values():
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
     minimal = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
         "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
@@ -208,7 +208,7 @@ def test_chart_tokens_default_values():
 
 
 def test_chart_tokens_overridable():
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
     raw = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
         "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
@@ -229,7 +229,7 @@ def test_chart_tokens_overridable():
 def test_resolve_style_brand_override_merges_partial():
     """A brand may declare a top-level `style` map; entries are merged on
     top of the canonical STYLE_BUNDLES bundle. Unspecified keys inherit."""
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
     raw = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff", "graphite": "#444"},
         "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
@@ -250,7 +250,7 @@ def test_resolve_style_brand_override_merges_partial():
 def test_resolve_style_brand_override_clears_transform():
     """Setting `transform: null` in the brand override clears the
     canonical transform (e.g. some brands' eyebrow is mixed-case, not UPPER)."""
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
     raw = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff", "graphite": "#444"},
         "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
@@ -269,7 +269,7 @@ def test_resolve_style_brand_override_clears_transform():
 
 def test_resolve_style_brand_override_absent_is_noop():
     """Brands without a `style` map resolve to the canonical STYLE_BUNDLES."""
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
     raw = {
         "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
         "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},

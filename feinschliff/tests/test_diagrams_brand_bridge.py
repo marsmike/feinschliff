@@ -5,13 +5,13 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.diagrams.brand_bridge import (
+from feinschmiede.diagrams.brand_bridge import (
     SEMANTIC_NAMES,
     BrandBridgeError,
     resolve,
     resolve_with_pack,
 )
-from feinschliff.brand import BrandPack
+from feinschmiede.brand import BrandPack
 
 
 def _brand_dir(name: str) -> Path:
@@ -127,7 +127,7 @@ def test_all_semantic_names_resolve_for_every_brand(brand_name):
         )
 
 
-from feinschliff.diagrams.brand_bridge import resolve_brand_dir
+from feinschmiede.diagrams.brand_bridge import resolve_brand_dir
 
 
 def test_brand_resolution_directive_wins(monkeypatch):

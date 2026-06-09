@@ -19,7 +19,7 @@ from typing import Any
 from feinschliff.defects import Defect, DefectKind, Severity
 
 try:
-    from feinschliff.diagrams.structural_validator import (  # type: ignore[import]
+    from feinschmiede.diagrams.structural_validator import (  # type: ignore[import]
         validate_excalidraw_structure,
         validate_svg_structure,
     )
@@ -37,7 +37,7 @@ from feinschliff.dsl.expander import (
 )
 from feinschliff.dsl.parser import parse_file
 from feinschliff.dsl.pptx_emit import _slide_canvas
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.layout_validator import (
     validate_diagrams,
     validate_diagrams_color,

@@ -38,7 +38,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from feinschliff.dsl.ast import Document, Element
+    from feinschmiede.dsl.ast import Document, Element
 
 
 # ---------------------------------------------------------------------------
@@ -474,13 +474,13 @@ def parse_file(path: Path) -> tuple[list[DSLNode], list[CompoundDef]]:
 # ---------------------------------------------------------------------------
 
 def parse_document(text: str, *, source: str | None = None) -> "Document":
-    """Parse DSL text and return a typed :class:`~feinschliff.dsl.ast.Document`.
+    """Parse DSL text and return a typed :class:`~feinschmiede.dsl.ast.Document`.
 
     Wraps :func:`parse_lines` and converts DSL nodes to the typed AST.
     A single-file layout produces a ``Document`` with one ``Slide``.
 
     The layout name is inferred from any ``theme`` node; other nodes are
-    mapped to :class:`~feinschliff.dsl.ast.Element` objects.  The ``source``
+    mapped to :class:`~feinschmiede.dsl.ast.Element` objects.  The ``source``
     parameter flows into ``Slide.meta['source']`` for traceability.
 
     Parameters
@@ -493,9 +493,9 @@ def parse_document(text: str, *, source: str | None = None) -> "Document":
     Returns
     -------
     Document
-        A typed :class:`~feinschliff.dsl.ast.Document` wrapping the parsed nodes.
+        A typed :class:`~feinschmiede.dsl.ast.Document` wrapping the parsed nodes.
     """
-    from feinschliff.dsl.ast import Document, Slide
+    from feinschmiede.dsl.ast import Document, Slide
 
     nodes, _compounds = parse_lines(text, source=source)
 
@@ -556,7 +556,7 @@ def _node_to_element(node: DSLNode) -> "Element":
     Unknown node kinds (unresolved compound calls) map to
     ``ElementKind.COMPOUND``.
     """
-    from feinschliff.dsl.ast import Element, ElementKind
+    from feinschmiede.dsl.ast import Element, ElementKind
 
     kind_str = _KIND_MAP.get(node.kind, "compound")
     kind = ElementKind(kind_str)

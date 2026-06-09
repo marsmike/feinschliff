@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.diagrams.excalidraw_expand import expand
+from feinschmiede.diagrams.excalidraw_expand import expand
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +39,7 @@ def test_primitive_renders_or_falls_back_cleanly(name, primitive_dsl, tmp_path):
     out_png = tmp_path / f"{name}.png"
 
     try:
-        from feinschliff.diagrams.render_rough import render_excalidraw as r_rough
+        from feinschmiede.diagrams.render_rough import render_excalidraw as r_rough
     except ImportError:
         pytest.skip("rough not installed; cannot exercise primary path")
 
@@ -52,7 +52,7 @@ def test_primitive_renders_or_falls_back_cleanly(name, primitive_dsl, tmp_path):
         # rough refuses → dispatcher SHOULD escalate. Verify the Playwright
         # path is callable; if not installed, skip.
         try:
-            from feinschliff.diagrams.render_playwright import render_excalidraw as r_pw
+            from feinschmiede.diagrams.render_playwright import render_excalidraw as r_pw
         except ImportError:
             pytest.skip("playwright not installed; cannot verify fallback")
         r_pw(exc_path, out_png)

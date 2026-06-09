@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from feinschliff.dsl.ast import Document, Element, ElementKind, Slide
+from feinschmiede.dsl.ast import Document, Element, ElementKind, Slide
 
 
 # ---------------------------------------------------------------------------

@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.dsl.tokens import load_tokens, validate_tokens
+from feinschmiede.dsl.tokens import load_tokens, validate_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

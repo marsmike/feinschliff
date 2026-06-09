@@ -1,6 +1,6 @@
 # Excalidraw DSL Syntax
 
-Compact grammar that expands to Excalidraw JSON via `lib.diagrams.excalidraw_expand`.
+Compact grammar that expands to Excalidraw JSON via `feinschmiede.diagrams.excalidraw_expand`.
 
 ## Header
 

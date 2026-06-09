@@ -26,8 +26,8 @@ from .parser import DSLNode, CompoundDef, parse_file
 from .tokens import _parse_design_md_frontmatter
 
 if TYPE_CHECKING:
-    from feinschliff.brand import BrandPack
-    from feinschliff.dsl.ast import Document, Element, Slide
+    from feinschmiede.brand import BrandPack
+    from feinschmiede.dsl.ast import Document, Element, Slide
 
 
 @dataclass
@@ -97,7 +97,7 @@ PRIMITIVES = {"canvas", "theme", "text", "rect", "line", "polyline", "picture", 
 # ---------------------------------------------------------------------------
 
 def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
-    """Expand a typed :class:`~feinschliff.dsl.ast.Document` using brand compounds.
+    """Expand a typed :class:`~feinschmiede.dsl.ast.Document` using brand compounds.
 
     Wraps :func:`expand_compounds` via per-COMPOUND-element DSLNode
     reconstruction.  Non-compound elements pass through the typed AST
@@ -123,7 +123,7 @@ def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
         A new Document with compound-call Elements replaced by their
         expanded primitive children.
     """
-    from feinschliff.dsl.ast import Document, Slide
+    from feinschmiede.dsl.ast import Document, Slide
 
     std_dir = Path(__file__).resolve().parents[2] / "compounds"
     compounds = load_compounds_for_brand(pack.root, std_dir=std_dir)
@@ -154,7 +154,7 @@ def _expand_elements(
     pass through unchanged.  This mirrors ``expand_compounds`` but operates
     on the typed Element AST rather than DSLNode lists.
     """
-    from feinschliff.dsl.ast import Element, ElementKind
+    from feinschmiede.dsl.ast import Element, ElementKind
 
     out: list[Element] = []
     for el in elements:
@@ -239,7 +239,7 @@ def load_compounds_for_brand(
             # Cross-plugin extends — same fallback as load_tokens.
             # Walk discovery sources directly (not discover_brands()) to
             # avoid the tokens ↔ brand_discovery recursion path.
-            from feinschliff.brand_discovery import _discovery_sources
+            from feinschmiede.brand_discovery import _discovery_sources
             parent = None
             for _src, root in _discovery_sources():
                 cand = root / parent_name
@@ -473,9 +473,9 @@ def expand_diagram_blocks(
     import hashlib
     import json as _json
 
-    from feinschliff.diagrams import svg_expand, excalidraw_expand
-    from feinschliff.diagrams.render import render
-    from feinschliff.diagrams.diagram_wireframe import (
+    from feinschmiede.diagrams import svg_expand, excalidraw_expand
+    from feinschmiede.diagrams.render import render
+    from feinschmiede.diagrams.diagram_wireframe import (
         primitives_from_svg_dsl,
         primitives_from_excalidraw_dsl,
     )
@@ -489,7 +489,7 @@ def expand_diagram_blocks(
     # to the child file alone if the chain can't be resolved, so a malformed
     # parent degrades to a stale-cache risk rather than crashing the build.
     try:
-        from feinschliff.dsl.tokens import load_tokens
+        from feinschmiede.dsl.tokens import load_tokens
         _merged_raw = load_tokens(brand_dir).raw
         _tokens_hash = hashlib.sha1(
             _json.dumps(_merged_raw, sort_keys=True,

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.diagrams.svg_expand import expand
+from feinschmiede.diagrams.svg_expand import expand
 
 
 def _brand_dir() -> Path:

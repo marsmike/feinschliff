@@ -941,7 +941,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser(prog="python -m feinschliff.diagrams.excalidraw_expand")
+    parser = argparse.ArgumentParser(prog="python -m feinschmiede.diagrams.excalidraw_expand")
     parser.add_argument("input", type=Path, help="Path to .exc.dsl source")
     parser.add_argument("--brand", help="Brand override (else @brand directive / FEINSCHLIFF_BRAND / 'feinschliff')")
     parser.add_argument("-o", "--out", type=Path, help="Output .excalidraw path (default: <input>.excalidraw)")

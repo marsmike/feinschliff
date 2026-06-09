@@ -26,8 +26,8 @@ def _has_cairo() -> bool:
 def test_rough_compose_emits_well_formed_svg():
     """render_rough's _compose_svg produces a valid SVG that contains every
     requested shape primitive and labels for bound text."""
-    from feinschliff.diagrams.excalidraw_expand import expand
-    from feinschliff.diagrams.render_rough import _bbox, _compose_svg
+    from feinschmiede.diagrams.excalidraw_expand import expand
+    from feinschmiede.diagrams.render_rough import _bbox, _compose_svg
 
     dsl = """
 canvas 800x600
@@ -56,8 +56,8 @@ def test_render_excalidraw_via_rough_writes_png(tmp_path):
     if not _has_cairo():
         pytest.skip("cairosvg unavailable; rough path can't run")
 
-    from feinschliff.diagrams.excalidraw_expand import expand
-    from feinschliff.diagrams.render import render
+    from feinschmiede.diagrams.excalidraw_expand import expand
+    from feinschmiede.diagrams.render import render
 
     dsl = """
 canvas 800x600
@@ -80,8 +80,8 @@ def test_render_rough_covers_full_vocabulary(tmp_path):
     if not _has_cairo():
         pytest.skip("cairosvg unavailable")
 
-    from feinschliff.diagrams.excalidraw_expand import expand
-    from feinschliff.diagrams.render import render
+    from feinschmiede.diagrams.excalidraw_expand import expand
+    from feinschmiede.diagrams.render import render
 
     dsl = """
 canvas 1000x600
