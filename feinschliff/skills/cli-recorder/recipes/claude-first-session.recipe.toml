@@ -1,0 +1,107 @@
+# Module 3 — First Session video.
+#
+# Mirrors the "Try it" exercise from content/getting-started/03-first-session.md
+# against /tmp/demo-ringbuf (built by videos/first-session/scaffold-demo-repo.sh
+# in the agentic-training repo).
+#
+# Two turns:
+#   1. Claude reads the last 3 commits and summarises each.
+#   2. Follow-up: which one introduced a bug?
+#
+# The claude-code profile waits for Claude to be idle after each type_prompt,
+# so end-of-turn handling is automatic. We only need wait_for_pattern for the
+# initial banner because `claude` is launched from bash, not from inside Claude.
+
+[recording]
+title           = "Claude Code: First Session (Module 3)"
+command         = "bash --noprofile --norc"
+profile         = "claude-code"
+typing_wpm      = 110
+# Record raw (no idle compression). Cast will be the full ~5-6 minute
+# wall-clock session; downstream Remotion composition handles speed-up
+# during Claude's thinking gaps. Avoids the post-processor's mishandling
+# of long sessions seen in earlier takes.
+idle_speedup    = 1.0
+idle_threshold  = 999.0
+idle_time_limit = 2.0
+wait_for_banner = ""
+graceful_exit   = true
+
+[[step]]
+id       = "show-shell"
+label    = "Start at a fresh shell prompt in the demo repo"
+action   = "pause"
+duration = 2.0
+
+[[step]]
+id           = "cd-repo"
+label        = "Enter the demo repo"
+action       = "type_prompt"
+text         = "cd /tmp/demo-ringbuf"
+pause_before = 0.5
+
+[[step]]
+id           = "launch"
+label        = "Run `claude` to start Claude Code"
+action       = "type_prompt"
+text         = "claude"
+pause_before = 0.5
+
+[[step]]
+id           = "trust-folder"
+label        = "Accept the 'trust this folder' dialog (default: Yes)"
+action       = "send_key"
+key          = "Enter"
+pause_before = 3.0
+
+[[step]]
+id      = "wait-for-banner"
+label   = "Wait for the Claude prompt to be ready"
+action  = "wait_for_pattern"
+pattern = "Try "
+timeout = 15
+
+[[step]]
+id       = "settle"
+label    = "Banner appears, ready for input"
+action   = "pause"
+duration = 2.5
+
+[[step]]
+id           = "prompt-1"
+label        = "Ask Claude to summarise the last 3 commits"
+action       = "type_prompt"
+text         = "Look at the last 3 commits in this repo. For each one, read the files that were changed and give me a one-sentence summary of what changed and why."
+pause_before = 0.5
+
+[[step]]
+id       = "read-1"
+label    = "Pause for the viewer to read the summary"
+action   = "pause"
+duration = 3.0
+
+[[step]]
+id           = "prompt-2"
+label        = "Follow-up: which change introduced a bug?"
+action       = "type_prompt"
+text         = "Which of those changes looks most likely to have introduced a bug?"
+pause_before = 0.5
+
+[[step]]
+id       = "read-2"
+label    = "Pause for the viewer to read the answer"
+action   = "pause"
+duration = 3.0
+
+[[step]]
+id           = "stop"
+label        = "Type /exit to stop Claude Code"
+action       = "type_prompt"
+text         = "/exit"
+pause_before = 1.0
+
+[[step]]
+id       = "back-to-shell"
+label    = "Back at the shell prompt — Claude is stopped"
+action   = "pause"
+duration = 2.0

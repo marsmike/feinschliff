@@ -1,0 +1,23 @@
+# Profile: generic
+# Defaults for recording a plain shell session — bash, zsh, or any non-TUI CLI
+# (npm, git, docker, kubectl, brew, curl, etc.) where prompts return promptly
+# and there are no modal dialogs to dismiss.
+
+[recording]
+cols            = 100
+rows            = 28
+typing_wpm      = 125
+idle_speedup    = 5.0      # Slightly more aggressive than Claude — shell idle is true idle
+idle_threshold  = 0.3
+idle_time_limit = 2.0
+
+[shell]
+# Generic shell profile. Use a banner if your shell shows a startup MOTD.
+wait_for_banner = ""        # empty = don't wait for a banner
+banner_timeout  = 5
+
+# Stability detection — shells settle faster than Claude.
+idle_stable_secs = 2.0
+
+# Exit by typing 'exit' at the end (graceful close).
+graceful_exit = true

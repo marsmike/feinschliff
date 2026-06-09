@@ -1,0 +1,25 @@
+# Profile: interactive-tui
+# For TUIs that own the screen — vim, less, htop, k9s, lazygit, fzf, etc.
+# These don't have a "prompt" cadence; idle detection is mostly about waiting
+# for user-action effects (keystrokes change UI). Recipes here lean heavily on
+# send_key + pause + wait_for_pattern rather than type_prompt.
+
+[recording]
+cols            = 120     # TUIs benefit from wider canvas
+rows            = 32
+typing_wpm      = 200     # Faster — for direct keypresses there's no real "thinking"
+idle_speedup    = 3.0     # Don't compress too hard — TUI animations matter
+idle_threshold  = 0.5
+idle_time_limit = 1.5
+
+[tui]
+# Most TUIs have no banner — skip the wait.
+wait_for_banner = ""
+banner_timeout  = 3
+
+# TUIs redraw constantly (cursor blink, status updates). Stability check needs
+# to be tight or we'll never see "idle".
+idle_stable_secs = 1.5
+
+# Exit varies per app — recipes should explicitly send the exit key (q, :q, Ctrl-C).
+graceful_exit = false

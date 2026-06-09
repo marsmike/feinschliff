@@ -1,0 +1,30 @@
+# Profile: claude-code
+# Defaults for recording Claude Code sessions. Recipes targeting Claude Code
+# inherit these; per-recipe fields override.
+
+[recording]
+cols            = 100      # Claude Code is happy at 100x28; larger wraps oddly
+rows            = 28
+typing_wpm      = 125      # Natural-feeling pace for prose prompts
+idle_speedup    = 4.0      # Aggressive: thinking pauses get scaled by 1/4
+idle_threshold  = 0.4      # Below this is typing/streaming cadence (untouched)
+idle_time_limit = 2.5      # Cast-metadata cap for any single pause
+
+[claude_code]
+# CLI-specific knobs — read by train_recorder.py's claude-code profile handler
+
+# Modal slash commands that open dialogs requiring Escape to dismiss.
+# Steps targeting these will auto-set dismiss_key="Escape" if not specified.
+modal_commands = ["/help", "/status", "/cost", "/model", "/mcp", "/keybindings"]
+
+# Wait for Claude Code's banner before sending the first prompt.
+wait_for_banner = "Claude Code"
+banner_timeout  = 45
+
+# Stability detection — Claude's spinner can pause 4-5s mid-thought, so we
+# require longer stability before declaring idle.
+idle_stable_secs = 6.0
+
+# Send /exit at end of recording instead of force-killing the session.
+# (Escape sent first to dismiss any open dialog.)
+graceful_exit = true
