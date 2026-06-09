@@ -1,6 +1,6 @@
 # TerminalScene — embed real CLI recordings as React-composited scenes
 
-`TerminalScene` renders an asciicast v3 recording (produced by the `cli-recorder` plugin) as a frame-accurate React-composited terminal — not a video clip embedded in a frame, but actual cells the Remotion compositor can zoom, highlight, transition, and audio-sync.
+`TerminalScene` renders an asciicast v3 recording (produced by the `cli-recorder` skill) as a frame-accurate React-composited terminal — not a video clip embedded in a frame, but actual cells the Remotion compositor can zoom, highlight, transition, and audio-sync.
 
 ## When to use
 
@@ -19,7 +19,7 @@ Use the existing `Typewriter` / `CodeBlock` components when:
 
 | Input | What | Source |
 |-------|------|--------|
-| `castUrl` | Path/URL to a `.cast` file (asciicast v3) | Produced by `cli-recorder/scripts/train_recorder.py` |
+| `castUrl` | Path/URL to a `.cast` file (asciicast v3) | Produced by `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/scripts/train_recorder.py` |
 | `sceneIndexUrl` | Path/URL to the `.scene-index.json` sidecar | Produced alongside the .cast |
 | `startStep` / `endStep` | Step IDs from the recipe | Used to trim playback to a chapter |
 

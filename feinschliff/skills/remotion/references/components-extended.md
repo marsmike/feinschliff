@@ -8,7 +8,7 @@ All components use the theme from `src/theme.ts`. Import it:
 import { theme } from "../theme";
 ```
 
-> **TerminalScene** — for embedding *real* CLI recordings (Claude Code, kubectl, npm, …) as composited React, see the dedicated reference at [`components-terminal-scene.md`](components-terminal-scene.md). The recording is produced by the [`cli-recorder`](../../../../cli-recorder/README.md) plugin and consumed here as cast + scene-index data.
+> **TerminalScene** — for embedding *real* CLI recordings (Claude Code, kubectl, npm, …) as composited React, see the dedicated reference at [`components-terminal-scene.md`](components-terminal-scene.md). The recording is produced by the [`cli-recorder`](../../cli-recorder/README.md) skill and consumed here as cast + scene-index data.
 
 ---
 
