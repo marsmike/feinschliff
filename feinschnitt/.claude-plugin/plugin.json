@@ -1,0 +1,8 @@
+{
+  "name": "feinschnitt",
+  "description": "Video for Claude Code — programmatic Remotion videos and CLI session recordings via the clean `feinschnitt` CLI. Composes feinbild (storyboard images) and feinklang (voiceover). Part of the feinschmiede family.",
+  "author": { "name": "Mike Mueller", "email": "mike@objektarium.de" },
+  "license": "MIT",
+  "keywords": ["video", "remotion", "cli-recorder", "asciicast", "screencast", "storyboard", "claude-code", "claude-skills", "feinschmiede"],
+  "dependencies": ["feinbild", "feinklang"]
+}
