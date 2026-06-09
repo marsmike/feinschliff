@@ -459,7 +459,7 @@ def _defect_slide_index(d: object) -> int:
     si = getattr(d, "slide_index", None)
     if si is not None:
         return int(si)
-    # New feinschliff.diagnostics.Defect stores it in .extra["slide_index"].
+    # New feinschmiede.diagnostics.Defect stores it in .extra["slide_index"].
     extra = getattr(d, "extra", None) or {}
     return int(extra.get("slide_index", 0))
 
@@ -481,7 +481,7 @@ def plan_fixes(
     """Translate *defects* into deterministic patches.
 
     Accepts either a list of legacy ``feinschliff.defects.Defect`` objects or a
-    ``DiagnosticBag`` (``feinschliff.diagnostics``).  Both are supported via duck-
+    ``DiagnosticBag`` (``feinschmiede.diagnostics``).  Both are supported via duck-
     typing so callers can migrate to ``validate()`` without also updating
     the downstream ``plan_fixes`` call.
 

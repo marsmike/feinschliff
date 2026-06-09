@@ -52,7 +52,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feinschliff.defects import Defect, DefectKind, Severity
-from feinschliff.diagrams.text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from feinschmiede.diagrams.text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
 
 # Font metrics approximate what Excalidraw renders at runtime. The DSL uses

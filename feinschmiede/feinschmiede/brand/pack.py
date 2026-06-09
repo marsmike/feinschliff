@@ -127,6 +127,12 @@ class BrandPack:
         p = self._root / "tokens.json"
         return p if p.is_file() else None
 
+    @property
+    def design_path(self) -> Path | None:
+        """Path to DESIGN.md if present (used by feinschliff-builder brand inspect)."""
+        p = self._root / "DESIGN.md"
+        return p if p.is_file() else None
+
     # ------------------------------------------------------------------
     # Token resolution
     # ------------------------------------------------------------------

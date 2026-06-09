@@ -6,7 +6,7 @@ import json
 import sys
 from pathlib import Path
 
-from feinschliff.brand_discovery import discover_brands
+from feinschmiede.brand_discovery import discover_brands
 import feinschliff as _feinschliff_pkg
 
 
