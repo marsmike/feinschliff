@@ -1,0 +1,53 @@
+[
+  {
+    "Located": {
+      "file_path": "mod_a/__init__.py",
+      "line_number": 2,
+      "original_line_number": 2,
+      "severity": "Error",
+      "details": {
+        "Code": {
+          "UndeclaredDependency": {
+            "dependency": "mod_b.helper_b",
+            "usage_module": "mod_a",
+            "definition_module": "mod_b"
+          }
+        }
+      }
+    }
+  },
+  {
+    "Located": {
+      "file_path": "mod_c/__init__.py",
+      "line_number": 2,
+      "original_line_number": 2,
+      "severity": "Error",
+      "details": {
+        "Code": {
+          "UndeclaredDependency": {
+            "dependency": "mod_a.helper_a",
+            "usage_module": "mod_c",
+            "definition_module": "mod_a"
+          }
+        }
+      }
+    }
+  },
+  {
+    "Located": {
+      "file_path": "mod_b/__init__.py",
+      "line_number": 2,
+      "original_line_number": 2,
+      "severity": "Error",
+      "details": {
+        "Code": {
+          "UndeclaredDependency": {
+            "dependency": "mod_a.helper_a",
+            "usage_module": "mod_b",
+            "definition_module": "mod_a"
+          }
+        }
+      }
+    }
+  }
+]
