@@ -1,0 +1,15 @@
+# feinbild
+
+Image & 2D for Claude Code — AI image generation (Replicate/Gemini), SVG, and
+Excalidraw diagrams behind the clean `feinbild` CLI. Part of the feinschmiede
+family; consumes the shared `feinschmiede` engine as a bundled wheel.
+
+```bash
+feinbild imagine --prompt "a red bicycle" --out bike.webp
+feinbild svg expand chart.svg.dsl --brand feinschliff && feinbild svg render chart.svg
+feinbild excalidraw expand flow.exc.dsl && feinbild excalidraw render flow.excalidraw
+```
+
+Diagram brand colors resolve through the engine; the launcher adds
+`feinbild/brands/` to `FEINSCHLIFF_BRAND_PATH`. Rebuild the offline wheelhouse
+with `./build-wheels.sh`.
