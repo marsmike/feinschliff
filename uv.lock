@@ -252,7 +252,7 @@ wheels = [
 
 [[package]]
 name = "feinbild"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "feinbild" }
 dependencies = [
     { name = "feinschmiede" },
@@ -355,7 +355,7 @@ dev = [
 
 [[package]]
 name = "feinschmiede"
-version = "0.1.0"
+version = "0.0.1"
 source = { editable = "feinschmiede" }
 dependencies = [
     { name = "cairosvg" },
