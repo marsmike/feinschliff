@@ -11,7 +11,13 @@ from feinschmiede.dsl.tokens import load_tokens
 
 
 def _bundled_brands_root() -> Path:
-    """The brands/ directory shipped inside this plugin."""
+    """A ``brands/`` dir co-located with the engine package, if one is shipped.
+
+    The shared ``feinschmiede`` engine ships no brand packs of its own, so this
+    source is normally absent — brands arrive via installed plugins
+    (``_plugin_brands_roots``) and ``FEINSCHLIFF_BRAND_PATH`` (which a consuming
+    plugin's launcher sets to its bundled ``brands/``).
+    """
     return Path(__file__).resolve().parents[1] / "brands"
 
 
