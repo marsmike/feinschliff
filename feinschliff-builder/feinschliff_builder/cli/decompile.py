@@ -65,7 +65,7 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def cmd_decompile(args) -> int:
-    from feinschliff.brand_discovery import find_brand
+    from feinschmiede.brand_discovery import find_brand
     pptx_path = Path(args.pptx).resolve()
     if not pptx_path.is_file():
         print(f"error: {pptx_path} not found", flush=True)

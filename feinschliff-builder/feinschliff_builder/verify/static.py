@@ -25,7 +25,7 @@ Usage::
     defects = static_verify(plan, brand_dir=Path("brands/feinschliff"))
 
     # New typed API (DiagnosticBag):
-    from feinschliff.brand import BrandPack
+    from feinschmiede.brand import BrandPack
     pack = BrandPack.load(Path("brands/feinschliff"))
     bag = validate(plan, brand=pack)
     if bag.has_errors():
@@ -41,8 +41,8 @@ from typing import TYPE_CHECKING
 from feinschliff.defects import Defect, DefectKind, Severity
 
 if TYPE_CHECKING:
-    from feinschliff.brand import BrandPack
-    from feinschliff.diagnostics import DiagnosticBag
+    from feinschmiede.brand import BrandPack
+    from feinschmiede.diagnostics import DiagnosticBag
 
 # Slot interpolation RE — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{\s*([^{}]+?)\s*\}\}")
@@ -253,7 +253,7 @@ def static_verify(
         means clean.  All defects are :attr:`~feinschliff.defects.Severity.WARN`.
     """
     from feinschliff.dsl.parser import parse_file
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
     from feinschliff.dsl.expander import load_compounds_for_brand
     from feinschliff.slot_budget import compute_slot_budgets
     from feinschliff.content_validator import (
@@ -402,7 +402,7 @@ def validate(
     """Inspect a plan dict for static geometry defects, returning a DiagnosticBag.
 
     Typed entry point that wraps :func:`static_verify` and maps its legacy
-    ``Defect`` objects to ``feinschliff.diagnostics.Defect`` objects in a
+    ``Defect`` objects to ``feinschmiede.diagnostics.Defect`` objects in a
     ``DiagnosticBag``.
 
     Parameters
@@ -422,7 +422,7 @@ def validate(
     DiagnosticBag
         The (possibly pre-populated) bag with newly found defects appended.
     """
-    from feinschliff.diagnostics import (
+    from feinschmiede.diagnostics import (
         DiagnosticBag as _Bag,
         Defect as _NewDefect,
         DefectKind as _NewKind,

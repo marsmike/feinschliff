@@ -22,7 +22,7 @@ Usage::
 
     from feinschliff.dsl.parser import parse_file
     from feinschliff.dsl.expander import interpolate_nodes, expand_compounds, load_compounds_for_brand
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
     from feinschliff_builder.decompile.wireframe import render_wireframe
 
     nodes, cds = parse_file(layout_path)
@@ -43,7 +43,7 @@ import sys
 from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, parse_xy, parse_wh
-from feinschliff.dsl.tokens import Tokens
+from feinschmiede.dsl.tokens import Tokens
 
 
 # Pattern for detecting unexpanded Jinja placeholders in `if:` guards.

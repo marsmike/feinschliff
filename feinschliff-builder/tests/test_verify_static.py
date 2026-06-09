@@ -12,8 +12,8 @@ import sys
 from pathlib import Path
 
 from feinschliff_builder.verify.static import static_verify, validate
-from feinschliff.brand import BrandPack
-from feinschliff.diagnostics import DiagnosticBag, Severity
+from feinschmiede.brand import BrandPack
+from feinschmiede.diagnostics import DiagnosticBag, Severity
 
 
 # Core plugin root (feinschliff) is the sibling directory; brands/layouts live there.

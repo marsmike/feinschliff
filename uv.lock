@@ -314,6 +314,7 @@ version = "0.2.0"
 source = { editable = "feinschliff-builder" }
 dependencies = [
     { name = "feinschliff" },
+    { name = "feinschmiede" },
     { name = "jsonschema" },
     { name = "lxml" },
     { name = "pillow" },
@@ -335,6 +336,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "feinschliff", editable = "feinschliff" },
+    { name = "feinschmiede", editable = "feinschmiede" },
     { name = "jsonschema", specifier = ">=4.21" },
     { name = "lxml", specifier = ">=4.9" },
     { name = "pillow", specifier = ">=10" },

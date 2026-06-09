@@ -37,10 +37,10 @@ def test_inspect_no_design_md_skips_inheritance_gracefully(tmp_path, monkeypatch
         "font-size": {},
     }))
     monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
-    monkeypatch.setattr("feinschliff.brand_discovery._bundled_brands_root", lambda: bundled)
-    monkeypatch.setattr("feinschliff.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
-    monkeypatch.setattr("feinschliff.brand_discovery._plugin_brands_roots", lambda: [])
-    monkeypatch.setattr("feinschliff.brand_discovery._cwd_dev_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._cwd_dev_brands_roots", lambda: [])
 
     rc = main(["brand", "inspect", "orphan"])
     assert rc == 0

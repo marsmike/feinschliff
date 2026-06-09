@@ -4,7 +4,7 @@ from pathlib import Path
 
 from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node, Edge
 from feinschliff_builder.diagrams.refurbish.emit_excalidraw import emit
-from feinschliff.diagrams.excalidraw_expand import expand
+from feinschmiede.diagrams.excalidraw_expand import expand
 
 
 def test_emit_excalidraw_roundtrips_through_expand():

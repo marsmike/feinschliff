@@ -5,6 +5,7 @@ description = "Feinschliff brand-pack authoring toolkit — compile HTML to DSL,
 requires-python = ">=3.11"
 dependencies = [
     "feinschliff",
+    "feinschmiede",
     "python-pptx>=0.6.23",
     "lxml>=4.9",
     "jsonschema>=4.21",
@@ -24,6 +25,7 @@ package = true
 
 [tool.uv.sources]
 feinschliff = { workspace = true }
+feinschmiede = { workspace = true }
 
 [dependency-groups]
 dev = [

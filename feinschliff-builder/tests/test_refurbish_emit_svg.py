@@ -4,7 +4,7 @@ from pathlib import Path
 
 from feinschliff_builder.diagrams.refurbish.ir import ExtractedDiagram, Node
 from feinschliff_builder.diagrams.refurbish.emit_svg import emit
-from feinschliff.diagrams.svg_expand import expand
+from feinschmiede.diagrams.svg_expand import expand
 
 
 def test_emit_svg_for_bars():

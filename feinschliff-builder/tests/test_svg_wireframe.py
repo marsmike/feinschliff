@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from feinschliff.dsl.parser import DSLNode, parse_file
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 from feinschliff_builder.decompile.wireframe import render_wireframe, render_wireframe_sheet
 
 # Minimal valid 1×1 white PNG (verified bytes for a 1×1 RGB PNG).
