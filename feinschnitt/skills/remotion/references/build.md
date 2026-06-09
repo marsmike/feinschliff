@@ -214,7 +214,7 @@ npx remotion render src/index.ts Main out/final.mp4 --codec h264 --crf 18
 | [motion-design-rules.md](motion-design-rules.md) | Timing, easing presets, stagger, Disney principles, rhythm, micro-details |
 | [color-script-rules.md](color-script-rules.md) | Color budget, temperature mapping, scene transitions, brand integration |
 | [transition-catalog.md](transition-catalog.md) | TransitionSeries API, built-in + custom presentations, narrative mapping |
-| [elevenlabs-audio.md](elevenlabs-audio.md) | ElevenLabs voice-over pipeline, audio sync |
+| [audio-voiceover.md](audio-voiceover.md) | feinklang voice-over pipeline, audio sync |
 | [claude-md-template.md](claude-md-template.md) | Drop-in CLAUDE.md for Remotion projects |
 | [official/](official/) | Full Remotion API reference (37 files from remotion-dev/skills) |
 

@@ -23,16 +23,16 @@ Read the project's `docs/STORYBOARD.md` and extract all VO text from beats in sc
 
 Generate a **separate audio file per beat**, not one monolithic file. This ensures each beat's `<Audio>` plays inside its own `<Sequence>` without clipping.
 
-**If `/tts` skill is available (ElevenLabs):**
+**If the `feinklang` CLI is available (ElevenLabs-backed):**
 ```bash
 # Source API key, then generate per beat
 source ~/.env 2>/dev/null
-/tts "[Beat 1 VO text]" --output public/vo-beat1-1.mp3
-/tts "[Beat 2 VO text]" --output public/vo-beat1-2.mp3
+feinklang tts --text "[Beat 1 VO text]" --out public/vo-beat1-1.mp3
+feinklang tts --text "[Beat 2 VO text]" --out public/vo-beat1-2.mp3
 # ... for each beat
 ```
 
-**If `/tts` is not available:**
+**If `feinklang` is not on PATH:**
 Instruct the user to provide audio files:
 > "Please record voiceover audio for each beat and place them in `public/` as `vo-beat1-1.mp3`, `vo-beat1-2.mp3`, etc."
 

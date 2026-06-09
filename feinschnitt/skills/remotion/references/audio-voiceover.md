@@ -46,17 +46,17 @@ Just add multiple `<Audio>` components — they mix automatically:
 
 Note: `startFrom`/`endAt` are deprecated in v4. Use `trimBefore`/`trimAfter`.
 
-## ElevenLabs Voice-Over SOP
+## Voice-Over SOP (feinklang tts)
 
 ### Step 1: Generate audio
 
-Using the ElevenLabs TTS skill:
+Using the feinklang TTS CLI (a bare command on PATH):
 
 ```
-/tts "Your narration script goes here. Keep sentences short and clear." --output public/voiceover.mp3
+feinklang tts --text "Your narration script goes here. Keep sentences short and clear." --out public/voiceover.mp3
 ```
 
-If ElevenLabs is not configured, use any audio file — just place it in `public/`.
+If `feinklang` is not on PATH / `ELEVENLABS_API_KEY` is unset, use any audio file — just place it in `public/`.
 
 ### Step 2: Get audio duration
 
@@ -132,14 +132,13 @@ Keep it simple. Manual timestamps are fine — you can adjust by re-rendering st
 
 ## Batch Voice Generation Script
 
-For multi-scene videos, generate all audio files at once by looping the bundled
-ElevenLabs TTS skill (`tts.sh`) — no inline API code needed:
+For multi-scene videos, generate all audio files at once by looping the
+`feinklang tts` CLI (a bare command on PATH) — no inline API code needed:
 
 ```bash
 # scripts/generate-voiceover.sh
 set -euo pipefail
 mkdir -p public/audio
-TTS="${CLAUDE_PLUGIN_ROOT}/skills/elevenlabs/scripts/tts.sh"
 
 declare -A scenes=(
   [scene1]="AI coding assistants are incredible at writing code..."
@@ -149,12 +148,11 @@ declare -A scenes=(
 
 for name in "${!scenes[@]}"; do
   echo "Generating ${name}..."
-  "$TTS" "{\"text\": \"${scenes[$name]}\", \"output\": \"public/audio/${name}.mp3\"}"
+  feinklang tts --text "${scenes[$name]}" --out "public/audio/${name}.mp3"
   echo "  → public/audio/${name}.mp3"
 done
 ```
 
 Run: `bash scripts/generate-voiceover.sh`
 
-Pass `voice_id`, `model_id`, or other options inside the JSON per
-`${CLAUDE_PLUGIN_ROOT}/skills/elevenlabs/references/parameters.md`.
+Pass `--voice-id`, `--model-id`, `--stability`, `--similarity-boost`, `--speed`, `--format`, or `--play` to `feinklang tts` (see `feinklang tts --help` / `feinklang voices`).
