@@ -16,7 +16,12 @@ import sys
 import time
 from pathlib import Path
 
-import google.generativeai as genai
+genai = None  # lazily imported in run_analyze (keeps `feinschnitt record` dep-free)
+
+
+class AnalyzeError(RuntimeError):
+    """User-facing analyze error (clean message, no traceback)."""
+
 
 PROMPT = """Analyze this video in detail and produce a complete .storyboard.md document.
 
@@ -139,31 +144,19 @@ def extract_frames(video_path: str, storyboard_text: str, frames_dir: Path) -> s
     return inserted
 
 
-def main():
-    parser = argparse.ArgumentParser(
-        description="Analyze a video and generate a .storyboard.md file"
-    )
-    parser.add_argument("video_path", help="Path to the video file")
-    parser.add_argument("output_path", nargs="?", help="Output .storyboard.md path")
-    parser.add_argument("--no-frames", action="store_true", help="Skip frame extraction")
-    parser.add_argument(
-        "--model",
-        default=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
-        help="Gemini model to use (default: gemini-2.0-flash)"
-    )
-    args = parser.parse_args()
+def run_analyze(args) -> int:
+    global genai
+    import google.generativeai as genai
 
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
-        print("ERROR: GEMINI_API_KEY not set")
-        sys.exit(1)
+        raise AnalyzeError("GEMINI_API_KEY not set in ~/.env")
 
     genai.configure(api_key=api_key)
 
     video_path = args.video_path
     if not Path(video_path).exists():
-        print(f"ERROR: Video not found: {video_path}")
-        sys.exit(1)
+        raise AnalyzeError(f"video not found: {video_path}")
 
     out_path = (
         Path(args.output_path) if args.output_path
@@ -190,7 +183,17 @@ def main():
     print(f"\n✓ Done → {out_path}")
     print(f"  Scenes detected: {scene_count}")
     print(f"  Output size: {len(text)} chars")
+    return 0
 
 
-if __name__ == "__main__":
-    main()
+def add_parser(sub) -> None:
+    ap = sub.add_parser("analyze",
+                        help="Analyze a video with Gemini and emit a .storyboard.md.")
+    ap.add_argument("video_path", help="path to the input video file")
+    ap.add_argument("output_path", nargs="?", default=None,
+                    help="output .storyboard.md (default: <video>.storyboard.md)")
+    ap.add_argument("--no-frames", action="store_true",
+                    help="skip ffmpeg midpoint-frame extraction")
+    ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
+                    help="Gemini model (default: gemini-2.0-flash)")
+    ap.set_defaults(func=run_analyze)
