@@ -1,0 +1,20 @@
+{
+  "name": "feinklang",
+  "description": "Audio voiceover for Claude Code — ElevenLabs text-to-speech via the clean `feinklang` CLI. Part of the feinschmiede family.",
+  "author": {
+    "name": "Mike Mueller",
+    "email": "mike@objektarium.de"
+  },
+  "license": "MIT",
+  "keywords": [
+    "tts",
+    "text-to-speech",
+    "voiceover",
+    "audio",
+    "speech",
+    "elevenlabs",
+    "claude-code",
+    "claude-skills",
+    "feinschmiede"
+  ]
+}
