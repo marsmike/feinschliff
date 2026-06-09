@@ -21,13 +21,14 @@ class FakeEngine:
 
     name = "fake"
 
-    def __init__(self, findings, *, available=True, reason=""):
+    def __init__(self, findings, *, available=True, reason="", error=None):
         self._findings = findings
         self._available = available
         self._reason = reason
+        self._error = error
         self.ran = False
 
-    def ensure_available(self, runner, version):
+    def ensure_available(self, runner, targets, version):
         return (self._available, self._reason)
 
     def run(self, runner, targets, version):
@@ -36,6 +37,9 @@ class FakeEngine:
 
     def parse(self, raw, targets):
         return list(self._findings)
+
+    def is_error(self, raw):
+        return self._error
 
 
 def _finding(symbol="a.dead", severity=Severity.ERROR, engine="cytoscnpy",
@@ -61,6 +65,7 @@ def _config(tmp_path, *, engines=("cytoscnpy",)):
     cfg = load_config(tmp_path)
     cfg.code.engines = list(engines)
     cfg.code.roots = ["lib"]
+    (tmp_path / "lib").mkdir(exist_ok=True)  # root must exist or the domain is skipped
     cfg.skills.engines = []
     return cfg
 
@@ -171,6 +176,42 @@ def test_unknown_engine_name_is_skipped(tmp_path, monkeypatch):
     res = run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner)
     assert res.findings == []
     assert res.meta["engines"] == []
+
+
+def test_engine_runtime_error_recorded_not_counted_as_clean(tmp_path, monkeypatch):
+    # An engine that errors at runtime (e.g. cytoscnpy exit 1 + empty stdout on a
+    # missing path) must surface in meta["errors"], NOT masquerade as a clean run.
+    bad = FakeEngine([_finding()], error="cytoscnpy exited 1 with no output")
+    _patch_engines(monkeypatch, {"cytoscnpy": bad})
+    cfg = _config(tmp_path)
+    runner = Runner(repo_root=tmp_path, cache=False)
+    res = run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner, gate="all")
+    assert res.meta["errors"] == [
+        {"engine": "cytoscnpy", "reason": "cytoscnpy exited 1 with no output"}
+    ]
+    assert res.meta["engines"] == []          # not counted as a successful run
+    assert res.findings == []                 # its (untrusted) output is not parsed
+
+
+def test_strict_raises_on_engine_error(tmp_path, monkeypatch):
+    bad = FakeEngine([], error="cytoscnpy crashed")
+    _patch_engines(monkeypatch, {"cytoscnpy": bad})
+    cfg = _config(tmp_path)
+    runner = Runner(repo_root=tmp_path, cache=False)
+    with pytest.raises(RuntimeError, match="cytoscnpy crashed"):
+        run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner, strict=True)
+
+
+def test_missing_root_recorded_and_domain_skipped(tmp_path, monkeypatch):
+    eng = FakeEngine([_finding()])
+    _patch_engines(monkeypatch, {"cytoscnpy": eng})
+    cfg = _config(tmp_path)
+    cfg.code.roots = ["does_not_exist"]       # never created -> missing
+    runner = Runner(repo_root=tmp_path, cache=False)
+    res = run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner)
+    assert res.meta["missing_roots"] == ["code:does_not_exist"]
+    assert eng.ran is False                   # engine never invoked on a dead path
+    assert res.meta["engines"] == [] and res.findings == []
 
 
 def test_skills_domain_engine_runs_without_test_globs_attr(tmp_path, monkeypatch):

@@ -54,7 +54,7 @@ class StubEngine:
         self.name = name
         self._findings = findings
 
-    def ensure_available(self, runner, version):  # noqa: ARG002 - protocol shape
+    def ensure_available(self, runner, targets, version):  # noqa: ARG002 - protocol shape
         return (True, "")
 
     def run(self, runner, targets, version):  # noqa: ARG002 - protocol shape

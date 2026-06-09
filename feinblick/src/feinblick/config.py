@@ -27,7 +27,10 @@ KNOWN_ENGINES: set[str] = {"cytoscnpy", "tach", "agnix"}
 
 @dataclass
 class CodeCfg:
-    roots: list[str] = field(default_factory=lambda: ["feinschliff/lib"])
+    # The shared engine package is the load-bearing first-party library in this
+    # monorepo (the old ``feinschliff/lib`` moved here in the engine extraction).
+    # Broaden via feinblick.toml to include plugin ``*/src`` trees.
+    roots: list[str] = field(default_factory=lambda: ["feinschmiede/feinschmiede"])
     test_globs: list[str] = field(default_factory=lambda: ["**/tests/**", "**/test_*.py"])
     engines: list[str] = field(default_factory=lambda: ["cytoscnpy", "tach"])
 

@@ -21,6 +21,13 @@ def _escape_cell(text: str) -> str:
     return (text or "").replace("|", "\\|").replace("\n", " ").strip()
 
 
+def _entry(item: object) -> str:
+    """Render an errors/unavailable entry, tolerating dict or bare-string shapes."""
+    if isinstance(item, dict):
+        return f"`{item.get('engine')}` — {item.get('reason')}"
+    return f"`{item}`"
+
+
 def _category_order_key(category: Category) -> tuple[int, str]:
     try:
         return (_CATEGORY_ORDER.index(category), category.value)
@@ -57,11 +64,20 @@ def render(findings: list[Finding], verdict: str, health: dict, meta: dict) -> s
         lines.append(f"**Health score:** {score}/100")
     engines = meta.get("engines") or []
     unavailable = meta.get("unavailable") or []
+    errors = meta.get("errors") or []
+    missing_roots = meta.get("missing_roots") or []
     if engines:
         lines.append(f"**Engines:** {', '.join(engines)}")
-    if unavailable:
-        lines.append(f"**Unavailable:** {', '.join(unavailable)}")
     lines.append(f"**Findings:** {len(findings)}")
+    if errors or unavailable or missing_roots:
+        lines.append("")
+        lines.append("> ⚠ **Partial results — coverage is incomplete:**")
+        for e in errors:
+            lines.append(f"> - engine error: {_entry(e)}")
+        for u in unavailable:
+            lines.append(f"> - unavailable: {_entry(u)}")
+        if missing_roots:
+            lines.append(f"> - missing roots: {', '.join(missing_roots)}")
     lines.append("")
 
     grouped: dict[Category, list[Finding]] = {}

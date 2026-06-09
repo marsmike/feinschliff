@@ -162,12 +162,31 @@ def _default_skill_out() -> Path:
 
 def _handle_init(args) -> int:
     repo_root = _find_repo_root(Path.cwd())
+    wrote: list[str] = []
+
     path = repo_root / "feinblick.toml"
     if path.exists():
         print(f"feinblick.toml already exists: {path}")
-        return 0
-    path.write_text(STARTER_TOML)
-    print(f"Wrote {path}")
+    else:
+        path.write_text(STARTER_TOML)
+        wrote.append(str(path))
+
+    # Scaffold a starter tach.toml too: tach needs an authored module map at the
+    # repo root to do boundary/circular analysis (with only source_roots it just
+    # warns). Seed source_roots from the configured code roots; leave [[modules]]
+    # for the operator to declare.
+    from feinblick.adapters.tach import scaffold_tach_toml
+
+    config = load_config(repo_root)
+    tach_path = repo_root / "tach.toml"
+    if tach_path.exists():
+        print(f"tach.toml already exists: {tach_path}")
+    else:
+        tach_path.write_text(scaffold_tach_toml(config.code.roots))
+        wrote.append(str(tach_path))
+
+    for p in wrote:
+        print(f"Wrote {p}")
     return 0
 
 

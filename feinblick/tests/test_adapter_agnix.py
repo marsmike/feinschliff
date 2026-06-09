@@ -58,12 +58,19 @@ def test_parse_blank_stdout_yields_no_findings(tmp_path):
 def test_unavailable_when_npx_missing(tmp_path, monkeypatch):
     r = Runner(repo_root=tmp_path, cache=False)
     monkeypatch.setattr(r, "tool_available", lambda n: False)
-    ok, reason = AgnixEngine().ensure_available(r, "latest")
+    ok, reason = AgnixEngine().ensure_available(r, _targets(tmp_path), "latest")
     assert ok is False and "npx" in reason.lower()
 
 
 def test_available_when_npx_present(tmp_path, monkeypatch):
     r = Runner(repo_root=tmp_path, cache=False)
     monkeypatch.setattr(r, "tool_available", lambda n: True)
-    ok, reason = AgnixEngine().ensure_available(r, "latest")
+    ok, reason = AgnixEngine().ensure_available(r, _targets(tmp_path), "latest")
     assert ok is True
+
+
+def test_is_error_only_on_blank_stdout():
+    eng = AgnixEngine()
+    assert eng.is_error(RawOutput('{"diagnostics":[]}', "", 0)) is None   # clean run
+    err = eng.is_error(RawOutput("", "agnix: command failed", 1))
+    assert err is not None and "agnix" in err

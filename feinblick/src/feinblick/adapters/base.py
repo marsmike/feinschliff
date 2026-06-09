@@ -30,8 +30,15 @@ class Targets:
 class Engine(Protocol):
     name: str
 
-    def ensure_available(self, runner: Runner, version: str) -> tuple[bool, str]:
-        """Probe runtime availability; return ``(ok, reason)``."""
+    def ensure_available(
+        self, runner: Runner, targets: Targets, version: str
+    ) -> tuple[bool, str]:
+        """Probe whether the engine can meaningfully run for ``targets``.
+
+        Receives ``targets`` so an engine can decide it is *not applicable* to
+        this repo (e.g. tach with no ``tach.toml``) and report that as
+        ``(False, reason)`` — recorded as unavailable, not a tool error.
+        """
         ...
 
     def run(self, runner: Runner, targets: Targets, version: str) -> RawOutput:
@@ -40,4 +47,14 @@ class Engine(Protocol):
 
     def parse(self, raw: RawOutput, targets: Targets) -> list[Finding]:
         """Parse the engine's raw output into normalized findings."""
+        ...
+
+    def is_error(self, raw: RawOutput) -> str | None:
+        """Return a reason string if ``raw`` indicates a tool *failure*, else None.
+
+        This is distinct from "found issues": cytoscnpy/tach exit nonzero *with
+        valid output* when findings exist. An error is e.g. a crash, a missing
+        path, or unparseable output — the orchestrator records it and degrades to
+        partial results instead of reporting a misleading clean run.
+        """
         ...

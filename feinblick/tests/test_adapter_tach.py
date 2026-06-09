@@ -64,3 +64,25 @@ def test_engine_registered():
     from feinblick.adapters import tach
 
     assert tach.ENGINE.name == "tach"
+
+
+def test_is_error_only_on_blank_stdout():
+    eng = TachEngine()
+    assert eng.is_error(RawOutput("[]", "", 0)) is None            # clean run
+    assert eng.is_error(RawOutput('[{"Located":{}}]', "", 1)) is None  # violations
+    err = eng.is_error(RawOutput("", "Configuration file not found", 1))
+    assert err is not None and "Configuration" in err             # config error -> surfaced
+
+
+def test_ensure_available_requires_tach_toml(tmp_path):
+    from feinblick.runner import Runner
+
+    runner = Runner(repo_root=tmp_path, cache=False)
+    t = _targets(tmp_path)
+    # no tach.toml at the repo root -> not applicable (unavailable), with guidance
+    ok, reason = TachEngine().ensure_available(runner, t, "0.35.0")
+    assert ok is False and "tach.toml" in reason
+    # author one -> available
+    (tmp_path / "tach.toml").write_text('source_roots = ["."]\n')
+    ok2, _ = TachEngine().ensure_available(runner, t, "0.35.0")
+    assert ok2 is True

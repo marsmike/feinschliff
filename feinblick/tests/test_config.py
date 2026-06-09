@@ -4,7 +4,7 @@ from feinblick.config import Config, load_config
 def test_zero_config_defaults(tmp_path):
     cfg = load_config(tmp_path)                       # no feinblick.toml
     assert isinstance(cfg, Config)
-    assert cfg.code.roots == ["feinschliff/lib"]
+    assert cfg.code.roots == ["feinschmiede/feinschmiede"]
     assert cfg.code.engines == ["cytoscnpy", "tach"]
     assert cfg.skills.engines == ["agnix"]
     assert cfg.skills.skill_md_max_lines == 500
