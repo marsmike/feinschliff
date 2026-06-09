@@ -1,6 +1,6 @@
 # Storyboard scene type: `terminal_recording`
 
-Cross-cutting reference for the `terminal_recording` scene type — how it's referenced in the storyboard (Phase 1), produced during Build (Phase 3), evaluated (Phase 3.5), and verified (Phase 4). Pairs with the [`cli-recorder`](../../../../cli-recorder/README.md) plugin and the [`TerminalScene`](components-terminal-scene.md) component.
+Cross-cutting reference for the `terminal_recording` scene type — how it's referenced in the storyboard (Phase 1), produced during Build (Phase 3), evaluated (Phase 3.5), and verified (Phase 4). Pairs with the [`cli-recorder`](../../cli-recorder/README.md) skill and the [`TerminalScene`](components-terminal-scene.md) component.
 
 ## Why a new scene type
 
@@ -18,7 +18,7 @@ In `STORYBOARD.md`, declare a scene as `type: terminal_recording`:
 # Per-scene block in STORYBOARD.md
 scene_3:
   type: terminal_recording
-  recipe: ../../cli-recorder/recipes/claude-commands.recipe.toml
+  recipe: ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/claude-commands.recipe.toml
   span_steps: [ask, code]               # render only these recipe steps (inclusive)
   overlay:
     chapter_title: "Live Coding"
@@ -32,7 +32,7 @@ scene_3:
 
 | Field | Required | Notes |
 |-------|----------|-------|
-| `recipe` | yes | path to a recipe.toml under `cli-recorder/recipes/` |
+| `recipe` | yes | path to a recipe.toml under `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/` |
 | `span_steps` | no | `[start_step_id, end_step_id]` (inclusive). Defaults to all steps. |
 | `overlay.chapter_title` | no | rendered as a TitleSlide layered over the first 1.5s |
 | `overlay.show_step_labels` | no | per-step captions from the recipe's `label` |
@@ -45,7 +45,7 @@ Treat each named step as a beat. The Beat Sheet generator (Phase 1, Step 4) shou
 2. Convert each step's `label` to one beat: visual = "terminal during step X", VO = "<draft narration about that step>".
 3. The user can collapse multiple recipe steps into one beat (`span_steps: [a, c]`) if pacing needs it.
 
-Concept image generation: don't try to draw the terminal. Instead generate ONE concept image that shows the surrounding composition (frame, title, caption position) and link to a `cli-recorder/recordings/<name>.gif` preview as the "terminal target".
+Concept image generation: don't try to draw the terminal. Instead generate ONE concept image that shows the surrounding composition (frame, title, caption position) and link to a `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recordings/<name>.gif` preview as the "terminal target".
 
 ## Phase 2: Audio
 
@@ -77,7 +77,7 @@ digraph build_terminal_scene {
   rankdir=TB;
   start [label="Storyboard says scene N is terminal_recording"];
   check [label="Does .cast exist AND mtime(cast) > mtime(recipe)?", shape=diamond];
-  invoke [label="Invoke cli-recorder/scripts/train_recorder.py recipe.toml"];
+  invoke [label="Invoke ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/scripts/train_recorder.py recipe.toml"];
   parsed [label="Read .scene-index.json"];
   emit [label="Generate src/scenes/Scene{N}.tsx wrapping <TerminalScene>"];
   start -> check;
@@ -161,7 +161,7 @@ The verification report (`docs/VERIFICATION_REPORT.md`) gains a per-step section
 
 ## Worked example
 
-The `cli-recorder` plugin's repository ships with `recipes/claude-commands.recipe.toml` and the corresponding `.cast` / `.scene-index.json`. To turn that into a polished educational video:
+The `cli-recorder` skill ships with `recipes/claude-commands.recipe.toml` and the corresponding `.cast` / `.scene-index.json`. To turn that into a polished educational video:
 
 ```yaml
 # docs/STORYBOARD.md
@@ -179,7 +179,7 @@ duration_s: 6
 
 # Scene 2 — Discovery + status (paired)
 type: terminal_recording
-recipe: ../../cli-recorder/recipes/claude-commands.recipe.toml
+recipe: ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/claude-commands.recipe.toml
 span_steps: [discover, inspect]
 overlay:
   chapter_title: "Discovery"
@@ -189,7 +189,7 @@ voiceover:
 
 # Scene 3 — Conversational + coding (the meat)
 type: terminal_recording
-recipe: ../../cli-recorder/recipes/claude-commands.recipe.toml
+recipe: ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/claude-commands.recipe.toml
 span_steps: [ask, code]
 overlay:
   chapter_title: "A real conversation"
@@ -201,7 +201,7 @@ voiceover:
 
 # Scene 4 — Context management
 type: terminal_recording
-recipe: ../../cli-recorder/recipes/claude-commands.recipe.toml
+recipe: ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/claude-commands.recipe.toml
 span_steps: [compact, continuity]
 overlay:
   chapter_title: "Manage context"
@@ -210,7 +210,7 @@ voiceover:
 
 # Scene 5 — Cost transparency
 type: terminal_recording
-recipe: ../../cli-recorder/recipes/claude-commands.recipe.toml
+recipe: ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/claude-commands.recipe.toml
 span_steps: [cost, cost]
 overlay:
   chapter_title: "Know what it costs"
@@ -238,7 +238,6 @@ These are tracked for the M3.5 hardening pass:
 ## See also
 
 - [`components-terminal-scene.md`](components-terminal-scene.md) — the `TerminalScene` React component
-- [`cli-recorder/README.md`](../../../../cli-recorder/README.md) — the recipe-driven recorder
+- [`cli-recorder` skill README](../../cli-recorder/README.md) — the recipe-driven recorder
 - [`storyboard.md`](storyboard.md) — Phase 1 storyboard authoring
 - [`build.md`](build.md) — Phase 3 build pipeline
-- [`docs/superpowers/specs/2026-05-10-cli-recorder-remotion-integration-design.md`](../../../../docs/superpowers/specs/2026-05-10-cli-recorder-remotion-integration-design.md) — full design rationale

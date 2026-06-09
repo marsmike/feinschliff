@@ -1,7 +1,7 @@
 /**
  * TerminalScene — render an asciicast v3 recording as composited React text.
  *
- * Companion to the cli-recorder plugin. Reads a .cast file (or URL),
+ * Companion to the cli-recorder skill. Reads a .cast file (or URL),
  * parses events with @xterm/headless, replays them up to the current frame
  * time, and renders the resulting cell grid as React. Every Remotion feature
  * (zoom, highlight, transition, audio sync) applies natively to terminal
