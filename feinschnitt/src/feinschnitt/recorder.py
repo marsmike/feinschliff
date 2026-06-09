@@ -1,26 +1,26 @@
 #!/usr/bin/env python3
-from __future__ import annotations
-"""
-train_recorder.py — drive any CLI session in tmux+asciinema from a recipe.
+"""recorder — drive any CLI session in tmux+asciinema from a recipe.
+
+Backs the ``feinschnitt record`` subcommand.
 
 Usage
 -----
-    python3 train_recorder.py recipes/foo.recipe.toml              # record + post-process
-    python3 train_recorder.py recipes/foo.recipe.toml --dry-run    # parse only, print steps
-    python3 train_recorder.py recipes/foo.recipe.toml --no-render  # skip agg/ffmpeg
-    python3 train_recorder.py recipes/foo.recipe.toml --keep       # keep tmux session after run
+    feinschnitt record recipes/foo.recipe.toml              # record + post-process
+    feinschnitt record recipes/foo.recipe.toml --dry-run    # parse only, print steps
+    feinschnitt record recipes/foo.recipe.toml --no-render  # skip agg/ffmpeg
+    feinschnitt record recipes/foo.recipe.toml --keep       # keep tmux session after run
 
 Inputs
 ------
     recipes/<name>.recipe.toml   — declarative description of the CLI session
                                    (see cli-recorder/schema/recipe.schema.json)
 
-Outputs (next to recipe, under recordings/<name>/ by default)
--------------------------------------------------------------
-    recordings/<name>/<name>.cast              — asciicast v3, post-processed
-    recordings/<name>/<name>.scene-index.json  — step → time-window map (sidecar)
-    recordings/<name>/<name>.gif               — rendered preview (if agg installed)
-    recordings/<name>/<name>.mp4               — rendered preview (if ffmpeg installed)
+Outputs (under $CLAUDE_PROJECT_DIR/.recordings/<name>/ by default)
+-----------------------------------------------------------------
+    <name>.cast              — asciicast v3, post-processed
+    <name>.scene-index.json  — step → time-window map (sidecar)
+    <name>.gif               — rendered preview (if agg installed)
+    <name>.mp4               — rendered preview (if ffmpeg installed)
 
 How it works
 ------------
@@ -40,6 +40,7 @@ How it works
     6. Optionally render GIF (agg) and MP4 (ffmpeg).
     7. Write the scene-index.json sidecar.
 """
+from __future__ import annotations
 
 import argparse
 import json

@@ -1,6 +1,5 @@
 """Clean-error contract for the feinschnitt CLI: rc==1, 'Error:' on stderr,
 never a traceback. Mirrors feinbild/tests/test_cli_errors.py."""
-import os
 import sys
 from pathlib import Path
 
