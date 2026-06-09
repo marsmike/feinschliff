@@ -132,48 +132,29 @@ Keep it simple. Manual timestamps are fine — you can adjust by re-rendering st
 
 ## Batch Voice Generation Script
 
-For multi-scene videos, generate all audio files at once:
+For multi-scene videos, generate all audio files at once by looping the bundled
+ElevenLabs TTS skill (`tts.sh`) — no inline API code needed:
 
-```typescript
-// scripts/generate-voiceover.ts
-import { writeFileSync, mkdirSync } from "fs";
+```bash
+# scripts/generate-voiceover.sh
+set -euo pipefail
+mkdir -p public/audio
+TTS="${CLAUDE_PLUGIN_ROOT}/skills/elevenlabs/scripts/tts.sh"
 
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID!;
-const API_KEY = process.env.ELEVENLABS_API_KEY!;
+declare -A scenes=(
+  [scene1]="AI coding assistants are incredible at writing code..."
+  [scene2]="The visual feedback loop changes everything..."
+  # Add more scenes
+)
 
-const scenes: Record<string, string> = {
-  scene1: "AI coding assistants are incredible at writing code...",
-  scene2: "The visual feedback loop changes everything...",
-  // Add more scenes
-};
-
-async function generate() {
-  mkdirSync("public/audio", { recursive: true });
-
-  for (const [name, text] of Object.entries(scenes)) {
-    console.log(`Generating ${name}...`);
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${VOICE_ID}`,
-      {
-        method: "POST",
-        headers: {
-          "xi-api-key": API_KEY,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text,
-          model_id: "eleven_multilingual_v2",
-          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.3 },
-        }),
-      }
-    );
-    const buffer = Buffer.from(await response.arrayBuffer());
-    writeFileSync(`public/audio/${name}.mp3`, buffer);
-    console.log(`  → public/audio/${name}.mp3`);
-  }
-}
-
-generate();
+for name in "${!scenes[@]}"; do
+  echo "Generating ${name}..."
+  "$TTS" "{\"text\": \"${scenes[$name]}\", \"output\": \"public/audio/${name}.mp3\"}"
+  echo "  → public/audio/${name}.mp3"
+done
 ```
 
-Run: `npx tsx scripts/generate-voiceover.ts`
+Run: `bash scripts/generate-voiceover.sh`
+
+Pass `voice_id`, `model_id`, or other options inside the JSON per
+`${CLAUDE_PLUGIN_ROOT}/skills/elevenlabs/references/parameters.md`.
