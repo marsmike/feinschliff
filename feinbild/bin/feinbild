@@ -97,7 +97,7 @@ _bootstrap() {
 
   if command -v uv >/dev/null 2>&1; then
     uv venv ${pyver:+--python "$pyver"} "$VENV" >&2
-    uv pip install --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinbild >&2
+    uv pip install --reinstall --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinbild >&2
   else
     local py=""
     [[ -n "$pyver" ]] && py="$(command -v "python$pyver" || true)"
@@ -114,7 +114,7 @@ _bootstrap() {
         exit 1
       }
     fi
-    "$VENV/bin/python" -m pip install --no-index --find-links "$WHEELS" feinbild >&2
+    "$VENV/bin/python" -m pip install --force-reinstall --no-index --find-links "$WHEELS" feinbild >&2
   fi
 
   printf '%s\n' "$sig" > "$READY"   # mark the venv ready for THIS wheelhouse — last step

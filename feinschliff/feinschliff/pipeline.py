@@ -16,7 +16,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from feinschliff.defects import Defect, DefectKind, Severity
+from feinschliff.defects import Defect, DefectKind, Severity, from_engine_defect
 
 try:
     from feinschmiede.diagrams.structural_validator import (  # type: ignore[import]
@@ -113,14 +113,14 @@ def compile_slide(
         for d in validate_excalidraw_structure(doc):
             # validate_excalidraw_structure stamps slide_index=0 by default;
             # restamp with the real index so reports group correctly.
-            defects.append(dataclasses.replace(d, slide_index=slide_index))
+            defects.append(from_engine_defect(d, slide_index=slide_index))
     for artifact in diagrams_out_dir.glob(f"s{slide_index}-*.svg"):
         try:
             svg_text = artifact.read_text()
         except OSError:
             continue
         for d in validate_svg_structure(svg_text):
-            defects.append(dataclasses.replace(d, slide_index=slide_index))
+            defects.append(from_engine_defect(d, slide_index=slide_index))
 
     primitives, diagnostics = expand_compounds(interp, compounds)
     for d in diagnostics:

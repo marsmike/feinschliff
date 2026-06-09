@@ -55,6 +55,28 @@ def _cmd_excalidraw(args: argparse.Namespace) -> int:
     return diagrams_cli.cmd_render(Path(args.input), out)
 
 
+def _cmd_verify(args: argparse.Namespace) -> int:
+    # Structural lint of a rendered diagram artifact, via the shared engine
+    # validator (also used by the deck pipeline + feinschliff-builder).
+    from feinschmiede.diagnostics import Severity
+    from feinschmiede.diagrams import structural_validator as sv
+
+    path = Path(args.input)
+    defects = sv.validate_diagram_file(path)
+    for d in defects:
+        loc = f" [{d.location}]" if getattr(d, "location", None) else ""
+        print(f"{d.severity.value.upper()}: {d.kind.value} — {d.message}{loc}", file=sys.stderr)
+    errors = [d for d in defects if d.severity == Severity.ERROR]
+    if not defects:
+        print(f"feinbild verify: {path.name} — no structural defects ✓")
+        return 0
+    print(
+        f"feinbild verify: {len(errors)} error(s), {len(defects) - len(errors)} warning(s) in {path.name}",
+        file=sys.stderr,
+    )
+    return 1 if errors else 0
+
+
 def _add_diagram_group(sub, name: str, dsl_help: str, expanded_help: str) -> None:
     g = sub.add_parser(name, help=f"{name} diagrams: expand a DSL then render to PNG.")
     leaf = g.add_subparsers(dest="sub", required=True)
@@ -86,6 +108,14 @@ def build_parser() -> argparse.ArgumentParser:
     _add_diagram_group(sub, "excalidraw", ".exc.dsl", ".excalidraw")
     sub.choices["svg"].set_defaults(func=_cmd_svg)
     sub.choices["excalidraw"].set_defaults(func=_cmd_excalidraw)
+
+    vf = sub.add_parser(
+        "verify",
+        help="Structurally lint a rendered .svg/.excalidraw diagram "
+        "(overflow, shape overlap, label collision, unrouted arrows).",
+    )
+    vf.add_argument("input", help="Path to a .svg or .excalidraw file.")
+    vf.set_defaults(func=_cmd_verify)
     return parser
 
 
