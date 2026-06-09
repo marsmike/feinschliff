@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from feinschliff.dsl.parser import DSLNode
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.slot_budget import (
     SlotBudget,
     compute_slot_budgets,

@@ -1,4 +1,4 @@
-"""Tests for `lib.diagrams._dsl_common` — coord parsing, canvas scale,
+"""Tests for `feinschmiede.diagrams._dsl_common` — coord parsing, canvas scale,
 sizing helpers shared by both `excalidraw_expand` and `svg_expand`.
 
 Before 2026-05-16 each expander had its own copy (svg_expand: `_parse_xy`,
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from feinschliff.diagrams._dsl_common import (
+from feinschmiede.diagrams._dsl_common import (
     Canvas,
     canvas_scale,
     parse_canvas,

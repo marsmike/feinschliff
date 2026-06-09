@@ -1,7 +1,7 @@
 """Deck composer — typed DSL Document → PPTX.
 
 Provides :class:`Deck`, a thin orchestrator that takes a typed
-:class:`~feinschliff.dsl.ast.Document` and a :class:`~feinschliff.brand.pack.BrandPack`
+:class:`~feinschmiede.dsl.ast.Document` and a :class:`~feinschmiede.brand.pack.BrandPack`
 and produces a ``.pptx`` file via the typed pipeline:
 
 .. code-block:: text
@@ -17,9 +17,9 @@ Phase 1 (``parse_document`` → ``expand_document`` →
 Usage::
 
     from pathlib import Path
-    from feinschliff.brand.pack import BrandPack
+    from feinschmiede.brand.pack import BrandPack
     from feinschliff.deck.compose import Deck
-    from feinschliff.dsl.ast import Document
+    from feinschmiede.dsl.ast import Document
 
     pack = BrandPack.load(Path("brands/feinschliff"))
     doc  = Document(...)   # or parse_document(text)
@@ -33,9 +33,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from feinschliff.brand.pack import BrandPack
-    from feinschliff.dsl.ast import Document
-    from feinschliff.diagnostics import DiagnosticBag
+    from feinschmiede.brand.pack import BrandPack
+    from feinschmiede.dsl.ast import Document
+    from feinschmiede.diagnostics import DiagnosticBag
 
 
 class Deck:
@@ -83,7 +83,7 @@ class Deck:
 
         Reads a plan YAML in the standard ``feinschliff deck build`` format
         (``brand:``, ``slides: [{layout:, content:}, …]``) and constructs a
-        typed :class:`~feinschliff.dsl.ast.Document` via
+        typed :class:`~feinschmiede.dsl.ast.Document` via
         :func:`feinschliff.deck.orchestrate.compose_from_brief`.
 
         Unlike the full ``deck build`` pipeline, slot interpolation
@@ -101,7 +101,7 @@ class Deck:
         -------
         Deck
             A :class:`Deck` whose ``document`` contains one
-            :class:`~feinschliff.dsl.ast.Slide` per slide in the brief.
+            :class:`~feinschmiede.dsl.ast.Slide` per slide in the brief.
 
         Raises
         ------
@@ -118,12 +118,12 @@ class Deck:
 
     @property
     def diagnostics(self) -> "DiagnosticBag":
-        """The :class:`~feinschliff.diagnostics.DiagnosticBag` from the last build.
+        """The :class:`~feinschmiede.diagnostics.DiagnosticBag` from the last build.
 
         Empty (no errors) before :meth:`build` has been called.
         """
         if self._diagnostics is None:
-            from feinschliff.diagnostics import DiagnosticBag
+            from feinschmiede.diagnostics import DiagnosticBag
             return DiagnosticBag()
         return self._diagnostics
 

@@ -20,8 +20,8 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.brand_discovery import discover_brands
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.brand_discovery import discover_brands
+from feinschmiede.dsl.tokens import load_tokens
 
 
 # Minimal tokens.json scaffold required by the loader's schema. Tests that
@@ -69,10 +69,10 @@ def test_brand_without_image_provider_has_none(tmp_path, monkeypatch):
     bundled = tmp_path / "bundled" / "brands"
     _write_brand(bundled, "plain")
     monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
-    monkeypatch.setattr("feinschliff.brand_discovery._bundled_brands_root", lambda: bundled)
-    monkeypatch.setattr("feinschliff.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
-    monkeypatch.setattr("feinschliff.brand_discovery._plugin_brands_roots", lambda: [])
-    monkeypatch.setattr("feinschliff.brand_discovery._cwd_dev_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._cwd_dev_brands_roots", lambda: [])
 
     [b] = [x for x in discover_brands() if x.name == "plain"]
     assert b.image_provider_config is None
@@ -92,10 +92,10 @@ def test_brand_with_image_provider_populates_field(tmp_path, monkeypatch):
         },
     )
     monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
-    monkeypatch.setattr("feinschliff.brand_discovery._bundled_brands_root", lambda: bundled)
-    monkeypatch.setattr("feinschliff.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
-    monkeypatch.setattr("feinschliff.brand_discovery._plugin_brands_roots", lambda: [])
-    monkeypatch.setattr("feinschliff.brand_discovery._cwd_dev_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._cwd_dev_brands_roots", lambda: [])
 
     [b] = [x for x in discover_brands() if x.name == "with-provider"]
     assert b.image_provider_config == {
@@ -142,10 +142,10 @@ def test_brand_image_provider_resolved_via_discover_brands(tmp_path, monkeypatch
     )
 
     monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
-    monkeypatch.setattr("feinschliff.brand_discovery._bundled_brands_root", lambda: bundled)
-    monkeypatch.setattr("feinschliff.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
-    monkeypatch.setattr("feinschliff.brand_discovery._plugin_brands_roots", lambda: [])
-    monkeypatch.setattr("feinschliff.brand_discovery._cwd_dev_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: bundled)
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    monkeypatch.setattr("feinschmiede.brand_discovery._cwd_dev_brands_roots", lambda: [])
 
     brands = {b.name: b for b in discover_brands()}
 

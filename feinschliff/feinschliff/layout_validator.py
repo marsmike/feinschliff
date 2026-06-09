@@ -206,7 +206,7 @@ def validate_diagrams_color(
     brand_dir: Path,
 ) -> list[LayoutDefect]:
     """diagram-color-mismatch: rendered color not in active brand's tokens."""
-    from feinschliff.diagrams.brand_bridge import SEMANTIC_NAMES, resolve, BrandBridgeError
+    from feinschmiede.diagrams.brand_bridge import SEMANTIC_NAMES, resolve, BrandBridgeError
     palette: set[str] = set()
     for sem in SEMANTIC_NAMES:
         try:

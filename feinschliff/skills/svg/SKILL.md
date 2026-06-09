@@ -13,8 +13,8 @@ Author a `.svg.dsl` file, expand it, then render. The default brand is `feinschl
 
 ```bash
 cd /path/to/feinschliff
-uv run python -m lib.diagrams.svg_expand chart.svg.dsl   # add --brand <name> to override
-uv run python -m lib.diagrams.render chart.svg            # → chart.png
+uv run python -m feinschmiede.diagrams.svg_expand chart.svg.dsl   # add --brand <name> to override
+uv run python -m feinschmiede.diagrams.render chart.svg            # → chart.png
 ```
 
 Inspect the PNG. If something is off, adjust the DSL (positions, sizes, semantic colors) and re-run. One fix loop max — escalate to references if more is needed.

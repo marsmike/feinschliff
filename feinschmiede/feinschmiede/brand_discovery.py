@@ -6,8 +6,8 @@ import warnings
 from json import JSONDecodeError
 from pathlib import Path
 
-from feinschliff.brand import BrandPack
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.brand import BrandPack
+from feinschmiede.dsl.tokens import load_tokens
 
 
 def _bundled_brands_root() -> Path:
@@ -173,7 +173,7 @@ def find_brand(name: str) -> BrandPack:
     This is the function `/deck --brand <name>` should call — its error
     message tells the user exactly what to fix.
 
-    Returns a :class:`~feinschliff.brand.BrandPack` (previously returned the legacy
+    Returns a :class:`~feinschmiede.brand.BrandPack` (previously returned the legacy
     ``Brand`` dataclass — all attributes used by callers are present on
     ``BrandPack`` with the same names).
     """

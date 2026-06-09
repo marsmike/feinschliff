@@ -6,9 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.brand import BrandPack
+from feinschmiede.brand import BrandPack
 from feinschliff.deck.compose import Deck
-from feinschliff.dsl.ast import Document
+from feinschmiede.dsl.ast import Document
 from feinschliff.dsl.parser import parse_document
 
 
@@ -38,7 +38,7 @@ def test_deck_diagnostics_empty_before_build(tmp_path):
     pack = _make_pack(tmp_path)
     deck = Deck(brand=pack, document=_minimal_doc())
     # Before .build(), diagnostics should be an empty bag (no errors).
-    from feinschliff.diagnostics import DiagnosticBag
+    from feinschmiede.diagnostics import DiagnosticBag
     diag = deck.diagnostics
     assert isinstance(diag, DiagnosticBag)
     assert not diag.has_errors()

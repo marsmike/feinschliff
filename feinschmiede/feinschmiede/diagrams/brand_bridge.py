@@ -20,10 +20,10 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from feinschliff.jsonwalk import deep_merge as _deep_merge, walk as _json_walk
+from feinschmiede.jsonwalk import deep_merge as _deep_merge, walk as _json_walk
 
 if TYPE_CHECKING:
-    from feinschliff.brand import BrandPack
+    from feinschmiede.brand import BrandPack
 
 # 17 semantic names, fixed. Adding to this list is a coordinated change
 # across brand_bridge, brand packs, and DSL references.
@@ -110,7 +110,7 @@ class BrandBridgeError(ValueError):
 
 
 def resolve_with_pack(name: str, pack: "BrandPack") -> str:
-    """Resolve a semantic color name using a :class:`~feinschliff.brand.BrandPack`.
+    """Resolve a semantic color name using a :class:`~feinschmiede.brand.BrandPack`.
 
     Typed entry point for new code. Delegates to the existing
     :func:`resolve` implementation so all validation and fallback logic
@@ -208,7 +208,7 @@ def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = N
                 candidates.append(Path(root) / parent)
         # Fall back to brand_discovery so all registered sources are searched
         # (bundled, plugin, env, cwd-dev, user) — avoids a hardcoded path.
-        from feinschliff.brand_discovery import find_brand as _find_brand
+        from feinschmiede.brand_discovery import find_brand as _find_brand
         try:
             discovered = _find_brand(parent)
             candidates.append(discovered.root)
@@ -327,7 +327,7 @@ def resolve_brand_dir(
     chosen = directive or cli_flag or env or deck_context or "feinschliff"
     if brands_root is not None:
         return brands_root / chosen
-    from feinschliff.brand_discovery import find_brand as _find_brand
+    from feinschmiede.brand_discovery import find_brand as _find_brand
     try:
         return _find_brand(chosen).root
     except ValueError:

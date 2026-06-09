@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 
-from feinschliff.diagrams.render import render
+from feinschmiede.diagrams.render import render
 
 
 def test_render_svg_produces_png(tmp_path):

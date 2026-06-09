@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from feinschliff.dsl.parser import parse_lines
 from feinschliff.dsl.pptx_emit import build_presentation
-from feinschliff.dsl.tokens import Tokens
+from feinschmiede.dsl.tokens import Tokens
 
 
 def _minimal_tokens(

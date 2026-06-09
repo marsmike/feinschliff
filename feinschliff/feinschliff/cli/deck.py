@@ -53,7 +53,7 @@ from feinschliff.deck.orchestrate import (
 )
 
 from feinschliff.dsl.parser import parse_file
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.dsl.expander import (
     interpolate_nodes,
     expand_compounds,
@@ -66,7 +66,7 @@ from feinschliff.content_validator import (
 from feinschliff.slot_budget import compute_slot_budgets
 from feinschliff.pipeline import compile_slide
 from feinschliff.defects import fatal_kinds, format_defect
-from feinschliff.brand_discovery import find_brand
+from feinschmiede.brand_discovery import find_brand
 from feinschliff.io.image_provider import discover_providers, get_provider
 
 # Builder-side imports (feinschliff-builder optional dependency).

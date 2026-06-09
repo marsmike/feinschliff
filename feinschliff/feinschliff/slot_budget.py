@@ -8,7 +8,7 @@ Usage::
 
     from feinschliff.slot_budget import compute_slot_budgets, format_budget_hint
     from feinschliff.dsl.parser import parse_file
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
 
     nodes, _ = parse_file(layout_path)
     tokens = load_tokens(brand_dir)
@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, CompoundDef
-from feinschliff.dsl.tokens import Tokens
+from feinschmiede.dsl.tokens import Tokens
 from feinschliff.textfit import chars_per_line as _cpl, supported_fonts as _supported_fonts
 
 

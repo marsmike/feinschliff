@@ -33,7 +33,7 @@ def _find_brand(name: str) -> Path | None:
         return extra
     return None
 
-from feinschliff.dsl.tokens import load_brief_defaults, validate_tokens
+from feinschmiede.dsl.tokens import load_brief_defaults, validate_tokens
 
 
 # ---------------------------------------------------------------------------

@@ -15,7 +15,7 @@ independently testable and reusable outside the CLI:
 - :func:`patch_set_hash` — stable hash of an autofix patch set for
   oscillation detection.
 - :func:`compose_from_brief` — read a deck plan YAML (the "brief") and
-  return a typed :class:`~feinschliff.dsl.ast.Document`.
+  return a typed :class:`~feinschmiede.dsl.ast.Document`.
 
 ``cli/deck.py`` delegates to these functions; callers outside the CLI
 can import them directly.
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from feinschliff.dsl.tokens import Tokens
+    from feinschmiede.dsl.tokens import Tokens
 
 # ── constants ─────────────────────────────────────────────────────────────────
 
@@ -210,10 +210,10 @@ def build_primitives_for_layout(
     """
     import yaml
 
-    from feinschliff.brand_discovery import find_brand
+    from feinschmiede.brand_discovery import find_brand
     from feinschliff.dsl.expander import expand_compounds, interpolate_nodes, load_compounds_for_brand
     from feinschliff.dsl.parser import parse_file
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
 
     def _bundled_compounds() -> Path:
         return Path(__file__).resolve().parents[2] / "compounds"
@@ -265,14 +265,14 @@ def build_refurbished_deck(
     """
     import tempfile
 
-    from feinschliff.brand_discovery import find_brand
+    from feinschmiede.brand_discovery import find_brand
     from feinschliff.dsl.expander import (
         expand_compounds, expand_diagram_blocks, interpolate_nodes,
         load_compounds_for_brand,
     )
     from feinschliff.dsl.parser import parse_file
     from feinschliff.dsl.pptx_emit import build_multi_slide
-    from feinschliff.dsl.tokens import load_tokens
+    from feinschmiede.dsl.tokens import load_tokens
     from feinschliff.io.image_provider import discover_providers, get_provider
     from feinschliff.layout_discovery import find_layout as _find_layout
 
@@ -346,13 +346,13 @@ def build_refurbished_deck(
 # ── compose_from_brief ────────────────────────────────────────────────────────
 
 def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
-    """Build a typed :class:`~feinschliff.dsl.ast.Document` from a deck plan YAML.
+    """Build a typed :class:`~feinschmiede.dsl.ast.Document` from a deck plan YAML.
 
     Reads a plan YAML (the "brief") in the standard ``feinschliff deck build``
     format — ``brand:``, ``slides: [{layout:, content:}, …]`` — resolves each
     slide's layout DSL file via :func:`resolve_layout_path`, parses it into a
-    typed :class:`~feinschliff.dsl.ast.Slide`, and assembles all slides into a single
-    :class:`~feinschliff.dsl.ast.Document`.
+    typed :class:`~feinschmiede.dsl.ast.Slide`, and assembles all slides into a single
+    :class:`~feinschmiede.dsl.ast.Document`.
 
     .. note::
         Slot interpolation (``{{ slot_name }}`` → content values) is **not**
@@ -366,14 +366,14 @@ def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
         Path to a deck plan YAML (``brand:``, ``slides:`` with ``layout:``
         and optional ``content:`` keys).
     brand:
-        A :class:`~feinschliff.brand.pack.BrandPack` instance.  Its ``root``
+        A :class:`~feinschmiede.brand.pack.BrandPack` instance.  Its ``root``
         attribute supplies the brand directory for layout resolution.
 
     Returns
     -------
     Document
-        A typed :class:`~feinschliff.dsl.ast.Document` with one
-        :class:`~feinschliff.dsl.ast.Slide` per entry in ``plan.slides``.
+        A typed :class:`~feinschmiede.dsl.ast.Document` with one
+        :class:`~feinschmiede.dsl.ast.Slide` per entry in ``plan.slides``.
 
     Raises
     ------
@@ -383,7 +383,7 @@ def compose_from_brief(brief_path: Path, brand: "Any") -> "Any":
         When the plan YAML is missing the ``slides`` key.
     """
     import yaml
-    from feinschliff.dsl.ast import Document
+    from feinschmiede.dsl.ast import Document
     from feinschliff.dsl.parser import parse_document_file
 
     text = brief_path.read_text(encoding="utf-8")

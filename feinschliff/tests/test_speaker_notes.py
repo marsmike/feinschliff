@@ -16,7 +16,7 @@ import pytest
 
 from feinschliff.dsl.parser import parse_lines
 from feinschliff.dsl.pptx_emit import build_multi_slide, build_presentation
-from feinschliff.dsl.tokens import load_tokens
+from feinschmiede.dsl.tokens import load_tokens
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]

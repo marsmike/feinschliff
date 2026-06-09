@@ -5,7 +5,7 @@ Provides a class-based interface for layout selection, keeping the existing
 
 Usage::
 
-    from feinschliff.brand.pack import BrandPack
+    from feinschmiede.brand.pack import BrandPack
     from feinschliff.deck.picker import LayoutPicker, LayoutMatch
 
     pack = BrandPack.load(Path("brands/feinschliff"))
@@ -60,7 +60,7 @@ class LayoutPicker:
     Parameters
     ----------
     brand:
-        The :class:`~feinschliff.brand.pack.BrandPack` whose layout pool is
+        The :class:`~feinschmiede.brand.pack.BrandPack` whose layout pool is
         searched when resolving :attr:`LayoutMatch.layout_path`.  When
         ``None``, ``layout_path`` in returned matches will also be ``None``.
     top_k:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from feinschliff.diagrams.diagram_wireframe import primitives_from_svg_dsl, primitives_from_excalidraw_dsl
+from feinschmiede.diagrams.diagram_wireframe import primitives_from_svg_dsl, primitives_from_excalidraw_dsl
 
 
 def _brand_dir() -> Path:

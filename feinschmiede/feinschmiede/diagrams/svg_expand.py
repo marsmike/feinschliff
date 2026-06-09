@@ -832,7 +832,7 @@ def main(argv: list[str] | None = None) -> int:
     import argparse
     import sys
 
-    parser = argparse.ArgumentParser(prog="python -m feinschliff.diagrams.svg_expand")
+    parser = argparse.ArgumentParser(prog="python -m feinschmiede.diagrams.svg_expand")
     parser.add_argument("input", type=Path, help="Path to .svg.dsl source")
     parser.add_argument("--brand", help="Brand override (else @brand directive / FEINSCHLIFF_BRAND / 'feinschliff')")
     parser.add_argument("-o", "--out", type=Path, help="Output .svg path (default: <input>.svg)")

@@ -38,7 +38,7 @@ from typing import Any
 
 from jsonschema import Draft202012Validator
 
-from feinschliff.jsonwalk import deep_merge
+from feinschmiede.jsonwalk import deep_merge
 
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[1] / "schemas" / "tokens.schema.json"
@@ -399,7 +399,7 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
             # sources brand_discovery scans, but stop at the path layer so
             # we don't re-enter load_tokens (discover_brands() calls
             # load_tokens for image_provider resolution → recursion).
-            from feinschliff.brand_discovery import _discovery_sources
+            from feinschmiede.brand_discovery import _discovery_sources
             parent = None
             for _src, root in _discovery_sources():
                 cand = root / parent_name

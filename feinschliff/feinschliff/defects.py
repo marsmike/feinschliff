@@ -7,14 +7,14 @@ and verifies to exit non-zero by default; CLI flags like
 `--allow-diagram-warnings` and `--allow-missing-assets` shave individual
 kinds off that set per invocation.
 
-Re-exports from ``feinschliff.diagnostics``:
+Re-exports from ``feinschmiede.diagnostics``:
 
-- :class:`~feinschliff.diagnostics.DiagnosticBag` — typed collection wrapper
+- :class:`~feinschmiede.diagnostics.DiagnosticBag` — typed collection wrapper
 
 Note: ``Severity`` and ``DefectKind`` in this module are the LEGACY enums
 used throughout the existing codebase (FATAL/WARN/INFO values, slide_index
 on Defect, etc.) and differ from the ``Severity``/``DefectKind`` in
-``feinschliff.diagnostics`` which follow conventional ERROR/WARNING/INFO naming.
+``feinschmiede.diagnostics`` which follow conventional ERROR/WARNING/INFO naming.
 Both modules coexist during the migration.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ from enum import Enum
 from typing import Any
 
 # Re-export DiagnosticBag so existing callers can import it from either module.
-from feinschliff.diagnostics import DiagnosticBag  # noqa: F401
+from feinschmiede.diagnostics import DiagnosticBag  # noqa: F401
 
 __all__ = [
     "Severity", "DefectKind", "Defect", "fatal_kinds", "format_defect",

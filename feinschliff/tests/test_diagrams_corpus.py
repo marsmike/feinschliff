@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from feinschliff.diagrams import excalidraw_expand, svg_expand
+from feinschmiede.diagrams import excalidraw_expand, svg_expand
 
 
 def _brand_dir() -> Path:
