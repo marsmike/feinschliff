@@ -122,6 +122,20 @@ _bootstrap() {
   exec 9>&-                          # release the bootstrap lock before exec'ing the CLI
 }
 
+_build_wheels_from_source() {
+  # A marketplace/git install ships no wheels (gitignored). Build from the bundled
+  # source on first run — needs uv + network. PyPI (Phase 3) replaces this.
+  [[ -f "$PLUGIN_ROOT/build-wheels.sh" ]] || return 1
+  command -v uv >/dev/null 2>&1 || return 1
+  echo "feinklang: no prebuilt wheels — building from bundled source (first run; needs network)…" >&2
+  bash "$PLUGIN_ROOT/build-wheels.sh" >&2
+}
+
+# #6: build the wheelhouse from bundled source on a fresh marketplace install.
+if ! _have_wheels && [[ ! -f "$READY" ]]; then
+  _build_wheels_from_source || true
+fi
+
 SIG="$(_wheelhouse_sig)"
 if [[ ! -f "$READY" || "$(cat "$READY" 2>/dev/null)" != "$SIG" ]]; then
   _bootstrap "$SIG"

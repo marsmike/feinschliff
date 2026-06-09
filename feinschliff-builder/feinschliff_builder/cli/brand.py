@@ -4,17 +4,9 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from pathlib import Path
 
 from feinschmiede.brand_discovery import discover_brands
-import feinschliff as _feinschliff_pkg
-
-
-# Toolkit-shared layouts/compounds (inherited by every brand).
-# These live in the core feinschliff plugin, not in the builder plugin.
-_TOOLKIT_ROOT = Path(_feinschliff_pkg.__file__).resolve().parent.parent
-_TOOLKIT_LAYOUTS = _TOOLKIT_ROOT / "layouts"
-_TOOLKIT_COMPOUNDS = _TOOLKIT_ROOT / "compounds"
+from feinschliff.layout_discovery import discover_layout_paths
 
 
 def register(parser: argparse.ArgumentParser) -> None:
@@ -45,9 +37,11 @@ def cmd_list(_args) -> int:
 
 
 def _toolkit_layouts() -> list[str]:
-    if not _TOOLKIT_LAYOUTS.is_dir():
-        return []
-    return sorted(p.stem.replace(".slide", "") for p in _TOOLKIT_LAYOUTS.glob("*.slide.dsl"))
+    # Use feinschliff's layout discovery (honours the installed-plugin scan +
+    # FEINSCHLIFF_LAYOUT_PATH that the launcher exports) instead of reaching into
+    # feinschliff's installed files via __file__ — so brand-inspect works under a
+    # real plugin/launcher install, not only a dev checkout.
+    return sorted(discover_layout_paths().keys())
 
 
 def _brand_layouts(brand) -> list[str]:
