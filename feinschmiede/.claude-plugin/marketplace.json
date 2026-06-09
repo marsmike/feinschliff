@@ -1,0 +1,19 @@
+{
+  "name": "feinschmiede",
+  "owner": { "name": "Mike Mueller", "email": "mike@objektarium.de" },
+  "metadata": {
+    "description": "Feinschmiede — fine-grained, branded media plugins for Claude Code, coupled by CLI capabilities (never file paths). Phase-0 scratch marketplace: feinklang (audio) plus a throwaway cross-plugin smoke test."
+  },
+  "plugins": [
+    {
+      "name": "feinklang",
+      "description": "Audio voiceover — ElevenLabs text-to-speech via the clean `feinklang` CLI.",
+      "source": "./feinklang"
+    },
+    {
+      "name": "feinklang-consumer",
+      "description": "Throwaway Phase-0 smoke test: depends on feinklang and calls it as a bare command. Not for distribution.",
+      "source": "./feinklang-consumer"
+    }
+  ]
+}
