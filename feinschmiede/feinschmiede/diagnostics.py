@@ -62,6 +62,8 @@ class DefectKind(str, Enum):
     DIAGRAM_TEXT_COLLISION = "diagram-text-collision"     # labels overlap
     DIAGRAM_ARROW_CROSSING = "diagram-arrow-crossing"     # arrows cross each other
     DIAGRAM_ARROW_CROSS_ZONE_UNROUTED = "diagram-arrow-cross-zone-unrouted"
+    DIAGRAM_SHAPE_OVERLAP = "diagram-shape-overlap"       # alias of DIAGRAM_STRUCTURAL
+    DIAGRAM_INVALID_FILE = "diagram-invalid-file"        # alias of DIAGRAM_INVALID_PRIMITIVE
 
     # --- Chrome (visual fidelity) ---
     DROP_SHADOW = "drop-shadow"

@@ -131,3 +131,25 @@ def format_defect(d: Defect) -> str:
         f"slide {d.slide_index}: [{d.severity.value.upper()}] "
         f"{d.kind.value} — {d.message}"
     )
+
+
+def from_engine_defect(d, *, slide_index: int = 0) -> Defect:
+    """Adapt a feinschmiede.diagnostics.Defect to this office Defect.
+
+    The shared diagram validator (feinschmiede.diagrams.structural_validator)
+    emits engine-native defects (Severity error/warning, a `location` string and
+    `extra` dict). Map them onto the office taxonomy (FATAL/WARN, slide_index,
+    meta) used by the deck pipeline + feinschliff-builder reports.
+    """
+    _sev = {"error": Severity.FATAL, "warning": Severity.WARN, "info": Severity.INFO}
+    meta = dict(getattr(d, "extra", None) or {})
+    loc = getattr(d, "location", None)
+    if loc:
+        meta.setdefault("location", loc)
+    return Defect(
+        slide_index=slide_index,
+        kind=DefectKind(d.kind.value),
+        severity=_sev[d.severity.value],
+        message=d.message,
+        meta=meta,
+    )
