@@ -36,4 +36,9 @@ python3 -m pip download --no-deps --only-binary=:all: \
   --dest "$WHEELS" charset-normalizer \
   || echo "feinklang: note — universal charset-normalizer wheel unavailable; wheelhouse is ABI-specific." >&2
 
-echo "feinklang: wheelhouse ready ($(find "$WHEELS" -name '*.whl' | wc -l | tr -d ' ') wheels) in $WHEELS"
+# Record the interpreter these wheels target so the bin/ launcher pins its venv
+# to a matching Python ABI (consistent with the feinbild template; a no-op here
+# since the closure is pure-python, but correct if a binary dep is ever added).
+python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' > "$WHEELS/.python-version"
+
+echo "feinklang: wheelhouse ready ($(find "$WHEELS" -name '*.whl' | wc -l | tr -d ' ') wheels, py$(cat "$WHEELS/.python-version")) in $WHEELS"

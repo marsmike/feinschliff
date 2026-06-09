@@ -21,4 +21,10 @@ python3 -m pip download --no-deps --only-binary=:all: \
   --implementation py --abi none --platform any --python-version 3 \
   --dest "$WHEELS" charset-normalizer || true
 
-echo "feinbild: wheelhouse ready ($(find "$WHEELS" -name '*.whl' | wc -l | tr -d ' ') wheels) in $WHEELS"
+# Record the interpreter these (ABI-specific) binary wheels target — pyyaml,
+# cffi, and pillow ship as cp3XY wheels. The bin/ launcher reads this to pin its
+# venv to a matching Python, so the offline install doesn't fail on an ABI gap
+# when uv's default interpreter differs from this build's python3.
+python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' > "$WHEELS/.python-version"
+
+echo "feinbild: wheelhouse ready ($(find "$WHEELS" -name '*.whl' | wc -l | tr -d ' ') wheels, py$(cat "$WHEELS/.python-version")) in $WHEELS"
