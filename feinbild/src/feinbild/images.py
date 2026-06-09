@@ -8,9 +8,17 @@ No Unsplash provider exists; an absent UNSPLASH_ACCESS_KEY costs nothing.
 from __future__ import annotations
 
 import base64
+import tempfile
+from datetime import datetime
 from pathlib import Path
 
 import requests
+
+
+def _default_out(ext: str) -> Path:
+    """Timestamped default output path (matches imagine.sh: no silent overwrite)."""
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    return Path(tempfile.gettempdir()) / f"imagine_{stamp}.{ext}"
 
 _DEFAULT_MODEL = {"replicate": "black-forest-labs/flux-schnell", "gemini": "gemini-2.5-flash-image"}
 
@@ -56,7 +64,7 @@ def _replicate(prompt, model, aspect_ratio, out_path, key) -> Path:
     url = output[0] if isinstance(output, list) else output
     if not url:
         raise ImagineError("No image URL in Replicate response")
-    out = out_path or Path(f"/tmp/imagine.{fmt}")
+    out = out_path or _default_out(fmt)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(requests.get(url, timeout=120).content)
     return out
@@ -84,7 +92,7 @@ def _gemini(prompt, model, aspect_ratio, out_path, key) -> Path:
             break
     if not b64:
         raise ImagineError("No image data in Gemini response")
-    out = out_path or Path("/tmp/imagine.png")
+    out = out_path or _default_out("png")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_bytes(base64.b64decode(b64))
     return out
