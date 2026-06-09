@@ -139,7 +139,7 @@ def expand(dsl: str, brand_dir: Path, canvas_override: tuple[int, int] | None = 
             raise ValueError(f"excalidraw_expand: unknown primitive '{head}'")
 
     for arrow_line in deferred_arrows:
-        strokes, labels = _emit_arrow(arrow_line, nodes, brand_dir, scale=scale)
+        strokes, labels = _emit_arrow(arrow_line, nodes, brand_dir, theme=theme, scale=scale)
         arrow_strokes.extend(strokes)
         arrow_labels.extend(labels)
 
@@ -733,7 +733,7 @@ def _label_offset(mid_x: float, mid_y: float, ux: float, uy: float,
     return (mid_x + gap_auto, mid_y - label_h / 2)
 
 
-def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: float = 1.0) -> tuple[list[dict], list[dict]]:
+def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, theme: str = "light", scale: float = 1.0) -> tuple[list[dict], list[dict]]:
     """Emit (stroke_elements, label_elements) for an `arrow` DSL line.
 
     Strokes are kept separate from labels so the caller can layer strokes
@@ -769,6 +769,7 @@ def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: fl
     style = "solid"
     style_explicit = False
     color_token = "ink"
+    color_explicit = False
     weight = "secondary"
     label: str | None = None
     labelpos = "mid"
@@ -790,6 +791,7 @@ def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: fl
                 )
         elif tok.startswith("color:"):
             color_token = tok.split(":", 1)[1]
+            color_explicit = True
         elif tok.startswith("weight:"):
             weight = tok.split(":", 1)[1]
             if weight not in _STROKE_WEIGHT:
@@ -842,6 +844,12 @@ def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: fl
 
     ox, oy = waypoints[0]
     points = [[wx - ox, wy - oy] for wx, wy in waypoints]
+    # The default arrow ink (`ink`) resolves to the dark background color in
+    # `theme dark`, making arrows invisible. Flip the unset default to a
+    # brand-stable light token so arrows contrast on the dark canvas; explicit
+    # `color:` is always honored.
+    if not color_explicit and theme == "dark":
+        color_token = "off-white"
     stroke_hex = _resolve_color(color_token, brand_dir)
     stroke_w = max(1, int(round(_STROKE_WEIGHT[weight] * scale)))
 
@@ -875,7 +883,7 @@ def _emit_arrow(line: str, nodes: dict[str, dict], brand_dir: Path, *, scale: fl
             "width": label_w, "height": label_h,
             "text": label,
             "fontSize": label_font,
-            "strokeColor": resolve("neutral-strong", brand_dir),
+            "strokeColor": resolve("off-white" if theme == "dark" else "neutral-strong", brand_dir),
             "textAlign": "center",
         })
     return strokes, labels
