@@ -1,0 +1,21 @@
+[project]
+name = "feinschnitt"
+version = "0.0.1"
+description = "Video CLI (Remotion orchestration + CLI session recorder) for the feinschmiede plugin family."
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mike Mueller", email = "mike@objektarium.de" }]
+dependencies = [
+    "google-generativeai>=0.8",
+]
+
+[project.scripts]
+feinschnitt = "feinschnitt.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["feinschnitt*"]
