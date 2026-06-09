@@ -116,3 +116,7 @@ feinschliff-bosch/
 */dist/
 */build/
 */venv/
+
+# Standalone plugins regenerate their own uv.lock on `uv run` (deps=[] → nothing
+# to pin but dev tools); workspace members use the root uv.lock instead.
+feinblick/uv.lock
