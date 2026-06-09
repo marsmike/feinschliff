@@ -33,24 +33,26 @@ Diagrams should **argue**, not just **display**. Pick complexity from
 
 ## Complexity tiers
 
-### Simple (3-5 nodes, layout `excalidraw-diagram`)
+### Simple (3-5 nodes, narrow canvas)
 
-One main flow, big labels, metaphor over implementation. One slide teaches
-one idea. Good for pupils, beginners, intros.
+One main flow, big labels, metaphor over implementation. One canvas teaches
+one idea. Good for pupils, beginners, intros. Declare a narrow canvas such
+as `canvas 1720x480`.
 
-### Medium (6-10 nodes, 2-4 zones, layout `excalidraw-diagram`)
+### Medium (6-10 nodes, 2-4 zones, narrow-to-wide canvas)
 
 Labeled interfaces, one or two secondary flows, callouts for risk or
 ownership. Good for managers, mixed audiences, technical overviews.
+Declare a wider canvas such as `canvas 3440x960` for breathing room.
 
-### Deep (10-20+ nodes, layout `excalidraw-diagram-full`)
+### Deep (10-20+ nodes, large virtual canvas)
 
-Full-slide diagram, multiple lanes/zones/layers, typed arrows for different
+Full diagram, multiple lanes/zones/layers, typed arrows for different
 flows, real artifacts / protocols / tasks / drivers, callouts for timing
 or safety. Good for embedded / platform / safety / architecture audiences.
 
-**At deep complexity, the diagram lives in a virtual 6880×2880 canvas
-(4× the slide slot). Use coordinates in that range. Use larger fonts
+**At deep complexity, declare a large `canvas 6880x2880` (16× the pixel
+area of a narrow canvas). Use coordinates in that range. Use larger fonts
 (48-64 for body, 96-128 for titles).**
 
 ### Choosing the tier
@@ -63,8 +65,8 @@ Decision: deep diagram — preserve buses, ISR/task boundaries, update flow,
           safety mechanisms.
 ```
 
-If the audience is mixed, create two slides: overview first (simple/medium
-on `excalidraw-diagram`), deep appendix second (`excalidraw-diagram-full`).
+If the audience is mixed, create two diagrams: overview first (simple/medium
+on a narrow canvas), deep appendix second (large `canvas 6880x2880`).
 
 ## Visual vocabulary
 

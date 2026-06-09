@@ -17,10 +17,7 @@ A media-creation toolkit of Claude Code skills:
 
 - **`/deck`** — create or polish a brand-compliant `.pptx` from a brief or rough
   draft. Generates speaker notes and an annotated handout PDF via `deck book`.
-- **`/excalidraw`** — author concept-flow diagrams in a brand-aware DSL.
-- **`/svg`** — author SVG infographics and custom charts in a brand-aware DSL.
 - **`/video`** — produce a programmatic video with Remotion (storyboard → build → verify).
-- **`/imagine`** — generate AI images from text prompts (Replicate / Gemini).
 - **`/tts`** — generate voiceover audio with ElevenLabs text-to-speech.
 - **`/record`** — author a `recipe.toml` to record a CLI session (cli-recorder).
 
@@ -60,6 +57,9 @@ Additional brands are available as separate plugins:
   (terminal palettes, light/dark themes, bold corporate looks).
 - **[feinschliff-builder](https://github.com/marsmike/feinschliff)** — authoring toolkit
   to compile HTML to DSL, decompile existing PPTX files, and verify brand quality.
+- **[feinbild](https://github.com/marsmike/feinschliff)** — image & 2D: AI images
+  (Replicate / Gemini), SVG, and Excalidraw diagrams (`/imagine`, `/svg`, `/excalidraw`
+  moved here from feinschliff).
 
 ## 50 shared layouts
 

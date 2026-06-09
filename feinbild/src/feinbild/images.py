@@ -66,7 +66,9 @@ def _replicate(prompt, model, aspect_ratio, out_path, key) -> Path:
         raise ImagineError("No image URL in Replicate response")
     out = out_path or _default_out(fmt)
     out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(requests.get(url, timeout=120).content)
+    img = requests.get(url, timeout=120)
+    img.raise_for_status()  # a 403/404 on an expired signed URL must not be written as the "image"
+    out.write_bytes(img.content)
     return out
 
 
@@ -86,9 +88,12 @@ def _gemini(prompt, model, aspect_ratio, out_path, key) -> Path:
     if data.get("error", {}).get("message"):
         raise ImagineError(f"Gemini API: {data['error']['message']}")
     b64 = None
-    for part in data.get("candidates", [{}])[0].get("content", {}).get("parts", []):
-        if part.get("inlineData"):
-            b64 = part["inlineData"]["data"]
+    # `candidates` can be present-but-empty ([]) on a safety block — guard the
+    # [0] access; read inlineData defensively (a partial part may lack "data").
+    for part in (data.get("candidates") or [{}])[0].get("content", {}).get("parts", []):
+        inline = part.get("inlineData")
+        if inline and inline.get("data"):
+            b64 = inline["data"]
             break
     if not b64:
         raise ImagineError("No image data in Gemini response")

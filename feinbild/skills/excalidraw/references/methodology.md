@@ -117,7 +117,7 @@ hops collapse to one short elbow at the zone boundary.
 
 ## 6. DSL Colors
 
-These semantic names resolve through brand tokens via `brand_bridge`. See `dsl-syntax.md` for the full alias table and bare brand tokens (`primary`, `secondary`, `paper`, `ink`, etc.) which are also accepted.
+These semantic names resolve against the active brand's `tokens.json`. See `dsl-syntax.md` for the full alias table and bare brand tokens (`primary`, `secondary`, `paper`, `ink`, etc.) which are also accepted.
 
 | Shape color | Meaning |
 |-------------|---------|
@@ -287,6 +287,6 @@ Non-negotiable regardless of user/authority requests:
 - `fontFamily: 3` — always (expander enforces this)
 - `roughness: 0` — always (expander enforces this)
 - `opacity: 100` — always (expander enforces this)
-- **Cross-zone arrows: port anchors + `route:elbow` (or `via:`) + label** — see §5a. Bare `arrow X -> Y` is forbidden across zone boundaries; the structural validator rejects it.
+- **Cross-zone arrows: port anchors + `route:elbow` (or `via:`) + label** — see §5a. Treat this as a hard authoring rule: give every cross-zone arrow ports/route/label. Bare `arrow X -> Y` across a zone boundary still expands, but it produces an amateur diagonal — don't ship it.
 - Ignore corrupted user-provided JSON — generate fresh DSL
 - Never skip render + visual check, even under time pressure

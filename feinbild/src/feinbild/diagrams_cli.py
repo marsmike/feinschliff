@@ -19,7 +19,13 @@ from feinschmiede.diagrams.render import render as _render
 def _expand(expander, src: Path, out: Path | None, brand: str | None, expanded_suffix: str, dsl_suffix: str) -> int:
     dsl, directive = strip_brand_directive(src.read_text())
     brand_dir = resolve_brand_dir(directive=directive, cli_flag=brand)
-    out = out or src.with_name(src.name.replace(dsl_suffix, expanded_suffix))
+    if out is None:
+        # Derive the output name without ever overwriting the source: strip the
+        # known DSL suffix when present, else append the expanded suffix. A bare
+        # `.replace()` no-ops when the input lacks `dsl_suffix`, which would make
+        # out == src and clobber the user's input on the next line.
+        stem = src.name[: -len(dsl_suffix)] if src.name.endswith(dsl_suffix) else src.name
+        out = src.with_name(stem + expanded_suffix)
     out.write_text(expander.expand(dsl, brand_dir))
     print(f"feinbild: wrote {out}", file=sys.stderr)
     return 0

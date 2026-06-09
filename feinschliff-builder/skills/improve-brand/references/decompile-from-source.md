@@ -66,11 +66,11 @@ writing; `--only <name> <name>` to restrict to a subset.
 ### Option C: index-named slide-by-slide (via existing CLI)
 
 ```bash
-uv run feinschliff decompile path/to/source-deck.pptx \
+uv run feinschliff-builder decompile path/to/source-deck.pptx \
     --brand <brand> -o brands/<brand>/layouts/ --with-svg
 ```
 
-Uses the existing `feinschliff decompile` CLI with the new
+Uses the existing `feinschliff-builder decompile` CLI with the new
 `--with-svg` flag. Writes `slide-NN.slide.dsl` per slide (numeric
 names, not layout-typed). Use this when you don't have a `verify-map.yaml`
 yet and just want a starting set of files.

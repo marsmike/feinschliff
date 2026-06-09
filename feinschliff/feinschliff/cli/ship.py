@@ -7,8 +7,9 @@ Runs:
   2. feinschliff verify (Layer 1/2 deterministic checks)
   3. feinschliff verify-quality (LLM rubric; offline unless --llm)
 
-Returns 0 only if every gate passes. Writes ship_report.{json,md}
-alongside the deck.
+Returns 0 only if every gate runs and passes; 2 if the build passes but the
+verify gates were skipped (feinschliff-builder not installed). Writes
+ship_report.{json,md} alongside the deck.
 """
 from __future__ import annotations
 
@@ -34,10 +35,23 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.set_defaults(func=cmd_ship)
 
 
+def _tool(name: str, *args: str) -> list[str]:
+    # Prefer `uv run <tool>` in a dev checkout; fall back to the bare console
+    # script on PATH (real plugin install) so ship does not hard-require uv.
+    if shutil.which("uv"):
+        return ["uv", "run", name, *args]
+    return [name, *args]
+
+
 def _run(argv: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
     import os
     env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1"}
-    p = subprocess.run(argv, cwd=cwd, capture_output=True, encoding="utf-8", env=env)
+    try:
+        p = subprocess.run(argv, cwd=cwd, capture_output=True, encoding="utf-8", env=env)
+    except FileNotFoundError as exc:
+        # The executable (uv or the tool) is not on PATH — surface as rc 127 so
+        # the caller's availability heuristic skips the gate instead of crashing.
+        return 127, "", str(exc)
     return p.returncode, p.stdout, p.stderr
 
 
@@ -52,10 +66,9 @@ def cmd_ship(args) -> int:
     }
 
     # Gate 1: build
-    rc, stdout, stderr = _run([
-        "uv", "run", "feinschliff", "deck", "build",
-        str(args.plan), "-o", str(out_deck),
-    ])
+    rc, stdout, stderr = _run(_tool(
+        "feinschliff", "deck", "build", str(args.plan), "-o", str(out_deck),
+    ))
     report["gates"]["build"] = {
         "status": "pass" if rc == 0 else "fail",
         "stdout": stdout, "stderr": stderr,
@@ -64,9 +77,9 @@ def cmd_ship(args) -> int:
         return _finalize(report, out_dir, verdict="fail", code=rc, json_out=args.json_out)
 
     # Gate 2: verify (provided by feinschliff-builder; skip if not installed)
-    rc, stdout, stderr = _run([
-        "uv", "run", "feinschliff-builder", "verify", str(out_deck),
-    ])
+    rc, stdout, stderr = _run(_tool(
+        "feinschliff-builder", "verify", str(out_deck),
+    ))
     _builder_unavailable = (rc != 0 and (
         "No such command" in stderr or "Could not find" in stderr
         or "unrecognized arguments" in stderr or rc == 127
@@ -85,11 +98,11 @@ def cmd_ship(args) -> int:
 
     # Gate 3: verify-quality (provided by feinschliff-builder; skip if not installed)
     quality_json = out_dir / "verify_report.json"
-    cmd = [
-        "uv", "run", "feinschliff-builder", "verify-quality", str(out_deck),
+    cmd = _tool(
+        "feinschliff-builder", "verify-quality", str(out_deck),
         "--rubric", "squint,title-body",
         "--json", "--out", str(quality_json),
-    ]
+    )
     if not args.llm:
         cmd.append("--offline")
     rc, stdout, stderr = _run(cmd)
@@ -110,6 +123,14 @@ def cmd_ship(args) -> int:
         }
         if gate_status == "fail":
             return _finalize(report, out_dir, verdict="fail", code=1, json_out=args.json_out)
+
+    skipped = [g for g, p in report["gates"].items() if p.get("status") == "skipped"]
+    if skipped:
+        # Build passed but quality gates could not run (feinschliff-builder not
+        # installed). Do NOT report a clean pass and do NOT mirror unverified
+        # output to examples; exit non-zero so automation treats it as not-green.
+        report["unverified_gates"] = skipped
+        return _finalize(report, out_dir, verdict="incomplete", code=2, json_out=args.json_out)
 
     if args.examples_out is not None:
         _mirror_to_examples(out_deck, out_dir, args.examples_out)

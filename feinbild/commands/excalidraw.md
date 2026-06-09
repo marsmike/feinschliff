@@ -9,7 +9,7 @@ user_invocable: true
 Expand then render the user's `.exc.dsl` with the `feinbild` CLI:
 
 ```bash
-feinbild excalidraw expand "<file>.exc.dsl" --brand "${FEINBILD_BRAND:-feinschliff}"
+feinbild excalidraw expand "<file>.exc.dsl" --brand "${FEINSCHLIFF_BRAND:-feinschliff}"
 feinbild excalidraw render "<file>.excalidraw"
 ```
 

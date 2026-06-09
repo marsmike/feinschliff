@@ -167,14 +167,14 @@ mood       mood       mood
 
 ### From AI generation (new videos, Phase 1)
 
-For new storyboards created from ideas, generate concept images before any code exists. Use `/imagine` with Flux Schnell (default — fast and cheap):
+For new storyboards created from ideas, generate concept images before any code exists. Use `feinbild imagine` with Flux Schnell (the default model — fast and cheap):
 
 ```bash
 # Scene composition — built from Visual section + YAML style metadata
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "flat illustration storyboard panel, <aspect>: <subject>, <layout>, <background>, <visual_style>, color palette <hex codes>, <mood>", "provider": "replicate", "aspect_ratio": "<from resolution>", "output": "docs/storyboard/scene-N-composition.png"}'
+feinbild imagine --prompt "flat illustration storyboard panel, <aspect>: <subject>, <layout>, <background>, <visual_style>, color palette <hex codes>, <mood>" --provider replicate --aspect-ratio "<from resolution>" --out "docs/storyboard/scene-N-composition.png"
 
 # Concept illustration — built from Analysis section + narrative context
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "infographic illustration, <aspect>: <narrative_purpose>, <visualization_type>, <emotional_beat>, clean flat illustration, professional infographic", "provider": "replicate", "aspect_ratio": "<from resolution>", "output": "docs/storyboard/scene-N-concept.png"}'
+feinbild imagine --prompt "infographic illustration, <aspect>: <narrative_purpose>, <visualization_type>, <emotional_beat>, clean flat illustration, professional infographic" --provider replicate --aspect-ratio "<from resolution>" --out "docs/storyboard/scene-N-concept.png"
 ```
 
 Default model: `black-forest-labs/flux-schnell` (~0.5s, ~$0.003/image). For client-facing storyboards: `black-forest-labs/flux-1.1-pro-ultra` (~$0.06/image, best quality, 4MP). Avoid requesting text in prompts — Flux renders text poorly.

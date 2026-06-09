@@ -3,7 +3,7 @@
 ## Scaffold a brand's layouts
 
 ```bash
-feinschliff compile-html brands/<brand>/claude-design/<brand>-2026.html \
+feinschliff-builder compile-html brands/<brand>/claude-design/<brand>-2026.html \
   -o brands/<brand>/layouts/ \
   --theme <brand>
 ```
@@ -49,7 +49,7 @@ output, iterate the DSL, re-render.
 ## Inspect the brand's layout pool
 
 ```bash
-feinschliff brand inspect <brand>
+feinschliff-builder brand inspect <brand>
 ```
 
 Lists every layout the brand resolves, including toolkit layouts

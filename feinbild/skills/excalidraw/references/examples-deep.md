@@ -1,14 +1,14 @@
 # Excalidraw — Deep Architecture Examples
 
-These examples target the `excalidraw-diagram-full` layout (full-slide,
-1720×720 slot, virtual 6880×2880 canvas). They demonstrate the
+These examples use a large `canvas 6880x2880`. They demonstrate the
 zone/lane/arrow-routing primitives at scale and are designed for
 **technical audiences** (firmware, embedded Linux, safety engineers)
 who can use the implementation detail.
 
-Source files live in `feinschliff/skills/excalidraw/examples/`.
-Rendered PNGs land in `feinschliff/.debug/skills/excalidraw/examples/`
-per the repo's `.debug/` mirror policy.
+Source `.exc.dsl` files live alongside this reference in the skill's
+`examples/` directory. Expand and render each with
+`feinbild excalidraw expand <file>.exc.dsl` then
+`feinbild excalidraw render <file>.excalidraw`.
 
 ## Audience contrast chain — same topic, three depths
 
@@ -30,16 +30,16 @@ arrow install -> restart label:"safely"
 ```
 
 **Teaches:** 3-5 boxes, one main flow, big labels, metaphor language
-("Device Checks") instead of implementation ("Signature Verify"). The
-narrow `excalidraw-diagram` layout is the right slot — full-slide would
-waste space and confuse the audience.
+("Device Checks") instead of implementation ("Signature Verify"). A
+narrow canvas (e.g. `canvas 1720x480`) is the right size here — a large
+canvas would waste space and confuse the audience.
 
 ### Medium — executives (`ota-update-medium-executive.exc.dsl`)
 
 Adds three zones (Release Engineering / Fleet Rollout / Operations), 9
 named boxes, decision gates, and red callouts for the rollback path.
-Canvas is 3440×960 (2× narrow virtual viewport) so labels stay readable
-without overwhelming the slide. **Teaches:** zones for responsibility
+Canvas is 3440×960 (a wider canvas) so labels stay readable
+without overwhelming the diagram. **Teaches:** zones for responsibility
 boundaries, color for risk, and a one-line "Risk / Cost / Ownership"
 callout strip at the bottom.
 
@@ -48,7 +48,7 @@ callout strip at the bottom.
 Five zones (Build/Sign · Boot Chain · A/B Slots · Health/Rollback · Trust
 Material), ~30 boxes, numbered boot sequence, anti-rollback fuses, audit
 log dotted-line telemetry, and dashed rollback paths. Canvas is
-6880×2880; needs `excalidraw-diagram-full` layout. **Teaches:** all the
+`6880x2880`. **Teaches:** all the
 arrow-discipline principles from `design-system.md` — typed arrows,
 numbered primary flow, fault paths in red with weight:primary, dashed
 config edges, dotted telemetry.
@@ -72,7 +72,7 @@ from scratch.
 
 ### Heterogeneous Linux + MCU edge device (`linux-mcu-heterogeneous-device.exc.dsl`)
 
-Splits the slide into Linux domain (left zone) and MCU domain (right
+Splits the canvas into Linux domain (left zone) and MCU domain (right
 zone) with a vertical IPC bridge zone in the middle. Cloud sits above;
 factory/service below. Real protocol names (RPMsg, Shared Memory, GPIO
 IRQ, Console UART) on the bridge components.

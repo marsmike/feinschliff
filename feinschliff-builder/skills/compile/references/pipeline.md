@@ -1,6 +1,6 @@
 # /compile pipeline
 
-`/compile` runs `feinschliff compile-html` against a brand's claude-design
+`/compile` runs `feinschliff-builder compile-html` against a brand's claude-design
 HTML and emits one `.slide.dsl` skeleton per `<section data-slots="…">`.
 Each skeleton carries:
 
@@ -29,7 +29,7 @@ the source of truth and gets compiled to PowerPoint by the deck builder.
 ## Step 1 — Scaffold the skeletons
 
 ```bash
-feinschliff compile-html brands/<brand>/claude-design/<brand>-2026.html \
+feinschliff-builder compile-html brands/<brand>/claude-design/<brand>-2026.html \
   -o brands/<brand>/layouts/ \
   --theme <brand>
 ```
@@ -102,7 +102,7 @@ closed-loop iteration recipe.
 Once the layouts render acceptably, run the full brand-pack verifier:
 
 ```bash
-feinschliff brand inspect <brand>
+feinschliff-builder brand inspect <brand>
 ```
 
 This lists every `.slide.dsl` the brand resolves, plus any toolkit
@@ -113,7 +113,7 @@ expectations and that no skeletons remain unfilled.
 
 - `brands/<brand>/layouts/<id>.slide.dsl` exists for every intended
   layout; each parses without error.
-- `feinschliff brand inspect <brand>` shows the new layouts.
+- `feinschliff-builder brand inspect <brand>` shows the new layouts.
 - Diagnostic renders, source extracts, and visual diffs sit under
   `brands/<brand>/.source/` and `<repo>/.debug/` — both gitignored per
   the repo-root [`CLAUDE.md`](../../../../CLAUDE.md) discipline.

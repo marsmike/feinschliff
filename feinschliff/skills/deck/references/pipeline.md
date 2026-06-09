@@ -58,7 +58,7 @@ layouts by name.
 Before claiming a brand can't serve a brief, run (from the repo root):
 
 ```
-uv run feinschliff brand inspect <brand>
+uv run feinschliff-builder brand inspect <brand>
 ```
 
 The output reports `N inherited, M overridden, K brand-only`. Treat
@@ -526,8 +526,8 @@ agent authors the diagram DSL inline in the slide's content YAML as
 the `dsl` slot value; the expander turns it into a PNG and embeds it.
 The `-full` layouts use a virtual 6880×2880 canvas so the model has
 16× more pixel area to compose into; PowerPoint downscales on insert.
-See `feinschliff/excalidraw/references/dsl-syntax.md` and
-`feinschliff/skills/excalidraw/references/examples-deep.md`.
+See the `feinbild` plugin's excalidraw skill references (`dsl-syntax.md`,
+`examples-deep.md`) — the standalone diagram-DSL authoring docs moved there.
 
 Output: `out/<deck>/deck.pptx` (draft).
 

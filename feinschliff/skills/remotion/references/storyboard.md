@@ -83,7 +83,7 @@ This is an **atomic step** — the storyboard document and its concept images ar
 mkdir -p docs/storyboard
 ```
 
-For each scene N, generate two AI concept images using the `/imagine` skill. Build prompts from the storyboard context — the YAML frontmatter, treatment, beat sheet, and color script all provide detail to feed into the image prompt.
+For each scene N, generate two AI concept images using the `feinbild imagine` CLI. Build prompts from the storyboard context — the YAML frontmatter, treatment, beat sheet, and color script all provide detail to feed into the image prompt.
 
 1. **Scene composition** — shows what the scene should look like (layout, elements, colors)
 
@@ -102,7 +102,7 @@ For each scene N, generate two AI concept images using the `/imagine` skill. Bui
    ```
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "<built prompt>", "provider": "replicate", "aspect_ratio": "<from YAML resolution>", "output": "docs/storyboard/scene-N-composition.png"}'
+   feinbild imagine --prompt "<built prompt>" --provider replicate --aspect-ratio "<from YAML resolution>" --out "docs/storyboard/scene-N-composition.png"
    ```
 
 2. **Concept illustration** — illustrates the idea being communicated
@@ -123,7 +123,7 @@ For each scene N, generate two AI concept images using the `/imagine` skill. Bui
    ```
 
    ```bash
-   ${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "<built prompt>", "provider": "replicate", "aspect_ratio": "<from YAML resolution>", "output": "docs/storyboard/scene-N-concept.png"}'
+   feinbild imagine --prompt "<built prompt>" --provider replicate --aspect-ratio "<from YAML resolution>" --out "docs/storyboard/scene-N-concept.png"
    ```
 
 **Prompt rules for Flux Schnell:**

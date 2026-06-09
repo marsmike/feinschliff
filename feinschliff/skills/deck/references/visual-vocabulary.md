@@ -1,6 +1,6 @@
 # Visual Vocabulary
 
-How to pick the right visual for a concept. This reference is generic (brand-agnostic). Brand-specific layout names come from the `.slide.dsl` files in the active brand's `<brand-root>/layouts/` directory plus the toolkit-shared pool under `feinschliff/layouts/` (see `../SKILL.md` for how the active brand resolves). Run `feinschliff brand inspect <brand>` to list the full pool.
+How to pick the right visual for a concept. This reference is generic (brand-agnostic). Brand-specific layout names come from the `.slide.dsl` files in the active brand's `<brand-root>/layouts/` directory plus the toolkit-shared pool under `feinschliff/layouts/` (see `../SKILL.md` for how the active brand resolves). Run `feinschliff-builder brand inspect <brand>` to list the full pool.
 
 ## Composition principles
 
@@ -27,7 +27,7 @@ These govern how elements are arranged on the canvas, regardless of which layout
 For each slide you plan to generate:
 1. Identify the **concept type** (from the list below).
 2. Look up **candidate visual types**.
-3. Cross-reference `feinschliff brand inspect <brand>` for the brand's specific `.slide.dsl` layouts that match.
+3. Cross-reference `feinschliff-builder brand inspect <brand>` for the brand's specific `.slide.dsl` layouts that match.
 4. Prefer layouts whose `when_to_use` (from the layout's header docstring) aligns with your content; avoid layouts whose `when_not_to_use` applies.
 
 ## Concept → Visual-type Mapping
@@ -37,7 +37,7 @@ Based on Financial Times Visual Vocabulary (Comparison / Composition / Distribut
 ### Cover / opener
 **Concepts:** deck cover, chapter opener, single-statement slide
 **Visual types:** title-primary, title-with-visual, chapter-opener
-**Layout ids (feinschliff):** title-orange, title-ink, title-picture, chapter-orange, chapter-ink, full-bleed-cover. Run `feinschliff brand inspect <brand>` for each pack's actual ids.
+**Layout ids (feinschliff):** title-orange, title-ink, title-picture, chapter-orange, chapter-ink, full-bleed-cover. Run `feinschliff-builder brand inspect <brand>` for each pack's actual ids.
 
 ### Agenda
 **Concepts:** table-of-contents, section-list

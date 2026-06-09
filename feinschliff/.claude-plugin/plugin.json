@@ -1,6 +1,6 @@
 {
   "name": "feinschliff",
-  "description": "Media-creation toolkit for Claude Code — PowerPoint decks, programmatic video (Remotion), AI images, diagrams, SVG graphics, voiceover (ElevenLabs), and CLI session recording. Ships with the feinschliff, blank, and claude brand packs.",
+  "description": "Media-creation toolkit for Claude Code — PowerPoint decks, programmatic video (Remotion), voiceover (ElevenLabs), and CLI session recording. Ships with the feinschliff, blank, and claude brand packs. Image/2D (AI images, SVG, Excalidraw) lives in the sibling feinbild plugin.",
   "author": {
     "name": "Mike Mueller",
     "email": "mike@objektarium.de"
@@ -20,7 +20,6 @@
     "claude-skills",
     "video",
     "remotion",
-    "image-generation",
     "text-to-speech",
     "voiceover",
     "cli-recorder",
