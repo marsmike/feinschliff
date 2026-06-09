@@ -3,8 +3,8 @@
 These examples teach pattern variety and shape-as-meaning, not just syntax — use them as blueprints, not templates to clone linearly.
 
 > **For deep architectural diagrams** (10-20+ nodes, zones, typed arrows on
-> the `excalidraw-diagram-full` layout), see
-> [examples-deep.md](examples-deep.md) — full-slide MCU firmware stacks,
+> a large `canvas 6880x2880`), see
+> [examples-deep.md](examples-deep.md) — full MCU firmware stacks,
 > embedded Linux runtimes, OTA flows, and audience-contrast pairs.
 
 ## Simple — Fan-Out

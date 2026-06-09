@@ -119,8 +119,26 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _register_bundled_brands() -> None:
+    """Make feinbild's packaged brand pack discoverable without the bin/ launcher.
+
+    The brand files ship inside the wheel (``src/feinbild/brands``); locate them
+    relative to this module and append to the engine's ``FEINSCHLIFF_BRAND_PATH``
+    (after any existing entries, so a user's own brand path still wins).
+    """
+    bundled = Path(__file__).resolve().parent / "brands"
+    if not bundled.is_dir():
+        return
+    existing = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
+    parts = existing.split(os.pathsep) if existing else []
+    if str(bundled) not in parts:
+        parts.append(str(bundled))
+        os.environ["FEINSCHLIFF_BRAND_PATH"] = os.pathsep.join(parts)
+
+
 def main(argv: list[str] | None = None) -> int:
     load_home_env()
+    _register_bundled_brands()
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)

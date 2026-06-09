@@ -1,6 +1,6 @@
 # SVG DSL Reference
 
-Compact grammar that expands to full SVG markup via `feinschmiede.diagrams.svg_expand`.
+Compact grammar that expands to full SVG markup via `feinbild svg expand`.
 
 ## Header
 
@@ -8,8 +8,8 @@ Compact grammar that expands to full SVG markup via `feinschmiede.diagrams.svg_e
 canvas <W>x<H>
 ```
 
-The viewBox. Required as the first non-comment line (unless invoked inside
-a slide-embed block, where the slot or `virtual:WxH` is the canvas).
+The viewBox. Required as the first non-comment line. A `virtual:WxH`
+directive can supply a larger render-resolution viewport (see below).
 
 ## Basic primitives
 
@@ -28,8 +28,8 @@ a slide-embed block, where the slot or `virtual:WxH` is the canvas).
 
 ## Extended primitives (deep diagrams)
 
-These were added for the `svg-infographic-full` layout and richer
-infographics. They also work in the narrow `svg-infographic` layout.
+These power dense, full-bleed infographics (a large `canvas` or
+`virtual:WxH` viewport). They work equally well in small, simple canvases.
 
 ### Group
 
@@ -112,8 +112,8 @@ swatch_grid <id> <x,y> cols:<n> \
 ```
 
 Legend / palette grid. Each entry becomes a small filled square + label.
-Defaults: `cols=3`, `cell_w=160`, `cell_h=24` (sized for slide-scale
-readability).
+Defaults: `cols=3`, `cell_w=160`, `cell_h=24` (sized for legible
+readability at typical canvas scale).
 
 ### Label box
 
@@ -138,15 +138,15 @@ The DSL uses semantic names only. Literal hex / rgb / hsl rejected. The
 | Neutral | `neutral`, `neutral-soft`, `neutral-strong` |
 | Status  | `status-on`, `status-off`, `status-pending` |
 
-Each name resolves to a hex via `feinschmiede.diagrams.brand_bridge` against the
-active brand's `tokens.json`.
+Each name resolves to a hex against the active brand's `tokens.json`.
 
-## Virtual viewport (full-slide layouts)
+## Virtual viewport (dense full-bleed compositions)
 
-The `svg-infographic-full` layout sets `virtual:6880x2880` on its SVG
-block. Author primitives in that 4× space. The renderer rasterizes at
-6880×2880; PowerPoint downscales 4× on insert into the 1720×720 slot.
-PNGs are ~250-600KB at virtual scale; render ~200ms.
+Add a `virtual:WxH` directive (e.g. `virtual:6880x2880`) to author
+primitives in a larger, higher-resolution coordinate space — useful for
+dense compositions that need more room for detail. The renderer
+rasterizes at the virtual resolution. PNGs are ~250-600KB at that scale;
+render ~200ms.
 
 ## Comments
 

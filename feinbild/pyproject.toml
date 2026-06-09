@@ -21,5 +21,18 @@ build-backend = "setuptools.build_meta"
 where = ["src"]
 include = ["feinbild*"]
 
+[tool.setuptools.package-data]
+# Bundled brand pack (the default `feinschliff` look) must ship inside the wheel
+# so `feinbild` resolves its brand on a direct/PyPI install, not only via the
+# bin/ launcher's FEINSCHLIFF_BRAND_PATH export. cli._register_bundled_brands()
+# locates this dir at runtime.
+feinbild = [
+    "brands/*/*.json",
+    "brands/*/*.md",
+    "brands/*/assets/*",
+    "brands/*/compounds/*",
+    "brands/*/claude-design/*",
+]
+
 [tool.uv.sources]
 feinschmiede = { workspace = true }

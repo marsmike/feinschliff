@@ -35,14 +35,14 @@ For memes, craft the prompt to include text and visual elements:
 
 ```bash
 # Fast meme
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "a cat looking confused at a computer screen, meme style, text says DEBUG MODE", "provider": "replicate", "model": "black-forest-labs/flux-kontext-pro"}'
+feinbild imagine --prompt "a cat looking confused at a computer screen, meme style, text says DEBUG MODE" --provider replicate --model black-forest-labs/flux-kontext-pro --out meme.png
 
 # Free high-quality image via Gemini
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "beautiful mountain landscape at golden hour", "provider": "gemini", "model": "gemini-3-pro-image-preview"}'
+feinbild imagine --prompt "beautiful mountain landscape at golden hour" --provider gemini --model gemini-3-pro-image-preview --out landscape.png
 
 # Wide cinematic shot via Gemini
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "cyberpunk city at night, neon lights, rain", "provider": "gemini", "aspect_ratio": "16:9"}'
+feinbild imagine --prompt "cyberpunk city at night, neon lights, rain" --provider gemini --aspect-ratio 16:9 --out city.png
 
 # Quick iteration with default provider
-${CLAUDE_PLUGIN_ROOT}/skills/imagine/scripts/imagine.sh '{"prompt": "logo for a coffee shop called Bean There"}'
+feinbild imagine --prompt "logo for a coffee shop called Bean There" --out logo.webp
 ```

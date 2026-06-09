@@ -14,7 +14,7 @@ from feinschmiede.diagrams import excalidraw_expand, svg_expand
 
 
 def _brand_dir() -> Path:
-    return Path(__file__).resolve().parent.parent / "brands" / "feinschliff"
+    return Path(__file__).resolve().parent.parent / "src" / "feinbild" / "brands" / "feinschliff"
 
 
 SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"

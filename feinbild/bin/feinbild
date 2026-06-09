@@ -126,6 +126,7 @@ SIG="$(_wheelhouse_sig)"
 if [[ ! -f "$READY" || "$(cat "$READY" 2>/dev/null)" != "$SIG" ]]; then
   _bootstrap "$SIG"
 fi
-# Make feinbild's bundled brand packs discoverable by the engine (additive — keep any user path).
-export FEINSCHLIFF_BRAND_PATH="${FEINSCHLIFF_BRAND_PATH:+$FEINSCHLIFF_BRAND_PATH:}$PLUGIN_ROOT/brands"
+# feinbild's bundled brand pack now ships inside the wheel (src/feinbild/brands);
+# the CLI self-registers it on FEINSCHLIFF_BRAND_PATH (a user's own path still
+# wins), so no export is needed here.
 exec "$CLI" "$@"

@@ -223,10 +223,10 @@ Each slide's hash is `sha256(brand + layout + json.dumps(content, sort_keys=True
 
 ```bash
 # Standard — cache is active when --plan is supplied
-uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff
+uv run feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff
 
 # Force full re-verify (ignore cache)
-uv run feinschliff verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
+uv run feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
 ```
 
 The cache is keyed by `(slide_hash, rubric_name)`. Changing brand, layout, or any content slot produces a new key, invalidating that slide's entry automatically (old entries are not pruned in v1 — acceptable given small cache size).

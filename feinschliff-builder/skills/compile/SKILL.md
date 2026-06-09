@@ -5,7 +5,7 @@ description: Scaffold v2 `.slide.dsl` layout skeletons for a brand pack from its
 
 # compile — produce v2 layout skeletons
 
-`/compile` runs `feinschliff compile-html` against a brand's
+`/compile` runs `feinschliff-builder compile-html` against a brand's
 claude-design HTML and emits one `.slide.dsl` skeleton per
 `<section data-slots="…">`. Each skeleton carries the slot schema
 plus canvas + theme directives; the author then fills in primitives.
@@ -21,7 +21,7 @@ default `feinschliff`.
 
 ```bash
 # scaffold all layouts for a new brand from its claude-design HTML
-feinschliff compile-html brands/<new>/claude-design/<new>-2026.html \
+feinschliff-builder compile-html brands/<new>/claude-design/<new>-2026.html \
   -o brands/<new>/layouts/ --theme <new>
 
 # tune one layout against any reference .pptx (hand-saved, design-tool export, prior version)

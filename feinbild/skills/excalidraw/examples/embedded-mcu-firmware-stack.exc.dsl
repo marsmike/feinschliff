@@ -1,7 +1,7 @@
 # diagram_brief: audience=embedded-firmware-engineers complexity=deep type=mcu-firmware-stack
 # teaches: hardware-bottom-up layering, ISR side-lane, typed arrows for fault vs control,
 #          watchdog and safety monitor at the boundary
-# virtual canvas: 6880x2880 — render via the excalidraw-diagram-full layout
+# virtual canvas: 6880x2880 — large high-resolution canvas
 
 canvas 6880x2880
 

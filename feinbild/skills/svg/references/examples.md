@@ -1,7 +1,7 @@
 # SVG DSL Examples
 
-> **For deep infographics** (build pipelines, dense system diagrams on
-> the `svg-infographic-full` layout), see
+> **For deep infographics** (build pipelines, dense system diagrams on a
+> large `canvas` / `virtual:WxH` viewport), see
 > [examples-deep.md](examples-deep.md) — Yocto build pipelines and other
 > richer compositions using the extended primitive set.
 

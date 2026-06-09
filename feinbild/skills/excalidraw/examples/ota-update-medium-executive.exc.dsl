@@ -1,7 +1,7 @@
 # diagram_brief: audience=executives complexity=medium type=ota-rollout-risk-overview
 # teaches: 3 zones (release / fleet / operations), risk/cost callouts,
 #          medium complexity with named decision gates
-# canvas: 3440x960 (2× virtual viewport — narrow excalidraw-diagram with breathing room)
+# canvas: 3440x960 (wider canvas — narrow flow with breathing room)
 
 canvas 3440x960
 

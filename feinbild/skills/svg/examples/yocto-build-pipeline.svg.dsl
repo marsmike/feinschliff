@@ -1,7 +1,7 @@
 # diagram_brief: audience=yocto-build-engineers complexity=deep type=yocto-build-pipeline
 # teaches: meta-layers stack composition (stacked_bar), BitBake hub,
 #          parallel artifact outputs, sign + publish callout, SBOM brace annotation
-# virtual canvas: 6880x2880 — render via svg-infographic-full layout
+# canvas: 6880x2880 — a large full-bleed viewport (or use a virtual:WxH directive)
 #
 # Note: the SVG DSL is strictly line-based; each primitive must be on a
 # single line. No backslash line-continuation.

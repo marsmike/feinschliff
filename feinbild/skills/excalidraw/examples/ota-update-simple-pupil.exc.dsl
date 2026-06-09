@@ -1,6 +1,6 @@
 # diagram_brief: audience=pupils complexity=simple type=ota-update-overview
 # teaches: 4-box linear flow with a single causal idea; metaphor over implementation
-# canvas: 1720x480 (narrow excalidraw-diagram slot — no virtual viewport)
+# canvas: 1720x480 (narrow canvas — no virtual viewport)
 
 canvas 1720x480
 

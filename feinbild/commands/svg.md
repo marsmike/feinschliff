@@ -9,7 +9,7 @@ user_invocable: true
 Expand then render the user's `.svg.dsl` with the `feinbild` CLI:
 
 ```bash
-feinbild svg expand "<file>.svg.dsl" --brand "${FEINBILD_BRAND:-feinschliff}"
+feinbild svg expand "<file>.svg.dsl" --brand "${FEINSCHLIFF_BRAND:-feinschliff}"
 feinbild svg render "<file>.svg"
 ```
 

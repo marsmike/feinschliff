@@ -1,16 +1,17 @@
 # Excalidraw DSL Syntax
 
-Compact grammar that expands to Excalidraw JSON via `feinschmiede.diagrams.excalidraw_expand`.
+Compact grammar that expands to Excalidraw JSON via `feinbild excalidraw expand`.
 
 ## Header
 
 ```
-canvas <W>x<H>     # required (standalone files); sets the Excalidraw canvas
+canvas <W>x<H>     # required; sets the Excalidraw canvas
 theme dark         # optional; flips canvas + labels to dark
 ```
 
-In slide layouts the canvas is supplied by the layout block's slot size
-(or by `virtual:WxH` — see **Virtual viewport** below).
+The standalone CLI always supplies its own canvas via the `canvas <W>x<H>`
+line. For oversized, high-resolution output you can declare a large canvas
+(e.g. `canvas 6880x2880`) — see **Virtual viewport** below.
 
 ## Primitives
 
@@ -101,8 +102,8 @@ arrow tg -> agent style:dashed label:"config" # config (not request) edge
 
 ## Colors
 
-Brand-aware tokens resolved through `brand_bridge.resolve()`. Upstream
-Excalidraw plugin's semantic names alias onto brand tokens:
+Brand-aware tokens resolved against the active brand's `tokens.json`.
+Upstream Excalidraw plugin's semantic names alias onto brand tokens:
 
 | Alias | Resolves to | Use for |
 |---|---|---|
@@ -133,35 +134,30 @@ Bare brand tokens also accepted: `primary`, `secondary`, `tertiary`,
 
 These are base sizes — when the canvas is larger than 1920px wide
 (virtual viewport, see below), default font sizes are scaled by
-`canvas_w / 1920` so labels stay legible after PowerPoint's downscale.
+`canvas_w / 1920` so labels stay legible at the larger render resolution.
 
-## Virtual viewport (full-slide layouts)
+## Virtual viewport (large high-resolution canvases)
 
-The `excalidraw-diagram-full` layout sets `virtual:6880x2880` on its
-diagram block. That means the body is authored as if the canvas were
-6880×2880; the renderer rasterizes at that size; PowerPoint downscales 4×
-on insert into the 1720×720 slot.
+For a deep architecture diagram, declare a large canvas (e.g.
+`canvas 6880x2880`). The body is authored in those coordinates and the
+renderer rasterizes at that size, giving 16× the pixel area of a
+~1720×720 canvas — room for dense, legible detail.
 
-**Author in virtual coordinates.** A box at `200,400 1500x600` sits 2.9%
-from the left edge and is 21.8% of canvas width — proportionally the same
-as `50,100 375x150` in a 1720×720 slot. The 16× pixel-area headroom is
-the point.
+**Author in the canvas coordinate space.** A box at `200,400 1500x600`
+sits 2.9% from the left edge and is 21.8% of canvas width — proportionally
+the same as `50,100 375x150` in a 1720×720 canvas. The 16× pixel-area
+headroom is the point.
 
 **Use larger base sizes.** Body text at 48-64, titles at 96-128, arrow
 labels by default scale with canvas (no manual sizing needed). Stroke
 widths also scale.
 
-When standalone-rendering a `.exc.dsl` file outside a slide, declare the
-canvas explicitly:
+Always declare the canvas explicitly at the top of the file:
 
 ```
 canvas 6880x2880
 box ...
 ```
-
-When embedded via `from:` in a layout that uses `virtual:`, the file's
-top-level `canvas` line is stripped automatically — the layout's virtual
-dimensions take precedence.
 
 ## Comments
 
@@ -182,9 +178,14 @@ no parser enforcement in this tier.
 
 ## Rendering
 
-The rendered PNG is produced by `lib/diagrams/render.py` which prefers
+The rendered PNG is produced by `feinbild excalidraw render`, which uses
 the **pure-Python rough + cairosvg** backend (clean / `roughness=0`,
-~150ms for narrow / ~600ms for virtual canvases). Playwright + real
-Excalidraw web app is the fallback for documents containing elements
-rough doesn't model. See the repo-root `CLAUDE.md` → "Diagram pipeline
-notes" for the full backend policy.
+~150ms for narrow / ~600ms for large canvases). This backend handles all
+normal box/arrow/ellipse/diamond/line/zone/lane diagrams.
+
+There is an **optional** Playwright + real-Excalidraw fallback for
+documents containing elements rough doesn't model (`freedraw`, `image`,
+`frame`), but **feinbild does not install it by default** — render fails
+with "the optional Playwright fallback is not installed" if a document
+needs it. In practice, avoid those element types; the rough backend
+covers everything the DSL above can express.
