@@ -23,7 +23,7 @@ import sys
 from pathlib import Path
 
 from feinblick import __version__, baseline
-from feinblick.config import load_config
+from feinblick.config import ConfigError, load_config
 from feinblick.orchestrator import OrchestrationError, run_pipeline
 from feinblick.report import render
 from feinblick.runner import Runner
@@ -292,6 +292,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     try:
         return handler(args)
+    except ConfigError as exc:
+        # Operator error in feinblick.toml: a clean exit (2) — never a traceback.
+        print(f"feinblick: config error: {exc}", file=sys.stderr)
+        return 2
     except OrchestrationError as exc:
         # --strict tooling failure: a clean, distinct exit (2) — never a traceback.
         print(f"feinblick: tooling error (--strict): {exc}", file=sys.stderr)
