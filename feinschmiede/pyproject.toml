@@ -1,6 +1,6 @@
 [project]
 name = "feinschmiede"
-version = "0.1.0"
+version = "0.1.1"
 description = "feinschmiede — shared engine for the feinschmiede media family: brand/look system + diagram engine + DSL AST."
 requires-python = ">=3.11"
 license = "MIT"
