@@ -11,10 +11,10 @@ Requires `google-generativeai`, `ffmpeg`, and `GEMINI_API_KEY`. Get a key at htt
 ## Usage
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py path/to/video.mp4
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py path/to/video.mp4 --no-frames          # faster, text only
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py path/to/video.mp4 docs/reference.storyboard.md  # custom output
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/video_to_storyboard.py path/to/video.mp4 --model gemini-2.5-flash      # alt model
+feinschnitt analyze path/to/video.mp4
+feinschnitt analyze path/to/video.mp4 --no-frames          # faster, text only
+feinschnitt analyze path/to/video.mp4 docs/reference.storyboard.md  # custom output
+feinschnitt analyze path/to/video.mp4 --model gemini-2.5-flash      # alt model
 ```
 
 ## Output
