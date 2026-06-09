@@ -1,0 +1,24 @@
+[project]
+name = "feinschmiede"
+version = "0.1.0"
+description = "feinschmiede — shared engine for the feinschmiede media family: brand/look system + diagram engine + DSL AST."
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mike Mueller", email = "mike@objektarium.de" }]
+dependencies = [
+    "jsonschema>=4.26.0",
+    "pyyaml>=6.0.3",
+    "cairosvg>=2.9.0",
+    "rough>=1.6",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["feinschmiede*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
