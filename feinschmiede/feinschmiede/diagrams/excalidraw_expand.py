@@ -322,7 +322,10 @@ def _emit_zone(line: str, brand_dir: Path, theme: str = "light", *, scale: float
     x, y = _parse_xy(xy)
     w, h = _parse_wh(wh)
     label = ""
-    fill_token = "surface-2"
+    # Dark theme: a light fill at 35% opacity washes the region pale on a dark
+    # canvas — use a dark-stable semantic token so the zone stays a subtle dark
+    # region. (`tertiary` resolves to a muted dark slate; valid via _resolve_color.)
+    fill_token = "tertiary" if theme == "dark" else "surface-2"
     stroke_token = "neutral-soft"
     dashed = False
     for p in parts[4:]:
@@ -364,7 +367,7 @@ def _emit_zone(line: str, brand_dir: Path, theme: str = "light", *, scale: float
             "fontFamily": 2,
             "textAlign": "left",
             "verticalAlign": "top",
-            "strokeColor": resolve("neutral-strong", brand_dir),
+            "strokeColor": resolve("off-white" if theme == "dark" else "neutral-strong", brand_dir),
             "backgroundColor": "transparent",
             "lineHeight": 1.2,
             "customData": {"dsl_id": f"{dsl_id}.label", "dsl_kind": "zone-label"},
@@ -384,7 +387,8 @@ def _emit_lane(line: str, brand_dir: Path, theme: str = "light", *, scale: float
     x, y = _parse_xy(xy)
     w, h = _parse_wh(wh)
     label = ""
-    fill_token = "surface"
+    # Dark theme: keep the lane a subtle dark region instead of a light fill.
+    fill_token = "tertiary" if theme == "dark" else "surface"
     orient = "vertical"
     for p in parts[4:]:
         if p.startswith("fill:"):
@@ -429,7 +433,7 @@ def _emit_lane(line: str, brand_dir: Path, theme: str = "light", *, scale: float
             "fontFamily": 2,
             "textAlign": "left",
             "verticalAlign": "top",
-            "strokeColor": resolve("neutral-strong", brand_dir),
+            "strokeColor": resolve("off-white" if theme == "dark" else "neutral-strong", brand_dir),
             "backgroundColor": "transparent",
             "lineHeight": 1.2,
             "customData": {"dsl_id": f"{dsl_id}.label", "dsl_kind": "lane-label"},
