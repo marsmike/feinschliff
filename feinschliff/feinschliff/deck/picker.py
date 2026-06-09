@@ -24,7 +24,44 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from feinschliff import layout_discovery
 from feinschliff.layout_picker import pick_layout
+
+
+# ── layout discovery (was BrandPack.find_layout / .layout_table) ──────────────
+#
+# These helpers used to live on ``feinschmiede.brand.pack.BrandPack`` but pulled
+# in office-side ``feinschliff.layout_discovery`` — an engine→office back-edge.
+# They now live here, on the office side, reading the brand's local
+# ``layouts_path`` and overlaying it onto toolkit discovery (brand-local wins).
+# Calls go through the ``layout_discovery`` module (not bound names) so tests
+# can monkeypatch ``feinschliff.layout_discovery.find_layout``.
+
+def _resolve_layout_path(layouts_path: Path | None, name: str) -> Path | None:
+    """Brand-local ``layouts/`` wins over toolkit discovery; else None."""
+    if layouts_path is not None:
+        candidate = layouts_path / f"{name}.slide.dsl"
+        if candidate.is_file():
+            return candidate
+    found = layout_discovery.find_layout(name)
+    if found is not None:
+        return found.path
+    return None
+
+
+def _brand_layout_table(layouts_path: Path | None) -> dict[str, Path]:
+    """Toolkit-discovered layouts overlaid with brand-local ones (brand wins).
+
+    This is the full ranking universe the picker sees for a brand — including
+    brand-only layouts the toolkit knows nothing about.
+    """
+    paths = dict(layout_discovery.discover_layout_paths())
+    if layouts_path is not None:
+        suffix = ".slide.dsl"
+        for candidate in sorted(layouts_path.glob(f"*{suffix}")):
+            name = candidate.name[: -len(suffix)]
+            paths[name] = candidate  # brand-local wins
+    return paths
 
 
 # ── LayoutMatch ───────────────────────────────────────────────────────────────
@@ -77,7 +114,7 @@ class LayoutPicker:
     def _profile_table(self) -> dict[str, dict] | None:
         """Affinity profiles for this brand's full layout universe.
 
-        Built from ``BrandPack.layout_table()`` (toolkit ∪ brand overrides ∪
+        Built from the brand's layout table (toolkit ∪ brand overrides ∪
         brand-only layouts) so brand-only layouts are *ranked*, not merely
         resolvable by name. Cached per instance. Returns ``None`` when there
         is no brand — :func:`pick_layout` then falls back to its cached
@@ -89,7 +126,7 @@ class LayoutPicker:
             from feinschliff.layout_profile import build_profile_table
 
             self._profile_table_cache = build_profile_table(
-                self.brand.layout_table(), strict=False
+                _brand_layout_table(self.brand.layouts_path), strict=False
             )
         return self._profile_table_cache
 
@@ -101,11 +138,8 @@ class LayoutPicker:
         """
         if self.brand is None:
             return None
-        # BrandPack.find_layout() covers both brand-local and toolkit pool.
-        found = self.brand.find_layout(layout_name)
-        if found is not None:
-            return found.path
-        return None
+        # Brand-local layouts/ first, then the toolkit pool.
+        return _resolve_layout_path(self.brand.layouts_path, layout_name)
 
     @staticmethod
     def _to_match(candidate: dict, layout_path: Path | None) -> LayoutMatch:

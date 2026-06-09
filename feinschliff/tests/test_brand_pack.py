@@ -154,10 +154,15 @@ def test_resolve_token_returns_none_for_empty_tokens(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# find_layout — brand-local wins over toolkit
+# layout resolution — brand-local wins over toolkit
+#
+# Layout discovery moved off BrandPack onto the office picker (engine→office
+# back-edge severance); these now exercise the office helper directly.
 # ---------------------------------------------------------------------------
 
 def test_find_layout_returns_brand_local_first(tmp_path, monkeypatch):
+    from feinschliff.deck.picker import _resolve_layout_path
+
     d = _write_brand(tmp_path, "pi")
     layouts = d / "layouts"
     layouts.mkdir()
@@ -168,14 +173,12 @@ def test_find_layout_returns_brand_local_first(tmp_path, monkeypatch):
     monkeypatch.setattr("feinschliff.layout_discovery.find_layout", lambda name: None)
 
     pack = BrandPack.load(d)
-    result = pack.find_layout("my-layout")
-    assert result is not None
-    assert result.name == "my-layout"
-    assert result.path == layout_file
-    assert result.origin == "brand-local"
+    result = _resolve_layout_path(pack.layouts_path, "my-layout")
+    assert result == layout_file
 
 
 def test_find_layout_falls_back_to_toolkit(tmp_path, monkeypatch):
+    from feinschliff.deck.picker import _resolve_layout_path
     from feinschliff.layout_discovery import Layout
     d = _write_brand(tmp_path, "rho")
     toolkit_path = tmp_path / "toolkit-layout.slide.dsl"
@@ -187,17 +190,17 @@ def test_find_layout_falls_back_to_toolkit(tmp_path, monkeypatch):
     )
 
     pack = BrandPack.load(d)
-    result = pack.find_layout("toolkit-only")
-    assert result is not None
-    assert result.path == toolkit_path
-    assert result.origin == "toolkit"
+    result = _resolve_layout_path(pack.layouts_path, "toolkit-only")
+    assert result == toolkit_path
 
 
 def test_find_layout_returns_none_when_not_found(tmp_path, monkeypatch):
+    from feinschliff.deck.picker import _resolve_layout_path
+
     d = _write_brand(tmp_path, "sigma")
     monkeypatch.setattr("feinschliff.layout_discovery.find_layout", lambda name: None)
     pack = BrandPack.load(d)
-    assert pack.find_layout("nonexistent") is None
+    assert _resolve_layout_path(pack.layouts_path, "nonexistent") is None
 
 
 # ---------------------------------------------------------------------------
