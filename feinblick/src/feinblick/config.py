@@ -35,6 +35,9 @@ class CodeCfg:
 @dataclass
 class SkillsCfg:
     roots: list[str] = field(default_factory=lambda: ["."])
+    # Symmetric with CodeCfg so the orchestrator can build Targets uniformly for
+    # either domain; skills have no test dirs to exclude, hence empty by default.
+    test_globs: list[str] = field(default_factory=list)
     engines: list[str] = field(default_factory=lambda: ["agnix"])
     skill_md_max_lines: int = 500
 
