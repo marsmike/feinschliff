@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+# feinbild launcher — the reusable "a plugin exposes a CLI" pattern for the
+# feinschmiede family (Phase 0 deliverable). Requires bash (uses BASH_SOURCE).
+#
+# On first run it provisions a self-contained venv from the plugin's bundled
+# wheels (fully offline, no index), then execs the real CLI. On every later run
+# it just execs the already-installed CLI. This file lives in bin/, so it is on
+# PATH whenever the plugin is enabled — other plugins call `feinbild …` as a
+# bare command and never reach into our files.
+#
+# Robustness (this template is copied by every later plugin):
+#   * A readiness SENTINEL ($VENV/.feinbild-ready) holds a signature of the
+#     bundled wheelhouse and is written as the very last step. An interrupted or
+#     failed bootstrap is never mistaken for a finished one, AND a plugin update
+#     (new wheel versions → new signature) rebuilds the persistent
+#     ${CLAUDE_PLUGIN_DATA} venv instead of silently running stale code. The
+#     venv is built in place (venvs are NOT relocatable — a temp-dir + mv would
+#     break console-script shebangs), and `rm -rf` clears any partial/stale venv
+#     first, so every retry self-heals instead of bricking.
+#   * A best-effort flock serializes concurrent first-runs where available;
+#     without it, a pathological concurrent first-run degrades to "one run may
+#     fail, a retry fixes it" — never a permanent brick.
+set -euo pipefail
+
+# ${CLAUDE_PLUGIN_ROOT}: the installed plugin's (read-only, ephemeral) dir.
+# Derive it from this script's own location when running from a dev checkout.
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"}"
+
+# ${CLAUDE_PLUGIN_DATA}: the writable, update-surviving per-plugin data dir
+# (~/.claude/plugins/data/<id>/). Fall back to an XDG path so the launcher also
+# works outside the Claude Code plugin runtime (e.g. when testing directly).
+DATA_DIR="${CLAUDE_PLUGIN_DATA:-"${XDG_DATA_HOME:-$HOME/.local/share}/feinschmiede/feinbild"}"
+
+VENV="$DATA_DIR/venv"
+WHEELS="$PLUGIN_ROOT/wheels"
+CLI="$VENV/bin/feinbild"
+READY="$VENV/.feinbild-ready"
+
+# Remove a partial venv if we die mid-bootstrap (sentinel never written).
+_BOOTSTRAPPING=0
+_cleanup() {
+  if [[ "$_BOOTSTRAPPING" -eq 1 && ! -f "$READY" ]]; then
+    rm -rf "$VENV"
+  fi
+}
+trap _cleanup EXIT
+
+_have_wheels() {
+  [[ -d "$WHEELS" ]] || return 1
+  local w
+  for w in "$WHEELS"/*.whl; do
+    [[ -e "$w" ]] && return 0   # portable glob check (no compgen/bash-ism reliance)
+  done
+  return 1
+}
+
+_wheelhouse_sig() {
+  # Portable signature of the wheelhouse: the sorted set of wheel filenames.
+  # It changes whenever a wheel is added/removed/version-bumped, which is how a
+  # plugin update forces a venv rebuild. Filenames only (no content reads), so
+  # it's cheap to compute on every invocation.
+  { for w in "$WHEELS"/*.whl; do
+      [[ -e "$w" ]] && printf '%s\n' "${w##*/}"
+    done | sort; } | cksum | awk '{print $1}'
+}
+
+_bootstrap() {
+  local sig="$1"
+  if ! _have_wheels; then
+    echo "feinbild: no bundled wheels found at $WHEELS" >&2
+    echo "feinbild: run build-wheels.sh in the plugin directory to populate them." >&2
+    exit 1
+  fi
+
+  mkdir -p "$DATA_DIR"
+
+  # Serialize concurrent first-runs (best-effort; flock may be absent on macOS).
+  exec 9>"$DATA_DIR/.bootstrap.lock" || true
+  if command -v flock >/dev/null 2>&1; then
+    flock 9 || true
+  fi
+  # Double-checked: a racer may have finished an up-to-date venv while we waited.
+  if [[ -f "$READY" && "$(cat "$READY" 2>/dev/null)" == "$sig" ]]; then
+    exec 9>&-
+    return 0
+  fi
+
+  echo "feinbild: first run — provisioning venv at $VENV (offline, from bundled wheels)…" >&2
+  _BOOTSTRAPPING=1
+  rm -rf "$VENV"   # clear any partial/stale venv so the rebuild self-heals
+
+  if command -v uv >/dev/null 2>&1; then
+    uv venv "$VENV" >&2
+    uv pip install --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinbild >&2
+  else
+    local py
+    py="$(command -v python3 || true)"
+    if [[ -z "$py" ]]; then
+      echo "feinbild: need 'uv' or 'python3' (with venv support); neither was found." >&2
+      exit 1
+    fi
+    "$py" -m venv "$VENV" >&2
+    # Some distros ship python3-venv without pip; restore it via ensurepip.
+    if ! "$VENV/bin/python" -m pip --version >/dev/null 2>&1; then
+      "$VENV/bin/python" -m ensurepip --upgrade >&2 || {
+        echo "feinbild: the venv has no pip and ensurepip failed — install 'uv' or python3-venv." >&2
+        exit 1
+      }
+    fi
+    "$VENV/bin/python" -m pip install --no-index --find-links "$WHEELS" feinbild >&2
+  fi
+
+  printf '%s\n' "$sig" > "$READY"   # mark the venv ready for THIS wheelhouse — last step
+  _BOOTSTRAPPING=0
+  exec 9>&-                          # release the bootstrap lock before exec'ing the CLI
+}
+
+SIG="$(_wheelhouse_sig)"
+if [[ ! -f "$READY" || "$(cat "$READY" 2>/dev/null)" != "$SIG" ]]; then
+  _bootstrap "$SIG"
+fi
+# Make feinbild's bundled brand packs discoverable by the engine (additive — keep any user path).
+export FEINSCHLIFF_BRAND_PATH="${FEINSCHLIFF_BRAND_PATH:+$FEINSCHLIFF_BRAND_PATH:}$PLUGIN_ROOT/brands"
+exec "$CLI" "$@"

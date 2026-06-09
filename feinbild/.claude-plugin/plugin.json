@@ -1,0 +1,7 @@
+{
+  "name": "feinbild",
+  "description": "Image & 2D for Claude Code — AI image generation (Replicate/Gemini), SVG diagrams, and Excalidraw diagrams via the clean `feinbild` CLI. Part of the feinschmiede family.",
+  "author": { "name": "Mike Mueller", "email": "mike@objektarium.de" },
+  "license": "MIT",
+  "keywords": ["image-generation", "diagram", "svg", "excalidraw", "replicate", "gemini", "claude-code", "claude-skills", "feinschmiede"]
+}
