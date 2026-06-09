@@ -25,6 +25,14 @@ DEFAULT_VERSIONS: dict[str, str] = {
 KNOWN_ENGINES: set[str] = {"cytoscnpy", "tach", "agnix"}
 
 
+class ConfigError(ValueError):
+    """A broken ``feinblick.toml`` — unknown engine, invalid TOML syntax, …
+
+    The CLI catches this for a clean message + exit 2 (operator error, never
+    a traceback), mirroring how ``OrchestrationError`` is handled.
+    """
+
+
 @dataclass
 class CodeCfg:
     # The shared engine package is the load-bearing first-party library in this
@@ -69,7 +77,7 @@ class Config:
 def _validate_engines(names: list[str]) -> None:
     for name in names:
         if name not in KNOWN_ENGINES:
-            raise ValueError(f"unknown engine: {name!r} (known: {sorted(KNOWN_ENGINES)})")
+            raise ConfigError(f"unknown engine: {name!r} (known: {sorted(KNOWN_ENGINES)})")
 
 
 def load_config(repo_root: Path) -> Config:
@@ -80,7 +88,10 @@ def load_config(repo_root: Path) -> Config:
     toml_path = repo_root / "feinblick.toml"
     if toml_path.is_file():
         with toml_path.open("rb") as fh:
-            data = tomllib.load(fh)
+            try:
+                data = tomllib.load(fh)
+            except tomllib.TOMLDecodeError as exc:
+                raise ConfigError(f"invalid {toml_path.name}: {exc}") from exc
         _merge_section(cfg.code, data.get("code", {}))
         _merge_section(cfg.skills, data.get("skills", {}))
         _merge_gate(cfg.gate, data.get("gate", {}))

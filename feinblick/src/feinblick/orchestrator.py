@@ -10,7 +10,8 @@ the baseline, optionally attributes to changed code, and computes a verdict.
 The result is a :class:`Result` carrying the deduped findings, the health dict,
 the verdict (``pass`` / ``warn`` / ``fail``), the baseline-introduced set, and a
 ``meta`` dict describing which engines ran, which were unavailable, the scanned
-domains, and how many candidates drove the verdict.
+domains, how many candidates drove the verdict (``gated``), and how many of
+those were new versus the baseline (``introduced``).
 """
 
 from __future__ import annotations
@@ -143,7 +144,13 @@ def run_pipeline(
         )
 
     verdict = _verdict(gate, candidates, config)
-    meta["introduced"] = len(candidates)
+    # "introduced" must mean introduced-vs-baseline: under gate=all the
+    # candidates include preexisting (baselined) findings, and reporters render
+    # this count as "(N introduced)" — counting candidates there would mislabel
+    # accepted debt as new. "gated" carries the raw candidate count.
+    introduced_fps = {f.fingerprint for f in introduced}
+    meta["gated"] = len(candidates)
+    meta["introduced"] = sum(1 for c in candidates if c.fingerprint in introduced_fps)
 
     return Result(merged, health, verdict, introduced, meta)
 

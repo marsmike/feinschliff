@@ -137,6 +137,21 @@ def test_baseline_classifies_preexisting_out_of_introduced(tmp_path, monkeypatch
     assert res.introduced == []
 
 
+def test_gate_all_does_not_mislabel_baselined_findings_as_introduced(tmp_path, monkeypatch):
+    # gate=all gates the full set, but baselined findings are *preexisting* —
+    # meta must not report them as "introduced" (the verdict line renders it).
+    err = _finding(severity=Severity.ERROR)
+    _patch_engines(monkeypatch, {"cytoscnpy": FakeEngine([err])})
+    cfg = _config(tmp_path)
+    from feinblick import baseline
+    baseline.save(tmp_path / ".feinblick" / "baseline.json", [err])
+    runner = Runner(repo_root=tmp_path, cache=False)
+    res = run_pipeline(tmp_path, cfg, domains={"code"}, runner=runner, gate="all")
+    assert res.verdict == "fail"        # the gate still fails on the error...
+    assert res.meta["introduced"] == 0  # ...but nothing was introduced
+    assert res.meta["gated"] == 1       # candidate count stays available
+
+
 def test_baseline_unaccepted_is_introduced(tmp_path, monkeypatch):
     err = _finding(severity=Severity.ERROR)
     _patch_engines(monkeypatch, {"cytoscnpy": FakeEngine([err])})

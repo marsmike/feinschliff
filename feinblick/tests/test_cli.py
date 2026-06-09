@@ -223,6 +223,25 @@ def test_default_skill_out_is_the_plugin_root_in_dev_checkout():
     assert out is not None and (out / ".claude-plugin").is_dir()
 
 
+def test_config_error_exits_cleanly(tmp_path, monkeypatch, capsys):
+    # A typo'd engine name in feinblick.toml must be a clean exit 2 with the
+    # known-engines hint — never a raw ValueError traceback.
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "feinblick.toml").write_text('[code]\nengines = ["cytoscanpy"]\n')
+    rc = cli.main(["check", "code"])
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "config error" in err and "cytoscanpy" in err
+
+
+def test_malformed_toml_exits_cleanly(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "feinblick.toml").write_text("not toml [[[")
+    rc = cli.main(["check", "code"])
+    assert rc == 2
+    assert "config error" in capsys.readouterr().err
+
+
 def test_explain_finds_by_rule_id(tmp_path, monkeypatch, capsys):
     monkeypatch.chdir(tmp_path)
 
