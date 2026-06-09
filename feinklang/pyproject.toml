@@ -1,6 +1,6 @@
 [project]
 name = "feinklang"
-version = "0.1.0"
+version = "0.0.1"
 description = "ElevenLabs text-to-speech CLI for the feinschmiede plugin family."
 requires-python = ">=3.11"
 license = "MIT"

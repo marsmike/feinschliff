@@ -56,11 +56,11 @@ _have_wheels() {
 
 _wheelhouse_sig() {
   # Portable signature of the wheelhouse: the sorted set of wheel filenames.
-  # It changes whenever a wheel is added/removed/version-bumped, which is how a
-  # plugin update forces a venv rebuild. Filenames only (no content reads), so
-  # it's cheap to compute on every invocation.
+  # Includes each wheel filename + byte size, so a rebuilt wheelhouse at the SAME
+  # version (dev iteration) refreshes the venv too, not just version bumps. Still
+  # cheap (stat-only) to compute on every invocation.
   { for w in "$WHEELS"/*.whl; do
-      [[ -e "$w" ]] && printf '%s\n' "${w##*/}"
+      [[ -e "$w" ]] && printf '%s %s\n' "${w##*/}" "$(wc -c <"$w")"
     done | sort; } | cksum | awk '{print $1}'
 }
 
