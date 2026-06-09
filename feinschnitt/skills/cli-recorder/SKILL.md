@@ -5,7 +5,7 @@ description: Use when authoring a CLI session recording for the cli-recorder ski
 
 # CLI Recorder — Recipe Author
 
-Help users turn an idea ("a video of installing kubectl on macOS", "a tour of git rebase -i") into a valid `recipe.toml` for this skill's `train_recorder.py`.
+Help users turn an idea ("a video of installing kubectl on macOS", "a tour of git rebase -i") into a valid `recipe.toml` for the `feinschnitt record` command.
 
 ## When to use
 
@@ -15,7 +15,7 @@ Help users turn an idea ("a video of installing kubectl on macOS", "a tour of gi
 
 ## Hard gate
 
-Do NOT run `train_recorder.py`. Do NOT scaffold the surrounding Remotion video. Stop after the recipe is written and validated. The user runs the recorder themselves once they're happy.
+Do NOT run the recorder. Do NOT scaffold the surrounding Remotion video. Stop after the recipe is written and validated. The user runs `feinschnitt record` themselves once they're happy.
 
 ## Process
 
@@ -109,7 +109,7 @@ Validate against `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/schema/recipe.schema
 Read the written file back to the user. Then suggest:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/scripts/train_recorder.py ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/<name>.recipe.toml --dry-run
+feinschnitt record ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/<name>.recipe.toml --dry-run
 ```
 
 The dry-run parses the recipe, applies the profile, and prints each resolved step. The user can tweak before recording for real.

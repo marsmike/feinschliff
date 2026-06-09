@@ -145,18 +145,19 @@ def extract_frames(video_path: str, storyboard_text: str, frames_dir: Path) -> s
 
 
 def run_analyze(args) -> int:
-    global genai
-    import google.generativeai as genai
-
+    # Validate inputs BEFORE importing the heavy Gemini SDK, so a missing key or
+    # missing video yields a clean error even when google-generativeai is absent.
     api_key = os.environ.get("GEMINI_API_KEY")
     if not api_key:
         raise AnalyzeError("GEMINI_API_KEY not set in ~/.env")
 
-    genai.configure(api_key=api_key)
-
     video_path = args.video_path
     if not Path(video_path).exists():
         raise AnalyzeError(f"video not found: {video_path}")
+
+    global genai
+    import google.generativeai as genai
+    genai.configure(api_key=api_key)
 
     out_path = (
         Path(args.output_path) if args.output_path

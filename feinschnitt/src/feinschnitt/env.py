@@ -1,9 +1,7 @@
 """Lightweight ``~/.env`` loader (no third-party dependency).
 
-Mirrors the old ``tts.sh`` / ``voices.sh`` convenience of ``source "$HOME/.env"``
-so an ``ELEVENLABS_API_KEY`` kept in ``~/.env`` is picked up without exporting
-it. Kept dependency-free on purpose — the only runtime wheel we vendor is
-``requests``.
+Lets API keys kept in ``~/.env`` (e.g. ``GEMINI_API_KEY`` for ``feinschnitt
+analyze``) be picked up without exporting them. Kept dependency-free on purpose.
 """
 
 from __future__ import annotations

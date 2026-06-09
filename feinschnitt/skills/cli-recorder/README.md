@@ -10,10 +10,10 @@ claude
 > /record install-kubectl
 
 # 2. Run the recorder
-python3 scripts/train_recorder.py recipes/install-kubectl.recipe.toml
+feinschnitt record recipes/install-kubectl.recipe.toml
 
-# 3. Outputs land in recordings/<name>/
-recordings/install-kubectl/
+# 3. Outputs land in $CLAUDE_PROJECT_DIR/.recordings/<name>/
+.recordings/install-kubectl/
 ├── install-kubectl.cast              # asciicast v3, post-processed (idle compressed)
 ├── install-kubectl.scene-index.json  # step → time-window map
 └── install-kubectl.gif               # rendered preview (if agg installed)

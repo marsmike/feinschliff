@@ -11,7 +11,7 @@ idle_threshold  = 0.4      # Below this is typing/streaming cadence (untouched)
 idle_time_limit = 2.5      # Cast-metadata cap for any single pause
 
 [claude_code]
-# CLI-specific knobs — read by train_recorder.py's claude-code profile handler
+# CLI-specific knobs — read by feinschnitt record's claude-code profile handler
 
 # Modal slash commands that open dialogs requiring Escape to dismiss.
 # Steps targeting these will auto-set dismiss_key="Escape" if not specified.
