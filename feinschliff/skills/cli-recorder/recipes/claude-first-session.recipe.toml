@@ -1,8 +1,8 @@
 # Module 3 — First Session video.
 #
-# Mirrors the "Try it" exercise from content/getting-started/03-first-session.md
-# against /tmp/demo-ringbuf (built by videos/first-session/scaffold-demo-repo.sh
-# in the agentic-training repo).
+# A two-turn first Claude Code session, recorded against a throwaway demo repo
+# at /tmp/demo-ringbuf (create a small git repo there with a few commits before
+# recording). Originally derived from the external agentic-training course.
 #
 # Two turns:
 #   1. Claude reads the last 3 commits and summarises each.
@@ -22,7 +22,6 @@ typing_wpm      = 110
 # during Claude's thinking gaps. Avoids the post-processor's mishandling
 # of long sessions seen in earlier takes.
 idle_speedup    = 1.0
-idle_threshold  = 999.0
 idle_time_limit = 2.0
 wait_for_banner = ""
 graceful_exit   = true

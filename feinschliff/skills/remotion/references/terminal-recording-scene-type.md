@@ -161,7 +161,7 @@ The verification report (`docs/VERIFICATION_REPORT.md`) gains a per-step section
 
 ## Worked example
 
-The `cli-recorder` skill ships with `recipes/claude-commands.recipe.toml` and the corresponding `.cast` / `.scene-index.json`. To turn that into a polished educational video:
+The `cli-recorder` skill ships with `recipes/claude-commands.recipe.toml`. Run `scripts/train_recorder.py recipes/claude-commands.recipe.toml` to generate the corresponding `.cast` / `.scene-index.json` under `recordings/claude-commands/`. To turn those into a polished educational video:
 
 ```yaml
 # docs/STORYBOARD.md

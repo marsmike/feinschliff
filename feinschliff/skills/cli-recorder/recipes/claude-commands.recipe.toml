@@ -1,6 +1,5 @@
 # Claude Code commands & settings tour.
-# Ported from scripts/train-recorder-poc.py's TRAIN_SCRIPT_COMMANDS.
-# Used as the canonical M1 acceptance test for cli-recorder.
+# The canonical commands-tour acceptance recipe for cli-recorder.
 
 [recording]
 title    = "Claude Code: Commands & Settings Tour"

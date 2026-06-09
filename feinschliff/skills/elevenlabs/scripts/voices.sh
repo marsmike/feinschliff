@@ -16,15 +16,14 @@ API_BASE="https://api.elevenlabs.io"
 ACTION="${1:-}"
 SEARCH="${2:-}"
 
+QUERY_ARGS=(--data-urlencode "page_size=50")
 if [ "$ACTION" = "search" ] && [ -n "$SEARCH" ]; then
-  URL="$API_BASE/v2/voices?search=$SEARCH&page_size=50"
+  QUERY_ARGS+=(--data-urlencode "search=$SEARCH")
 elif [ -n "$ACTION" ] && [ "$ACTION" != "search" ]; then
-  URL="$API_BASE/v2/voices?category=$ACTION&page_size=50"
-else
-  URL="$API_BASE/v2/voices?page_size=50"
+  QUERY_ARGS+=(--data-urlencode "category=$ACTION")
 fi
 
-RESPONSE=$(curl -s "$URL" -H "xi-api-key: $ELEVENLABS_API_KEY")
+RESPONSE=$(curl -s -G "$API_BASE/v2/voices" "${QUERY_ARGS[@]}" -H "xi-api-key: $ELEVENLABS_API_KEY")
 
 echo "$RESPONSE" | jq -r '.voices[] | "[\(.category)] \(.name) → \(.voice_id)"' 2>/dev/null || {
   echo "Error fetching voices:" >&2

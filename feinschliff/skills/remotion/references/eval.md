@@ -216,13 +216,13 @@ After fix agents complete:
 All scenes passed evaluation. Now render the full video:
 
 ```bash
-/path/to/remotion/scripts/parallel-render.sh --warmup <project-dir> Scene0 Scene1 ... SceneN
+${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/parallel-render.sh --warmup <project-dir> Scene0 Scene1 ... SceneN
 ```
 
 Or for a final preview check first:
 
 ```bash
-/path/to/remotion/scripts/parallel-render.sh --preview <project-dir> Scene0 Scene1 ... SceneN
+${CLAUDE_PLUGIN_ROOT}/skills/remotion/scripts/parallel-render.sh --preview <project-dir> Scene0 Scene1 ... SceneN
 ```
 
 ## Timing Expectations

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://agentic-toolkit.local/cli-recorder/recipe.schema.json",
+  "$id": "https://feinschliff.local/cli-recorder/recipe.schema.json",
   "title": "CLI Recorder Recipe",
   "description": "Declarative description of a CLI session for the cli-recorder train_recorder.py to drive in tmux+asciinema.",
   "type": "object",
