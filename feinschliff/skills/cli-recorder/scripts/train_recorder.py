@@ -538,7 +538,7 @@ def main() -> None:
     gif_path   = out_dir / f"{recipe.name}.gif"
     mp4_path   = out_dir / f"{recipe.name}.mp4"
 
-    print(f"\n[cli-recorder]")
+    print("\n[cli-recorder]")
     print(f"  recipe    : {args.recipe}")
     print(f"  profile   : {recipe.profile}")
     print(f"  command   : {recipe.command}")
@@ -570,7 +570,7 @@ def main() -> None:
         graceful_exit_session(recipe, session, args.dry_run)
     finally:
         if not args.keep:
-            print(f"  [waiting] session ending (asciinema flushing)…")
+            print("  [waiting] session ending (asciinema flushing)…")
             if not wait_for_session_end(session, timeout=45.0):
                 time.sleep(3.0)
                 kill_session(session)
