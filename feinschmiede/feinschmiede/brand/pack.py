@@ -8,7 +8,7 @@ Usage::
 
     pack = BrandPack.load(Path("brands/feinschliff"))
     hex_color = pack.resolve_token("color.accent")   # "#C9A24A"
-    layout = pack.find_layout("title-orange")        # FoundLayout or None
+    compound = pack.find_compound("footer")          # FoundCompound or None
 """
 from __future__ import annotations
 
@@ -17,13 +17,6 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-
-
-@dataclass(frozen=True)
-class FoundLayout:
-    name: str
-    path: Path
-    origin: str  # "brand-local" | "toolkit"
 
 
 @dataclass(frozen=True)
@@ -169,52 +162,13 @@ class BrandPack:
 
     # ------------------------------------------------------------------
     # Layout discovery
+    #
+    # NOTE: layout discovery (``find_layout`` / ``layout_table``) lived here
+    # but pulled in ``feinschliff.layout_discovery`` — an engine→office
+    # back-edge. The brand-local ``layouts_path`` (below) is the engine's
+    # only layout responsibility; the toolkit-overlay precedence now lives
+    # on the office side (``feinschliff.deck.picker``).
     # ------------------------------------------------------------------
-
-    def find_layout(self, name: str) -> FoundLayout | None:
-        """Locate a layout DSL file.
-
-        Brand-local `layouts/` wins over toolkit discovery.
-
-        Parameters
-        ----------
-        name:
-            Layout stem, e.g. ``'title-orange'`` (without `.slide.dsl`).
-
-        Returns
-        -------
-        FoundLayout | None
-        """
-        # 1. Brand-local layouts/
-        if self.layouts_path is not None:
-            candidate = self.layouts_path / f"{name}.slide.dsl"
-            if candidate.is_file():
-                return FoundLayout(name=name, path=candidate, origin="brand-local")
-        # 2. Toolkit discovery
-        from feinschliff.layout_discovery import find_layout as _find_layout
-        found = _find_layout(name)
-        if found is not None:
-            return FoundLayout(name=name, path=found.path, origin="toolkit")
-        return None
-
-    def layout_table(self) -> dict[str, Path]:
-        """Map every layout name available to this brand → its ``.slide.dsl``.
-
-        Toolkit-discovered layouts overlaid with brand-local ones, where a
-        brand-local file shadows a toolkit file of the same stem (mirroring
-        :meth:`find_layout` precedence). This is the full ranking universe
-        the picker sees for this brand — including brand-only layouts that
-        the toolkit knows nothing about.
-        """
-        from feinschliff.layout_discovery import discover_layout_paths
-
-        paths = dict(discover_layout_paths())
-        if self.layouts_path is not None:
-            suffix = ".slide.dsl"
-            for candidate in sorted(self.layouts_path.glob(f"*{suffix}")):
-                name = candidate.name[: -len(suffix)]
-                paths[name] = candidate  # brand-local wins
-        return paths
 
     # ------------------------------------------------------------------
     # Compound discovery
