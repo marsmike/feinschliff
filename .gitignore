@@ -109,3 +109,10 @@ feinschliff-bosch/
 # Repo-root scratch — ad-hoc renders, source decks, verify-loop output.
 # Mirrors the feinschliff/.debug/ convention at the worktree root.
 /.debug/
+
+# feinschmiede plugin family — regenerable artifacts (vendored wheels, venvs, debug)
+*/wheels/
+*/.debug/
+*/dist/
+*/build/
+*/venv/
