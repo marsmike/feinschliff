@@ -4,7 +4,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
-_(no changes yet)_
+- **feinschnitt (video plugin).** Extracted the `remotion` + `cli-recorder` skills out of `feinschliff` into a new full-family `feinschnitt` plugin (bin/ launcher + `feinschnitt record`/`analyze` CLI over a bundled-wheel venv). Voiceover now calls the bare `feinklang tts` CLI; storyboard images call `feinbild imagine`. `plugin.json dependencies: [feinbild, feinklang]`. Recordings land in `${CLAUDE_PROJECT_DIR}/.recordings/`.
 
 ## [0.3.0] - 2026-05-19
 
