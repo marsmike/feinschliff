@@ -14,5 +14,6 @@
     "typography",
     "claude-code",
     "claude-skills"
-  ]
+  ],
+  "dependencies": ["feinschliff"]
 }
