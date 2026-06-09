@@ -46,8 +46,10 @@ from feinschliff.layout_validator import (
 
 
 def _bundled_compounds() -> Path:
-    """Return the compounds/ directory shipped inside this plugin."""
-    return Path(__file__).resolve().parents[1] / "compounds"
+    """Return the compounds/ directory shipped inside the feinschmiede engine."""
+    import feinschmiede
+
+    return Path(feinschmiede.__file__).resolve().parent / "compounds"
 
 
 @dataclasses.dataclass(frozen=True)

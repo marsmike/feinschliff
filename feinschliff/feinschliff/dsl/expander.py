@@ -22,8 +22,9 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from feinschmiede.dsl.tokens import _parse_design_md_frontmatter
+
 from .parser import DSLNode, CompoundDef, parse_file
-from .tokens import _parse_design_md_frontmatter
 
 if TYPE_CHECKING:
     from feinschmiede.brand import BrandPack
@@ -123,9 +124,10 @@ def expand_document(doc: "Document", pack: "BrandPack") -> "Document":
         A new Document with compound-call Elements replaced by their
         expanded primitive children.
     """
+    import feinschmiede
     from feinschmiede.dsl.ast import Document, Slide
 
-    std_dir = Path(__file__).resolve().parents[2] / "compounds"
+    std_dir = Path(feinschmiede.__file__).resolve().parent / "compounds"
     compounds = load_compounds_for_brand(pack.root, std_dir=std_dir)
 
     expanded_slides: list[Slide] = []

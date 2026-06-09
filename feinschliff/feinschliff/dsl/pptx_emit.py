@@ -45,9 +45,10 @@ from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
 from pptx.util import Emu, Pt
 
 from .. import textfit
+from feinschmiede.dsl.tokens import Tokens
+
 from .parser import DSLNode, parse_xy, parse_wh
 from .polish import normalize_text
-from .tokens import Tokens
 
 if TYPE_CHECKING:
     from ..io.image_provider import ImageHit, ImageProvider

@@ -193,8 +193,8 @@ class BrandPack:
             candidate = self.compounds_path / f"{name}.dsl"
             if candidate.is_file():
                 return FoundCompound(name=name, path=candidate, origin="brand-local")
-        # 2. Toolkit bundled compounds/
-        toolkit_compounds = Path(__file__).resolve().parents[2] / "compounds"
+        # 2. Engine-bundled compounds/ (shipped inside the feinschmiede package)
+        toolkit_compounds = Path(__file__).resolve().parents[1] / "compounds"
         candidate = toolkit_compounds / f"{name}.dsl"
         if candidate.is_file():
             return FoundCompound(name=name, path=candidate, origin="toolkit")

@@ -4,6 +4,7 @@ version = "0.2.0"
 description = "Feinschliff core library and CLI — DSL pipeline + brand pack tooling."
 requires-python = ">=3.11"
 dependencies = [
+    "feinschmiede",
     "python-pptx>=1.0.2",
     "lxml>=6.1.1",
     "jsonschema>=4.26.0",
@@ -23,6 +24,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+feinschmiede = { workspace = true }
 
 [dependency-groups]
 dev = [
