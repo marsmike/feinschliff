@@ -17,5 +17,6 @@
     "powerpoint",
     "claude-code",
     "claude-skills"
-  ]
+  ],
+  "dependencies": ["feinschliff"]
 }

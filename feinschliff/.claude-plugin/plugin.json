@@ -25,5 +25,6 @@
     "cli-recorder",
     "asciicast",
     "media"
-  ]
+  ],
+  "dependencies": ["feinbild"]
 }
