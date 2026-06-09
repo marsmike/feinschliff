@@ -727,7 +727,7 @@ def _emit_swatch_grid(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     parts = shlex.split(line)
     _, _id, xy = parts[:3]
     x, y = _parse_xy(xy)
-    attrs = _attr_dict(parts[3:], allowed={"cols", "swatches", "cell_w", "cell_h"})
+    attrs = _attr_dict(parts[3:], allowed={"cols", "swatches", "cell_w", "cell_h", "text"})
     if "swatches" not in attrs:
         raise ValueError(f"svg_expand: swatch_grid needs `swatches:`: {line!r}")
     cols = int(attrs.get("cols", "3"))
@@ -740,7 +740,10 @@ def _emit_swatch_grid(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
     label_y_offset = _sz(12, scale)
     raw_swatches = [s.strip() for s in attrs["swatches"].split(";") if s.strip()]
     out: list[str] = []
-    ink = resolve("ink", brand_dir)
+    # Labels sit on the canvas/surface (not on a fill), so contrast can't be
+    # auto-derived; default to ink but let authors override for dark backgrounds
+    # (e.g. `swatch_grid … text:paper`).
+    label_color = resolve(attrs.get("text", "ink"), brand_dir)
     for i, s in enumerate(raw_swatches):
         if "," not in s:
             raise ValueError(f"svg_expand: swatch '{s}' must be token,label")
@@ -754,7 +757,7 @@ def _emit_swatch_grid(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
             f'<rect x="{cx}" y="{cy}" width="{swatch_dim}" height="{swatch_dim}" fill="{fill}"/>'
         )
         out.append(
-            f'<text x="{cx + label_inset}" y="{cy + label_y_offset}" font-size="{_sz(12, scale)}" fill="{ink}" '
+            f'<text x="{cx + label_inset}" y="{cy + label_y_offset}" font-size="{_sz(12, scale)}" fill="{label_color}" '
             f'font-family="sans-serif">{_escape(label.strip())}</text>'
         )
     return "".join(out)
