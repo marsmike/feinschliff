@@ -17,6 +17,8 @@ import os
 import sys
 from pathlib import Path
 
+from feinschmiede.diagrams.brand_bridge import BrandBridgeError
+
 from . import __version__, diagrams_cli, images
 from .env import load_home_env
 
@@ -90,7 +92,24 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     load_home_env()
     args = build_parser().parse_args(argv)
-    return args.func(args)
+    try:
+        return args.func(args)
+    except BrandBridgeError as exc:
+        # Unknown/typo'd color token — the message already suggests the fix.
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except (FileNotFoundError, OSError, ValueError) as exc:
+        # Missing input/brand, unwritable output, bad DSL — surface cleanly.
+        print(f"Error: {exc}", file=sys.stderr)
+        return 1
+    except (ImportError, RuntimeError) as exc:
+        # The pure-Python renderer couldn't handle this input and feinbild does
+        # not bundle the heavy optional Playwright fallback.
+        print(
+            f"Error: could not render (the optional Playwright fallback is not installed): {exc}",
+            file=sys.stderr,
+        )
+        return 1
 
 
 if __name__ == "__main__":  # pragma: no cover
