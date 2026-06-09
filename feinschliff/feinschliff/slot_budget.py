@@ -112,6 +112,13 @@ def _extract_single_slot(label: str) -> str | None:
     if len(matches) != 1:
         return None
     raw = matches[0].strip()
+    # Drop Jinja filters (e.g. `{{ text_5 | default("…") }}`) so the key is the
+    # bare slot reference. Brand layouts write every slot with a `| default(…)`
+    # fallback; keying on the whole expression made budgets unmatchable by the
+    # content-lint and verify-static lookups (which key on the normalised slot
+    # name via `iter_slot_values`) — silently disabling the overflow check for
+    # those slots.
+    raw = raw.split("|", 1)[0].strip()
     return _IDX_RE.sub("[]", raw)
 
 
