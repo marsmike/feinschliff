@@ -7,7 +7,7 @@
   "plugins": [
     {
       "name": "feinschliff",
-      "description": "Brand-pluggable design system — turn DESIGN.md or HTML into brand-perfect PowerPoint decks. Core deck/diagram generator. Ships with the feinschliff, blank, and claude brand packs.",
+      "description": "Media-creation toolkit for Claude Code — PowerPoint decks, programmatic video (Remotion), AI images, diagrams, SVG graphics, voiceover (ElevenLabs), and CLI session recording. Ships with the feinschliff, blank, and claude brand packs.",
       "source": "./feinschliff"
     },
     {

@@ -13,12 +13,16 @@
 
 ## What it does
 
-Three Claude Code skills:
+A media-creation toolkit of Claude Code skills:
 
 - **`/deck`** — create or polish a brand-compliant `.pptx` from a brief or rough
   draft. Generates speaker notes and an annotated handout PDF via `deck book`.
 - **`/excalidraw`** — author concept-flow diagrams in a brand-aware DSL.
 - **`/svg`** — author SVG infographics and custom charts in a brand-aware DSL.
+- **`/video`** — produce a programmatic video with Remotion (storyboard → build → verify).
+- **`/imagine`** — generate AI images from text prompts (Replicate / Gemini).
+- **`/tts`** — generate voiceover audio with ElevenLabs text-to-speech.
+- **`/record`** — author a `recipe.toml` to record a CLI session (cli-recorder).
 
 Three CLI subcommands (`feinschliff <subcommand>`):
 

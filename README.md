@@ -22,7 +22,7 @@ This repo ships three independent Claude Code plugins. Install only what you nee
 
 | Plugin | Install | Description |
 |---|---|---|
-| [`feinschliff`](feinschliff/) | `/plugin marketplace add marsmike/feinschliff` | Core generator — `/deck`, `/excalidraw`, `/svg` skills + `feinschliff` CLI. Ships with 3 brand packs and 50 layouts. |
+| [`feinschliff`](feinschliff/) | `/plugin marketplace add marsmike/feinschliff` | Media toolkit — `/deck`, `/video`, `/imagine`, `/tts`, `/record`, `/svg`, `/excalidraw`. Decks, programmatic video, AI images, voiceover, CLI recording. Ships with 3 brand packs and 50 layouts. |
 | [`feinschliff-extra`](feinschliff-extra/) | `/plugin marketplace add marsmike/feinschliff-extra` | 10 additional brand packs (light/dark themes, terminal palettes, bold corporate looks). Requires `feinschliff`. |
 | [`feinschliff-builder`](feinschliff-builder/) | `/plugin marketplace add marsmike/feinschliff-builder` | Brand-pack authoring toolkit — compile HTML, decompile PPTX, verify quality, improve brand packs. Requires `feinschliff`. |
 
