@@ -120,3 +120,7 @@ feinschliff-bosch/
 # Standalone plugins regenerate their own uv.lock on `uv run` (deps=[] → nothing
 # to pin but dev tools); workspace members use the root uv.lock instead.
 feinblick/uv.lock
+
+# feinblick's runtime working dir (engine cache + baseline) — regenerable; lives
+# in whatever repo feinblick analyzes, never committed.
+.feinblick/
