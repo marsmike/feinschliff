@@ -37,19 +37,13 @@ from feinschliff.dsl.expander import (
 )
 from feinschliff.dsl.parser import parse_file
 from feinschliff.dsl.pptx_emit import _slide_canvas
+from feinschmiede import compounds_dir
 from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.layout_validator import (
     validate_diagrams,
     validate_diagrams_color,
     validate_diagrams_text_size,
 )
-
-
-def _bundled_compounds() -> Path:
-    """Return the compounds/ directory shipped inside the feinschmiede engine."""
-    import feinschmiede
-
-    return Path(feinschmiede.__file__).resolve().parent / "compounds"
 
 
 @dataclasses.dataclass(frozen=True)
@@ -72,7 +66,7 @@ def compile_slide(
 
     tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=_bundled_compounds(),
+        brand_dir, std_dir=compounds_dir(),
     )
 
     layout_nodes, layout_compounds = parse_file(layout_path)
