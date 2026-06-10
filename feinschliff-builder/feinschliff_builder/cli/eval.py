@@ -9,8 +9,28 @@ from pathlib import Path
 
 from feinschliff_builder.eval.grader import grade
 
+_EPILOG = """\
+Grades already-generated diagram artifacts (it never calls an LLM). Artifacts
+must be named <test-name>.<ext> (.excalidraw or .svg) — one per test in the
+skill's evals/evals.json. Exit code: 0 all checks pass, 1 some fail, 2 bad
+evals.json.
+
+Examples:
+  # Score a results dir against the excalidraw eval suite
+  feinschliff-builder eval feinbild/skills/excalidraw \\
+      --results-dir .autoloop/excalidraw/results
+
+  # Machine-readable report to stdout
+  feinschliff-builder eval feinbild/skills/svg --results-dir <dir> --json
+
+This is the deterministic scorer behind the `autoloop` skill
+(feinschliff-builder/skills/autoloop/).
+"""
+
 
 def register(parser: argparse.ArgumentParser) -> None:
+    parser.formatter_class = argparse.RawDescriptionHelpFormatter
+    parser.epilog = _EPILOG
     parser.add_argument(
         "skill_dir", type=Path,
         help="Path to a skill dir containing evals/evals.json",
@@ -50,7 +70,7 @@ def cmd_eval(args) -> int:
         report = grade(evals_path, args.results_dir, brand_dir)
     except (ValueError, KeyError) as exc:
         # Bad evals.json (unknown check name or unsupported skill) — surface a
-        # clean message, never a traceback, since /goal runs this unattended.
+        # clean message, never a traceback, since autoloop runs this unattended.
         print(f"eval: {evals_path}: {exc}", file=sys.stderr)
         return 2
 
@@ -64,6 +84,6 @@ def cmd_eval(args) -> int:
             f"eval {report['skill']}: {report['passed']}/{report['total']} checks "
             f"passed (score {report['score']:.3f}) -> {out}"
         )
-    # Strict gate: any failed check exits non-zero. The /goal loop reads the
+    # Strict gate: any failed check exits non-zero. The autoloop reads the
     # numeric `score` from grades.json for trend/keep-revert decisions.
     return 0 if report["passed"] == report["total"] else 1

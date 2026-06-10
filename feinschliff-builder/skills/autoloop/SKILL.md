@@ -1,19 +1,25 @@
 ---
-name: goal
-description: Autonomously improve a feinschliff target (a skill, a DSL template, a deck, or framework code) toward a measurable goal by looping measure -> mutate -> keep/revert -> consolidate. Use when asked to /goal <target> until <condition>.
+name: autoloop
+description: Deterministically improve a feinschliff diagram skill (and later DSL templates / decks / framework code) by looping measure -> mutate ONE thing -> keep/revert -> consolidate, scoring GENERATED output with `feinschliff-builder eval`. Pairs with Claude Code's built-in /goal for cross-turn persistence. Use when asked to autoloop / iteratively improve a target against its evals.
 ---
 
-# /goal — autonomous improvement loop
+# autoloop — deterministic improvement loop for skills
 
-Drive a target to a goal by running the Karpathy loop yourself: measure ->
-mutate ONE thing -> measure -> keep or revert -> repeat, consolidating what you
-learn. You are the loop runner. No external orchestrator.
+Drive a target to a measurable goal by running the Karpathy loop yourself:
+measure -> mutate ONE thing -> measure -> keep or revert -> repeat, consolidating
+what you learn. You are the loop runner. No external orchestrator.
 
-Invocation: `/goal <target> until <condition> [budget N]`
+Invoke as **`/feinschliff-builder:autoloop <target>`** — NOT bare `/goal`, which
+is Claude Code's *built-in* loop command (a generic, fast-model-judged
+"keep going until a condition" primitive — a different thing this skill rides,
+not replaces).
 - v1 targets: `excalidraw`, `svg` (the diagram skills, graded deterministically).
-- `<condition>`: a stop predicate, e.g. "all checks pass", "score >= 0.95".
-- `budget N`: max iterations (default 8). For unattended runs the operator
-  wraps this in `/loop` so you self-pace via ScheduleWakeup.
+- `budget N`: max iterations (default 8) — an internal safety cap.
+- **Cross-turn persistence:** for long unattended runs, pair this with the
+  built-in `/goal "<condition>"` (e.g. `/goal feinschliff-builder eval on the
+  excalidraw skill exits 0`). The built-in keeps Claude working across turns
+  until the condition holds; this skill is the per-iteration body it runs. Do
+  NOT hand-roll scheduling — the built-in owns continuation.
 
 ## Setup (once per run)
 
@@ -45,8 +51,10 @@ Generate fresh artifacts, then grade them.
    .autoloop/<target>/results --json`. Record the pooled `score`.
 
 ### Stop check
-If `<condition>` is met (e.g. all checks pass / score >= target), STOP and
-emit the residual report (below). Else continue.
+If the goal is reached (all checks pass, or score >= the target you were given),
+STOP and emit the residual report (below). Else continue. When driven by the
+built-in `/goal`, it independently re-checks your stated condition each turn —
+your job is simply to do the next useful iteration.
 
 ### Mutate
 Read `references/mutator.md` and follow it: read the failing checks and the
@@ -74,9 +82,12 @@ the notes into `.autoloop/<target>/techniques/<name>.md`. 2-iteration minimum �
 a pattern seen once is speculation. These persist across runs.
 
 ## Stop conditions
-- `<condition>` met, OR
+- goal reached (all checks pass / score >= target), OR
 - budget exhausted, OR
 - plateau persists after a redirection attempt.
+
+Under the built-in `/goal`, its condition is the outer authority; these are your
+internal safety stops.
 
 ## Residual report (always, on every exit)
 Write `.autoloop/<target>/RESIDUAL.md`: final score, which checks/tests still
@@ -89,4 +100,5 @@ for review/merge.
 - All work on `autoloop/<target>/<ts>`; never `main`.
 - Budget-bounded; deterministic grader (no API cost for diagram targets).
 - Revert-by-default; honest residual report; operator merges deliberately.
-- Long runs: ScheduleWakeup to self-pace; the operator can interrupt anytime.
+- Cross-turn persistence comes from the built-in `/goal`, not hand-rolled
+  scheduling; the operator can interrupt anytime.
