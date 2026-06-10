@@ -12,6 +12,7 @@ from feinschliff_builder.cli import (
     brand as brand_cmd,
     compile as compile_cmd,
     decompile as decompile_cmd,
+    eval as eval_cmd,
     verify as verify_cmd,
     verify_quality as verify_quality_cmd,
     verify_diagram as verify_diagram_cmd,
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     brand_cmd.register(sub.add_parser("brand", help="Brand pack utilities"))
     compile_cmd.register(sub.add_parser("compile-html", help="Compile HTML to DSL skeletons"))
     decompile_cmd.register(sub.add_parser("decompile", help="Decompile a .pptx to DSL"))
+    eval_cmd.register(sub.add_parser("eval", help="Grade generated artifacts vs a skill's evals.json"))
     verify_cmd.register(sub.add_parser("verify", help="Validate a built .pptx deck"))
     verify_quality_cmd.register(sub.add_parser("verify-quality", help="LLM quality rubric"))
     verify_diagram_cmd.register(sub.add_parser("verify-diagram", help="Validate diagram DSL files"))
