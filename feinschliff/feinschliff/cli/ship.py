@@ -36,11 +36,15 @@ def register(parser: argparse.ArgumentParser) -> None:
 
 
 def _tool(name: str, *args: str) -> list[str]:
-    # Prefer `uv run <tool>` in a dev checkout; fall back to the bare console
-    # script on PATH (real plugin install) so ship does not hard-require uv.
-    if shutil.which("uv"):
-        return ["uv", "run", name, *args]
-    return [name, *args]
+    # Prefer the bare console script on PATH (real plugin install); fall back
+    # to `uv run` for a dev checkout, pinned to this package's project so uv
+    # can never resolve/sync whatever project the caller's cwd lives in.
+    if shutil.which(name):
+        return [name, *args]
+    pkg_root = Path(__file__).resolve().parents[2]
+    if (pkg_root / "pyproject.toml").is_file():
+        return ["uv", "run", "--project", str(pkg_root), name, *args]
+    return ["uv", "run", "--no-project", name, *args]
 
 
 def _run(argv: list[str], cwd: Path | None = None) -> tuple[int, str, str]:
@@ -84,6 +88,7 @@ def cmd_ship(args) -> int:
         "No such command" in stderr or "Could not find" in stderr
         or "unrecognized arguments" in stderr or rc == 127
         or "ModuleNotFoundError" in stderr or "No module named" in stderr
+        or "Failed to spawn" in stderr
     ))
     if _builder_unavailable:
         # builder not installed — skip gate gracefully
@@ -110,6 +115,7 @@ def cmd_ship(args) -> int:
         "No such command" in stderr or "Could not find" in stderr
         or "unrecognized arguments" in stderr or rc == 127
         or "ModuleNotFoundError" in stderr or "No module named" in stderr
+        or "Failed to spawn" in stderr
     ))
     if _quality_unavailable:
         # builder not installed — skip gate gracefully
