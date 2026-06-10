@@ -3109,6 +3109,28 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 padding_attr = f" padding:{left:g}"
             else:
                 padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
+        # Extend the text box into the AVAILABLE space — the clearance to the
+        # nearest neighbouring element (or the slide edge) — so /deck can fill in
+        # MORE text than the template carried without colliding with surrounding
+        # chrome. Grow only in directions that DON'T reposition the existing
+        # top-left-anchored text: left/justify-aligned → widen rightwards, and
+        # top-valign → grow downwards. Centred / right / middle / bottom text
+        # keeps its source box (extending would re-centre / move the glyphs).
+        # The current (template) text is unchanged — a short line still sits at
+        # the top-left; only longer user content uses the extra room.
+        _gap = 10
+        _right, _bottom = cmap.cw, cmap.ch
+        for _o in shapes:
+            if _o is t:
+                continue
+            if _o.x >= t.x + t.w and not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h):
+                _right = min(_right, _o.x)          # neighbour clear to the right
+            if _o.y >= t.y + t.h and not (_o.x + _o.w <= t.x or _o.x >= t.x + t.w):
+                _bottom = min(_bottom, _o.y)         # neighbour clear below
+        if run_align in (None, "left", "justify"):
+            mw = max(mw, _right - t.x - _gap)
+        if t.valign in (None, "top"):
+            mh = max(mh, _bottom - t.y - _gap)
         out.append(
             f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'
