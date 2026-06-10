@@ -82,6 +82,42 @@ def test_emit_native_splices_source_shape_as_vector(tmp_path):
     assert "EE7660" in slide, "native shape colour not preserved verbatim"
 
 
+def test_emit_native_pic_reembeds_template_image(tmp_path):
+    """A `native` primitive with `media:` carries a template image (<p:pic>): the
+    embedded bytes are re-embedded into THIS deck, the raster blip re-pointed, and
+    the Microsoft svgBlip sidecar (whose stale rId would collide / render the wrong
+    image) stripped — so a logo stays a real, fixed picture, not a slot or cheat."""
+    import base64
+    png_b64 = ("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNg"
+               "YGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC")  # 1x1 PNG
+    pic_xml = (
+        '<p:pic xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<p:nvPicPr><p:cNvPr id="7" name="BrandLogo"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+        '<p:blipFill><a:blip r:embed="rId77">'
+        '<a:extLst><a:ext uri="{96DAC541-7B7A-43D3-8B79-37D633B846F1}">'
+        '<asvg:svgBlip xmlns:asvg="http://schemas.microsoft.com/office/drawing/2016/SVG/main"'
+        ' r:embed="rId88"/></a:ext></a:extLst></a:blip>'
+        '<a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+        '<p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="500000" cy="500000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+    )
+    xb = base64.b64encode(pic_xml.encode()).decode()
+    out = tmp_path / "out.pptx"
+    doc = parse_document(f'canvas 1920x1080\nnative pic1 b64:"{xb}" media:"{png_b64}"\n')
+    pack = _make_pack(tmp_path)
+    emit_pptx_from_document(doc, pack, out)
+    with zipfile.ZipFile(out) as z:
+        names = z.namelist()
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    assert "BrandLogo" in slide, "carried template image missing from output slide"
+    assert any(n.startswith("ppt/media/") for n in names), "image media not re-embedded"
+    assert "rId77" not in slide, "blip still points at the dead source rId"
+    assert "svgBlip" not in slide, "svgBlip sidecar not stripped (stale rId would collide)"
+    assert "rId88" not in slide, "stale svgBlip rId still present in output"
+
+
 def test_emit_pptx_from_document_raises_on_empty(tmp_path):
     """A document with no slides must raise ValueError."""
     doc = Document(slides=[])

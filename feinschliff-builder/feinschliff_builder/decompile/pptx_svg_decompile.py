@@ -71,6 +71,10 @@ NS = {
 
 EMU_PER_PT = 12700
 PLACEHOLDER_REL = "assets/illustrations/placeholder.jpg"
+# A non-placeholder <p:pic> smaller than this fraction of the slide is treated as
+# fixed corporate-design chrome (logo / mark) and carried natively; larger pics
+# are changeable topical content and stay fillable picture slots.
+_TEMPLATE_IMG_MAX_AREA = 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -149,6 +153,9 @@ class Shape:
     # complex custGeom chrome — carried as an editable native vector instead of
     # round-tripping through svg → raster → picture. None = use the other fields.
     native_xml: str | None = None
+    # For a carried <p:pic> (template image): base64 of the embedded media bytes,
+    # re-embedded into the output deck by the emitter (the source rId is dead here).
+    native_media: str | None = None
 
 
 @dataclass
@@ -1588,10 +1595,32 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
                 media_part = slide.part.related_part(rid)
             except (KeyError, AttributeError):
                 media_part = None
+    # Template image: a small, non-placeholder <p:pic> (logo, mark, brand chrome)
+    # is fixed corporate-design identity — carry it natively (verbatim element +
+    # its media, base64-inline) rather than a fillable picture slot. Large or
+    # placeholder pics are CHANGEABLE topical content → they stay slots.
+    native_xml = None
+    native_media = None
+    if (ph_type is None and media_part is not None and len(offset) == 2
+            and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
+        try:
+            import copy as _copy
+            import base64 as _b64
+            pic_el = _copy.deepcopy(ch)
+            _bake_scheme_colors(pic_el, theme)
+            ox, oy = int(offset[0]), int(offset[1])
+            _off_el = pic_el.find("p:spPr/a:xfrm/a:off", NS)
+            if _off_el is not None and (ox or oy):
+                _off_el.set("x", str(int(_off_el.get("x") or 0) + ox))
+                _off_el.set("y", str(int(_off_el.get("y") or 0) + oy))
+            native_xml = etree.tostring(pic_el).decode("utf-8")
+            native_media = _b64.b64encode(media_part.blob).decode("ascii")
+        except Exception:
+            native_xml = native_media = None
     shapes.append(Shape(
         kind="pic", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         is_picture=True, ph_type=ph_type, ph_idx=ph_idx, media_rid=rid,
-        media_part=media_part,
+        media_part=media_part, native_xml=native_xml, native_media=native_media,
     ))
 
 
@@ -2891,6 +2920,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # bbox confuses the visual-diff coverage gate (>90% triggers a
     # struct = total fallback that masks real text deficits).
     for i, p in enumerate(pics, 1):
+        if p.native_xml and p.native_media:
+            # Template image carried natively (fixed corporate-design chrome):
+            # the <p:pic> + its media ride inline; the emitter re-embeds + splices.
+            import base64 as _b64
+            _x = _b64.b64encode(p.native_xml.encode("utf-8")).decode("ascii")
+            out.append(f'native pic{i} b64:"{_x}" media:"{p.native_media}"')
+            continue
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
         cy0 = max(0, p.y)
