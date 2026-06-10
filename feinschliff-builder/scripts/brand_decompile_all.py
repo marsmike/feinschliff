@@ -95,8 +95,8 @@ def main() -> int:
     if tokens_path.is_file():
         try:
             tokens_data = _json.loads(tokens_path.read_text(encoding="utf-8"))
-        except _json.JSONDecodeError:
-            tokens_data = {}
+        except _json.JSONDecodeError as exc:
+            sys.exit(f"unparseable tokens.json in {brand_pack}: {exc} — fix or remove it first")
     else:
         tokens_data = {}
     slide_block = tokens_data.setdefault("slide", {"$type": "dimension"})
@@ -132,10 +132,15 @@ def main() -> int:
     except (KeyError, _zf.BadZipFile, IndexError):
         pass
 
-    tokens_path.write_text(_json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n",
-                           encoding="utf-8")
-    print(f"  source slide size: {src_w_emu/914400:.2f}in × {src_h_emu/914400:.2f}in "
-          f"({src_w_emu} × {src_h_emu} EMU) → tokens.json slide.width_emu/height_emu")
+    if args.dry_run:
+        print(f"  would record slide size {src_w_emu} × {src_h_emu} EMU → {tokens_path}")
+    else:
+        if tokens_path.is_file():
+            shutil.copy2(tokens_path, tokens_path.with_name("tokens.json.bak"))
+        tokens_path.write_text(_json.dumps(tokens_data, indent=2, ensure_ascii=False) + "\n",
+                               encoding="utf-8")
+        print(f"  source slide size: {src_w_emu/914400:.2f}in × {src_h_emu/914400:.2f}in "
+              f"({src_w_emu} × {src_h_emu} EMU) → tokens.json slide.width_emu/height_emu")
 
     layouts_dir = brand_pack / "layouts"
     backup_dir = brand_pack / "layouts.bak"

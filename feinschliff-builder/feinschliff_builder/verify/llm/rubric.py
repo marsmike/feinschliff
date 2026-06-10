@@ -30,7 +30,13 @@ class RubricResult:
 
 @functools.lru_cache(maxsize=1)
 def _client():
-    from anthropic import Anthropic
+    try:
+        from anthropic import Anthropic
+    except ImportError as exc:
+        raise SystemExit(
+            "verify-quality: anthropic library not installed; "
+            "install it with `uv pip install anthropic` or use --offline to skip LLM calls"
+        ) from exc
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
         raise SystemExit(

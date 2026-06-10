@@ -16,7 +16,7 @@ cp "$BUILD"/feinschliff_builder-*.whl "$BUILD"/feinschliff-*.whl "$BUILD"/feinsc
 
 # Vendor the third-party runtime closure (feinschliff + builder deps) for this platform.
 python3 -m pip download --only-binary=:all: --dest "$WHEELS" \
-  python-pptx lxml pillow cairosvg pyphen jsonschema pyyaml rough
+  python-pptx lxml pillow cairosvg pyphen jsonschema pyyaml rough anthropic
 python3 -m pip download --no-deps --only-binary=:all: \
   --implementation py --abi none --platform any --python-version 3 \
   --dest "$WHEELS" charset-normalizer || true
