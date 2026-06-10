@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="feinschliff/brands/feinschliff/assets/gem.svg" alt="feinschmiede gem mark" width="120">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/feinschmiede-mark-dark.svg">
+    <img src="assets/feinschmiede-mark.svg" alt="feinschmiede mark — a forged gold ring holding the feinschliff gem" width="132">
+  </picture>
 </p>
 
 <h1 align="center">feinschmiede</h1>
