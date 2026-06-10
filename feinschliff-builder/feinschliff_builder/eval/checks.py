@@ -53,6 +53,8 @@ def run_check(name: str, artifact: Path, ctx: CheckContext) -> bool:
         return _uses_semantic_colors(artifact, ctx.brand_dir)
     if name == "title-on-grid":
         return _title_on_grid(artifact, ctx.brand_dir)
+    if name == "footer-overridable":
+        return _footer_overridable(artifact, ctx.brand_dir)
     m = _COUNT_RE.match(name)
     if m:
         return _count_check(artifact, m.group(1), m.group(2), int(m.group(3)))
@@ -108,6 +110,33 @@ def _title_on_grid(artifact: Path, brand_dir: Path, *, tol: float = 8.0) -> bool
         if y <= pad_y_top + 60:  # top-anchored line => the title
             return abs(x - pad_x) <= tol
     return True  # no top-anchored title (e.g. a cover) => nothing to misplace
+
+
+def _footer_overridable(artifact: Path, brand_dir: Path) -> bool:
+    """True iff the layout does NOT hardcode the brand's footer template
+    defaults (`brand.footer-date` / `brand.footer-section`).
+
+    Those values must reach the footer via deck-overridable content slots, not
+    bare literal args — otherwise every deck shows the template's date/section.
+    A value living inside a `{{ … }}` slot expression (even as a `default(...)`)
+    is overridable and passes; the same value as a bare quoted arg fails. Brands
+    that define no footer template defaults pass vacuously.
+    """
+    from feinschmiede.dsl.tokens import load_tokens
+
+    tokens = load_tokens(brand_dir, brands_dir=brand_dir.parent)
+    brand = tokens.raw.get("brand", {})
+    literals = [
+        brand.get(k, {}).get("$value")
+        for k in ("footer-date", "footer-section")
+    ]
+    literals = [v for v in literals if v]
+    if not literals:
+        return True  # no footer template defaults declared -> nothing to leak
+    # Drop slot expressions so a value used only as a {{ … default("x") }} is
+    # not mistaken for a hardcoded leak.
+    stripped = re.sub(r"\{\{.*?\}\}", "", artifact.read_text())
+    return not any(f'"{lit}"' in stripped for lit in literals)
 
 
 def _uses_semantic_colors(artifact: Path, brand_dir: Path) -> bool:
