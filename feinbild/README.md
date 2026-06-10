@@ -20,3 +20,10 @@ defect. Any plugin/skill can call it as a bare command after rendering.
 Diagram brand colors resolve through the engine; the launcher adds
 `feinbild/brands/` to `FEINSCHLIFF_BRAND_PATH`. Rebuild the offline wheelhouse
 with `./build-wheels.sh`.
+
+## Install
+
+```bash
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinbild@feinschmiede
+```

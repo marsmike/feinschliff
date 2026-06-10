@@ -7,7 +7,8 @@ automatically once the plugin is installed.
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff-extra
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinschliff-extra@feinschmiede
 ```
 
 Then use any brand with `/deck --brand <name>` or `FEINSCHLIFF_BRAND=<name>`.

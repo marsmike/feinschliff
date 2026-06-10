@@ -5,6 +5,17 @@ production (`/video`) and recipe-driven CLI session recording (`/record`), part
 of the **feinschmiede** family. Composes its siblings by their bare CLIs —
 storyboard images via `feinbild imagine`, voiceover via `feinklang tts`.
 
+## Install
+
+```bash
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinschnitt@feinschmiede
+```
+
+The Remotion video path (`/video`) requires **Node >= 18** on PATH. The CLI
+recording path (`/record`) requires `tmux`, `asciinema` >= 3.0, and optionally
+`agg`/`ffmpeg` for rendering.
+
 ## CLI
 
 The plugin exposes a `feinschnitt` command on PATH (provisioned into a

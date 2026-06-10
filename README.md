@@ -2,11 +2,12 @@
   <img src="feinschliff/brands/feinschliff/assets/gem.svg" alt="Feinschliff gem mark" width="120">
 </p>
 
-<h1 align="center">feinschliff</h1>
+<h1 align="center">feinschmiede</h1>
 
 <p align="center">
-  <strong>Brand-pluggable design system for Claude Code</strong><br>
-  Turn DESIGN.md or HTML into brand-perfect PowerPoint decks.
+  <strong>A family of branded media plugins for Claude Code</strong><br>
+  Decks, images & 2D, video, audio, and codebase intelligence — coupled by CLI
+  capabilities, never file paths, over one shared engine.
 </p>
 
 [![CI](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml)
@@ -18,45 +19,64 @@
 
 ## Plugins
 
-This repo ships three independent Claude Code plugins. Install only what you need.
+This repo is a single Claude Code marketplace named **`feinschmiede`**. Install
+the marketplace once, then install only the plugins you need.
 
-| Plugin | Install | Description |
+```bash
+/plugin marketplace add marsmike/feinschliff
+/plugin install feinschliff@feinschmiede
+```
+
+| Plugin | Install | What it does |
 |---|---|---|
-| [`feinschliff`](feinschliff/) | `/plugin marketplace add marsmike/feinschliff` | Media toolkit — `/deck`, `/video`, `/imagine`, `/tts`, `/record`, `/svg`, `/excalidraw`. Decks, programmatic video, AI images, voiceover, CLI recording. Ships with 3 brand packs and 50 layouts. |
-| [`feinschliff-extra`](feinschliff-extra/) | `/plugin marketplace add marsmike/feinschliff-extra` | 10 additional brand packs (light/dark themes, terminal palettes, bold corporate looks). Requires `feinschliff`. |
-| [`feinschliff-builder`](feinschliff-builder/) | `/plugin marketplace add marsmike/feinschliff-builder` | Brand-pack authoring toolkit — compile HTML, decompile PPTX, verify quality, improve brand packs. Requires `feinschliff`. |
+| [`feinschliff`](feinschliff/) | `feinschliff@feinschmiede` | **Office / decks** — brand-perfect PowerPoint from a brief or DESIGN.md. `/deck`. Ships 3 brand packs + 50 layouts. |
+| [`feinbild`](feinbild/) | `feinbild@feinschmiede` | **Image & 2D** — AI images (Replicate/Gemini), SVG, Excalidraw diagrams. `/imagine`, `/svg`, `/excalidraw`. |
+| [`feinklang`](feinklang/) | `feinklang@feinschmiede` | **Audio** — ElevenLabs voiceover. `/tts`. |
+| [`feinschnitt`](feinschnitt/) | `feinschnitt@feinschmiede` | **Video** — programmatic Remotion videos + CLI session recordings. `/video`, `/record`. Composes feinbild + feinklang. |
+| [`feinblick`](feinblick/) | `feinblick@feinschmiede` | **Codebase intelligence** — unified Python + Claude-skill findings, an audit gate, an agent report. |
+| [`feinschliff-extra`](feinschliff-extra/) | `feinschliff-extra@feinschmiede` | 10 extra brand packs (data only). Requires `feinschliff`. |
+| [`feinschliff-builder`](feinschliff-builder/) | `feinschliff-builder@feinschmiede` | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). Requires `feinschliff`. |
 
-## Why separate plugins?
-
-Most users only need `feinschliff` — the core generator with the default brand pack.
-`feinschliff-extra` and `feinschliff-builder` are optional add-ons:
-
-- **`feinschliff-extra`** is for users who want more brand variety without writing
-  any DSL. Just install and pick a brand.
-- **`feinschliff-builder`** is for brand authors who want to create or tune their
-  own brand pack. It adds six authoring CLI subcommands and two AI-assisted skills.
-
-Splitting them keeps the core plugin lean and avoids installing build tools that
-most end users will never run.
+Most users want one product plugin (e.g. `feinschliff` for decks). `feinschliff`
+depends on `feinbild` (diagrams), and Claude Code installs declared
+dependencies automatically. `feinschliff-extra` and `feinschliff-builder` are
+optional add-ons for more brands and for authoring your own brand pack.
 
 ## Quick start
 
 ```bash
 /plugin marketplace add marsmike/feinschliff
+/plugin install feinschliff@feinschmiede
 /deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"
 ```
 
-To use a different brand:
+Use a different brand pack (add the extra brands first):
 
 ```bash
-/plugin marketplace add marsmike/feinschliff-extra
+/plugin install feinschliff-extra@feinschmiede
 FEINSCHLIFF_BRAND=catppuccin-macchiato /deck "..."
 ```
+
+## How it fits together
+
+Each plugin ships a `bin/` launcher that provisions a self-contained Python
+venv from a bundled wheelhouse on first run, putting one clean CLI on PATH
+(`feinschliff`, `feinbild`, `feinklang`, `feinschnitt`, `feinblick`). Plugins
+**never import or path into each other** — when one needs another's capability
+(e.g. `feinschnitt` building a voiceover) it calls the sibling's bare command,
+guaranteed present via plugin `dependencies`. A shared engine package,
+**`feinschmiede`**, holds the cross-media brand/look system and the diagram
+engine; it rides along as a vendored wheel so every plugin stays independent.
+
+See [`ARCHITECTURE.md`](ARCHITECTURE.md) for the full design.
 
 ## Contributing
 
 PRs welcome. See [CONTRIBUTING.md](CONTRIBUTING.md). All commits require a
-[DCO](https://developercertificate.org/) sign-off (`git commit -s`).
+[DCO](https://developercertificate.org/) sign-off (`git commit -s`). The
+`bin/` launchers and `build-wheels.sh` are generated — edit
+[`scripts/gen_launchers.py`](scripts/gen_launchers.py) and re-run it, never the
+generated files (CI enforces this).
 
 ## Author
 
