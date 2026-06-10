@@ -47,6 +47,29 @@ def _ensure_libcairo_on_macos() -> None:
 _ensure_libcairo_on_macos()
 
 
+_LIBCAIRO_MSG = (
+    "render: cairosvg is installed but libcairo2 is missing — install "
+    "libcairo2 (apt) / cairo (brew)."
+)
+
+
+def _cairo_load_error() -> OSError | None:
+    """Re-probe the cairosvg import to tell the unavailability causes apart.
+
+    A missing package raises ImportError, while an installed cairosvg whose
+    native libcairo can't be dlopen'ed raises OSError from cffi. Failed
+    imports aren't cached in sys.modules, so re-importing reproduces the
+    loader error.
+    """
+    try:
+        import cairosvg  # noqa: F401
+    except OSError as exc:
+        return exc
+    except ImportError:
+        pass
+    return None
+
+
 def render(src: Path, out: Path) -> Path:
     ext = src.suffix.lower()
     if ext == ".svg":
@@ -62,7 +85,13 @@ def _render_svg(src: Path, out: Path) -> Path:
         cairosvg.svg2png(url=str(src), write_to=str(out))
         return out
     except (ImportError, OSError):
-        return _render_svg_playwright(src, out)
+        try:
+            return _render_svg_playwright(src, out)
+        except ImportError:
+            cairo_exc = _cairo_load_error()
+            if cairo_exc is not None:
+                raise RuntimeError(_LIBCAIRO_MSG) from cairo_exc
+            raise
 
 
 _SVG_DIM_RE = __import__("re").compile(
@@ -146,6 +175,9 @@ def _render_excalidraw(src: Path, out: Path) -> Path:
         from .render_playwright import render_excalidraw as _r_pw
         return _r_pw(src, out)
     except ImportError as exc:
+        cairo_exc = _cairo_load_error()
+        if cairo_exc is not None:
+            raise RuntimeError(_LIBCAIRO_MSG) from cairo_exc
         raise RuntimeError(
             "render: both rendering backends unavailable. Install either "
             "`rough` + `cairosvg` (preferred, pure-Python) OR `playwright` "

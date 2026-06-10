@@ -349,10 +349,12 @@ def _parse_design_md_frontmatter(text: str) -> dict[str, Any]:
     return yaml.safe_load(text[3:end]) or {}
 
 
-def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
-    """Load a brand's tokens.json, flattening any `extends: <parent>` chain
-    declared in DESIGN.md frontmatter. `brands_dir` defaults to the parent
-    of `brand_root`.
+def load_raw_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> dict[str, Any]:
+    """Flatten a brand's `extends: <parent>` chain (DESIGN.md frontmatter)
+    into one merged tokens dict, without schema validation. `brands_dir`
+    defaults to the parent of `brand_root`. Use `load_tokens` for the
+    validated `Tokens` bundle; the diagram brand_bridge consumes the raw
+    merge directly.
     """
     brands_dir = brands_dir or brand_root.parent
     chain: list[Path] = []
@@ -448,6 +450,15 @@ def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
                 new_parent_ip = {k: v for k, v in parent_ip.items() if k != "config"}
                 merged = {**merged, "$image_provider": new_parent_ip}
             merged = deep_merge(merged, data)
+    return merged
+
+
+def load_tokens(brand_root: Path, *, brands_dir: Path | None = None) -> Tokens:
+    """Load a brand's tokens.json, flattening any `extends: <parent>` chain
+    declared in DESIGN.md frontmatter. `brands_dir` defaults to the parent
+    of `brand_root`.
+    """
+    merged = load_raw_tokens(brand_root, brands_dir=brands_dir)
     validate_tokens(merged, brand_root.name)
     return Tokens(raw=merged, brand_name=brand_root.name)
 

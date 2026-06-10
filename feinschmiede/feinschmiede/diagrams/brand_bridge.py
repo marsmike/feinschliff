@@ -14,13 +14,14 @@ names to the real flat paths in every brand pack.
 from __future__ import annotations
 
 import difflib
-import json
 import os
 import re
+from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
 
-from feinschmiede.jsonwalk import deep_merge as _deep_merge, walk as _json_walk
+from feinschmiede.dsl.tokens import load_raw_tokens as _load_raw_tokens
+from feinschmiede.jsonwalk import walk as _json_walk
 
 if TYPE_CHECKING:
     from feinschmiede.brand import BrandPack
@@ -187,64 +188,26 @@ def resolve(name: str, brand_dir: Path) -> str:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _load_tokens_with_extends(brand_dir: Path, _seen: frozenset[Path] | None = None) -> dict:
-    """Load tokens.json, walking extends: chain via DESIGN.md frontmatter."""
-    _seen = (_seen or frozenset()) | {brand_dir.resolve()}
+def _load_tokens_with_extends(brand_dir: Path) -> dict:
+    """Load tokens.json, walking extends: chain via DESIGN.md frontmatter.
+
+    Delegates the walk + merge to the canonical loader in
+    `feinschmiede.dsl.tokens`. The merged dict is cached per
+    (resolved dir, tokens.json mtime) so per-color resolve() calls don't
+    re-read disk; an edited tokens.json gets a fresh key.
+    """
     tokens_path = brand_dir / "tokens.json"
     if not tokens_path.exists():
         raise BrandBridgeError(f"brand '{brand_dir.name}': tokens.json missing")
-    tokens = json.loads(tokens_path.read_text())
-
-    parent = _read_extends(brand_dir)
-    if parent:
-        # Try the brand's own parent dir first (in-tree brands' default).
-        # Then fall back to FEINSCHLIFF_BRAND_PATH entries (out-of-tree
-        # packs whose parent lives elsewhere — e.g. an external pack that
-        # extends the toolkit's bundled `feinschliff` default).
-        candidates: list[Path] = [brand_dir.parent / parent]
-        env = os.environ.get("FEINSCHLIFF_BRAND_PATH", "")
-        for root in env.split(os.pathsep):
-            if root:
-                candidates.append(Path(root) / parent)
-        # Fall back to brand_discovery so all registered sources are searched
-        # (bundled, plugin, env, cwd-dev, user) — avoids a hardcoded path.
-        from feinschmiede.brand_discovery import find_brand as _find_brand
-        try:
-            discovered = _find_brand(parent)
-            candidates.append(discovered.root)
-        except ValueError:
-            pass
-        parent_dir = next((p for p in candidates if (p / "tokens.json").exists()), None)
-        if parent_dir is None:
-            raise BrandBridgeError(
-                f"brand '{brand_dir.name}' extends '{parent}' but no "
-                f"tokens.json found in any of: {[str(p) for p in candidates]}"
-            )
-        if parent_dir.resolve() in _seen:
-            raise BrandBridgeError(
-                f"brand '{brand_dir.name}': circular extends chain detected"
-            )
-        parent_tokens = _load_tokens_with_extends(parent_dir, _seen)
-        tokens = _deep_merge(parent_tokens, tokens)
-    return tokens
+    return _cached_raw_tokens(brand_dir.resolve(), tokens_path.stat().st_mtime_ns)
 
 
-def _read_extends(brand_dir: Path) -> str | None:
-    """Read extends: from brand's DESIGN.md frontmatter, if present."""
-    design_md = brand_dir / "DESIGN.md"
-    if not design_md.exists():
-        return None
-    text = design_md.read_text()
-    if not text.startswith("---"):
-        return None
-    end = text.find("---", 3)
-    if end < 0:
-        return None
-    frontmatter = text[3:end]
-    for line in frontmatter.splitlines():
-        if line.strip().startswith("extends:"):
-            return line.split(":", 1)[1].strip()
-    return None
+@lru_cache(maxsize=32)
+def _cached_raw_tokens(brand_dir: Path, _mtime_ns: int) -> dict:
+    try:
+        return _load_raw_tokens(brand_dir)
+    except (ValueError, OSError) as exc:
+        raise BrandBridgeError(str(exc)) from exc
 
 
 def _extract_value(raw: object) -> str | None:
