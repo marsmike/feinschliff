@@ -3,4 +3,9 @@
 The public surface is the `feinbild` console CLI, not these modules.
 """
 
-__version__ = "0.0.1"
+from importlib.metadata import PackageNotFoundError, version as _pkg_version
+
+try:  # single source of truth = the installed package metadata (pyproject)
+    __version__ = _pkg_version("feinbild")
+except PackageNotFoundError:  # running from a source tree without an install
+    __version__ = "0.0.0+dev"
