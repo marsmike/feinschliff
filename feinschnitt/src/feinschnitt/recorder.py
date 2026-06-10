@@ -67,7 +67,6 @@ except ImportError:
 
 # ── Constants ────────────────────────────────────────────────────────────────
 
-CLAUDE_BIN = shutil.which("claude") or "/Users/mike/.local/bin/claude"
 IDLE_POLL_INTERVAL = 0.4
 IDLE_TIMEOUT_SECS  = 120
 

@@ -89,7 +89,7 @@ def cmd_verify_quality(args) -> int:
         ).__dict__
 
     suggestions: list[dict] = []
-    for rubric_name, payload in results.items():
+    for _, payload in results.items():
         rr = RubricResult(payload["rubric"], payload["status"], payload["per_slide"])
         for d in result_to_defects(rr):
             fix = suggest_fix(d)
