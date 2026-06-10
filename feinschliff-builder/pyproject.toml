@@ -1,6 +1,6 @@
 [project]
 name = "feinschliff-builder"
-version = "0.2.0"
+version = "0.3.0"
 description = "Feinschliff brand-pack authoring toolkit — compile HTML to DSL, verify quality, decompile PPTX, iterate brand packs."
 requires-python = ">=3.11"
 dependencies = [
