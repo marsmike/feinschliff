@@ -6,7 +6,6 @@ per-brand constants). `title-on-grid` codifies the decompiler drift root
 cause: a layout's title must sit on the brand's `slide.padding-x` margin.
 """
 import json
-from pathlib import Path
 
 from feinschmiede.brand_discovery import find_brand
 from feinschliff_builder.eval.checks import CheckContext, run_check
