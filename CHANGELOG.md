@@ -4,6 +4,8 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-06-10
+
 - **Repository & marketplace identity: `feinschmiede`.** The umbrella repo/marketplace is now named **feinschmiede** — the same name as the shared engine package — to describe the whole branded-media family over one engine. The office/decks plugin keeps the name `feinschliff`; `feinschliff-builder`/`feinschliff-extra`, the `FEINSCHLIFF_BRAND_PATH`/`~/.feinschliff` overrides, and the `@feinschmiede` install suffixes are unchanged. In-repo links, badges, and install commands now point at `marsmike/feinschmiede` (`/plugin marketplace add marsmike/feinschmiede` → `/plugin install <name>@feinschmiede`). The GitHub repo + Pages rename is the final manual flip; old `marsmike/feinschliff` URLs auto-redirect afterward.
 - **feinblick (codebase-intelligence plugin).** New standalone, stdlib-only plugin: unified Python + Claude-skill findings, an audit gate, and an agent-consumable report via the `feinblick` CLI.
 - **feinschnitt (video plugin).** Extracted the `remotion` + `cli-recorder` skills out of `feinschliff` into a new full-family `feinschnitt` plugin (bin/ launcher + `feinschnitt record`/`analyze` CLI over a bundled-wheel venv). Voiceover now calls the bare `feinklang tts` CLI; storyboard images call `feinbild imagine`. `plugin.json dependencies: [feinbild, feinklang]`. Recordings land in `${CLAUDE_PROJECT_DIR}/.recordings/`.
@@ -77,6 +79,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 - Marketplace skeleton: LICENSE (MIT), NOTICE, CONTRIBUTING (DCO), CODE_OF_CONDUCT, SECURITY.
 - GitHub: 12 topics, branch protection, issue/PR templates, DCO check, CI workflow.
 
-[Unreleased]: https://github.com/marsmike/feinschmiede/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/marsmike/feinschmiede/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/marsmike/feinschmiede/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/marsmike/feinschmiede/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marsmike/feinschmiede/releases/tag/v0.1.0
