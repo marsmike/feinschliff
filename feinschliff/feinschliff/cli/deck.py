@@ -1432,16 +1432,12 @@ def cmd_verify_aspect(args) -> int:
                     pass
 
     elif aspect == "brand":
-        # Deterministic-ish: scan diagram_dsl for fill tokens not in the
-        # canonical 17-name vocabulary. Brand pack discipline check.
-        canonical = {
-            "primary", "accent", "secondary", "tertiary", "highlight",
-            "ink", "neutral-strong", "neutral-soft", "graphite",
-            "paper", "paper-2", "off-white", "surface-2",
-            "severity-high", "severity-medium", "severity-low",
-            "status-current", "status-next", "status-done",
-            "success", "warning", "error", "code", "data", "inactive",
-        }
+        # Deterministic-ish: scan diagram_dsl for fill tokens brand_bridge
+        # can't resolve (semantic names + the upstream Excalidraw aliases).
+        # Brand pack discipline check.
+        from feinschmiede.diagrams.brand_bridge import SEMANTIC_NAMES
+        from feinschmiede.diagrams.excalidraw_expand import _COLOR_ALIASES
+        canonical = SEMANTIC_NAMES | frozenset(_COLOR_ALIASES)
         import re
         for i, spec in enumerate(slides):
             dsl = (spec.get("content") or {}).get("diagram_dsl") or ""
@@ -1451,8 +1447,8 @@ def cmd_verify_aspect(args) -> int:
                     out["findings"].append({
                         "slide": i + 1, "kind": "non-canonical-token",
                         "severity": "warn",
-                        "message": f"Diagram uses fill:{tok}, not in the 17-name "
-                                   f"semantic vocabulary.",
+                        "message": f"Diagram uses fill:{tok}, not in the "
+                                   f"{len(canonical)}-name semantic vocabulary.",
                         "hint": "use one of: " + ", ".join(sorted(canonical)[:10]) + ", …",
                     })
 
