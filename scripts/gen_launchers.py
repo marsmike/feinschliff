@@ -69,6 +69,17 @@ ENV_TAILS = {
         "# the engine/office discovery (additive — a user's own paths still win).\n"
         'export FEINSCHLIFF_LAYOUT_PATH="${FEINSCHLIFF_LAYOUT_PATH:+$FEINSCHLIFF_LAYOUT_PATH:}$PLUGIN_ROOT/layouts"\n'
         'export FEINSCHLIFF_BRAND_PATH="${FEINSCHLIFF_BRAND_PATH:+$FEINSCHLIFF_BRAND_PATH:}$PLUGIN_ROOT/brands"\n'
+        "\n"
+        "# Register brand packs + layouts from sibling feinschliff-* plugin\n"
+        "# directories (third-party plugins can ship their own brands/ and layouts/).\n"
+        '_repo_root="$(cd "$PLUGIN_ROOT/.." && pwd)"\n'
+        'for _sibling in "$_repo_root"/feinschliff-*; do\n'
+        '  [[ -d "$_sibling/brands" ]] && \\\n'
+        '    export FEINSCHLIFF_BRAND_PATH="${FEINSCHLIFF_BRAND_PATH:+$FEINSCHLIFF_BRAND_PATH:}$_sibling/brands"\n'
+        '  [[ -d "$_sibling/layouts" ]] && \\\n'
+        '    export FEINSCHLIFF_LAYOUT_PATH="${FEINSCHLIFF_LAYOUT_PATH:+$FEINSCHLIFF_LAYOUT_PATH:}$_sibling/layouts"\n'
+        "done\n"
+        "unset _sibling _repo_root\n"
     ),
     "recorder": (
         "\n"
