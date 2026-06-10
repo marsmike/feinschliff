@@ -94,4 +94,7 @@ def _uses_semantic_colors(artifact: Path, brand_dir: Path) -> bool:
         except BrandBridgeError:
             pass
     text = artifact.read_text()
-    return all(m.group(0).lower() in palette for m in _HEX_RE.finditer(text))
+    matches = list(_HEX_RE.finditer(text))
+    # An artifact with zero hex colours used NO brand token — that fails the
+    # check (all() over an empty iterator would otherwise vacuously pass).
+    return bool(matches) and all(m.group(0).lower() in palette for m in matches)

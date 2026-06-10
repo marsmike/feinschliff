@@ -82,3 +82,41 @@ def test_cli_eval_missing_evals(tmp_path):
 
     rc = cli_main.main(["eval", str(tmp_path), "--results-dir", str(tmp_path)])
     assert rc == 2
+
+
+def test_grade_partial_pass_scores_fraction(tmp_path):
+    evals_dir = tmp_path / "skill" / "evals"
+    evals_dir.mkdir(parents=True)
+    suite = {
+        "skill": "excalidraw",
+        "version": 1,
+        "tests": [
+            {"name": "five-box-flow", "prompt": "p",
+             "checks": ["rectangles==5", "arrows==6"]},  # first passes, second fails
+        ],
+    }
+    (evals_dir / "evals.json").write_text(json.dumps(suite))
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "five-box-flow.excalidraw").write_text(json.dumps(_FIVE_FOUR))
+
+    report = grade(evals_dir / "evals.json", results, BRAND_DIR)
+    assert report["passed"] == 1 and report["total"] == 2
+    assert report["score"] == 0.5
+
+
+def test_cli_unknown_check_clean_exit(tmp_path, capsys):
+    from feinschliff_builder.cli import main as cli_main
+
+    evals_dir = tmp_path / "skill" / "evals"
+    evals_dir.mkdir(parents=True)
+    suite = {"skill": "excalidraw", "version": 1,
+             "tests": [{"name": "t", "prompt": "p", "checks": ["five-rectangles"]}]}
+    (evals_dir / "evals.json").write_text(json.dumps(suite))
+    results = tmp_path / "results"
+    results.mkdir()
+    (results / "t.excalidraw").write_text(json.dumps(_FIVE_FOUR))
+
+    rc = cli_main.main(["eval", str(evals_dir.parent), "--results-dir", str(results)])
+    assert rc == 2
+    assert "unknown check" in capsys.readouterr().err
