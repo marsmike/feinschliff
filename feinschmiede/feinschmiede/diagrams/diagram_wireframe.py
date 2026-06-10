@@ -21,7 +21,7 @@ import shlex
 from dataclasses import dataclass
 from pathlib import Path
 
-from ._dsl_common import canvas_scale as _canvas_scale
+from ._dsl_common import canvas_scale as _canvas_scale, parse_xy, parse_wh
 from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
 
 
@@ -51,19 +51,19 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
         elif head == "rect":
             parts = shlex.split(line)
             _, _id, xy, wh, _color = parts[:5]
-            x, y = [int(p) for p in xy.split(",")]
-            w, h = [int(p) for p in wh.split("x")]
+            x, y = parse_xy(xy)
+            w, h = parse_wh(wh)
             prims.append(Primitive(id=_id, kind="rect", x=x, y=y, w=w, h=h))
         elif head == "bar":
             parts = shlex.split(line)
             _, _id, xy, wh, _color = parts[:5]
-            x, y = [int(p) for p in xy.split(",")]
-            w, h = [int(p) for p in wh.split("x")]
+            x, y = parse_xy(xy)
+            w, h = parse_wh(wh)
             prims.append(Primitive(id=_id, kind="rect", x=x, y=y, w=w, h=h))
         elif head == "text":
             parts = shlex.split(line)
             _, _id, xy, level, content = parts[:5]
-            x, y = [int(p) for p in xy.split(",")]
+            x, y = parse_xy(xy)
             base_size = _SVG_TEXT_SIZES.get(level, 14)
             size = base_size * scale
             prims.append(Primitive(
@@ -74,7 +74,7 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
         elif head == "axis":
             parts = shlex.split(line)
             _, _id, orient, xy, length, _labels = parts[:6]
-            x, y = [int(p) for p in xy.split(",")]
+            x, y = parse_xy(xy)
             L = int(length)
             if orient == "horizontal":
                 prims.append(Primitive(id=_id, kind="line", x=x, y=y, w=L, h=1))
@@ -84,8 +84,8 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
             # Both take `<id> <x>,<y> <w>x<h> …` upfront — bbox is straightforward.
             parts = shlex.split(line)
             _, _id, xy, wh = parts[:4]
-            x, y = [int(p) for p in xy.split(",")]
-            w, h = [int(p) for p in wh.split("x")]
+            x, y = parse_xy(xy)
+            w, h = parse_wh(wh)
             prims.append(Primitive(id=_id, kind="rect", x=x, y=y, w=w, h=h))
         elif head in ("polyline", "polygon", "area"):
             # bbox = hull of all <x>,<y> point tokens.
@@ -133,7 +133,7 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
         elif head == "swatch_grid":
             parts = shlex.split(line)
             _, _id, xy = parts[:3]
-            x, y = [int(p) for p in xy.split(",")]
+            x, y = parse_xy(xy)
             cols = int(_kv_value(line, "cols") or "3")
             cell_w = int(_kv_value(line, "cell_w") or "160")
             cell_h = int(_kv_value(line, "cell_h") or "24")
@@ -161,8 +161,8 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
         if head in ("box", "ellipse"):
             parts = shlex.split(line)
             _, _id, xy, wh, label = parts[:5]
-            x, y = [int(p) for p in xy.split(",")]
-            w, h = [int(p) for p in wh.split("x")]
+            x, y = parse_xy(xy)
+            w, h = parse_wh(wh)
             p = Primitive(id=_id, kind="rect", x=x, y=y, w=w, h=h, label=label)
             prims.append(p)
             nodes[_id] = p
@@ -178,8 +178,8 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
             # zone/lane carry their own bbox; treat as rect for overflow.
             parts = shlex.split(line)
             _, _id, xy, wh = parts[:4]
-            x, y = [int(p) for p in xy.split(",")]
-            w, h = [int(p) for p in wh.split("x")]
+            x, y = parse_xy(xy)
+            w, h = parse_wh(wh)
             prims.append(Primitive(id=_id, kind="rect", x=x, y=y, w=w, h=h))
         elif head == "arrow":
             # Strip optional ports from endpoint specs ("a:right" -> "a").
@@ -199,7 +199,7 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
         elif head == "text":
             parts = shlex.split(line)
             _, _id, xy, content = parts[:4]
-            x, y = [int(p) for p in xy.split(",")]
+            x, y = parse_xy(xy)
             base_size = 14
             for p in parts[4:]:
                 if p.startswith("size:"):

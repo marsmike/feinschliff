@@ -77,6 +77,7 @@ from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
 # the validator at parse time.
 _PATH_D_ALLOWED = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE\s,\.\+\-]*$")
 _MAX_POLY_POINTS = 64
+_POINT_RE = re.compile(r"^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
 
 
 def expand(dsl: str, brand_dir: Path, canvas_override: tuple[int, int] | None = None) -> str:
@@ -374,10 +375,9 @@ def _collect_points(tokens: list[str]) -> tuple[list[tuple[float, float]], list[
     A point is any token matching `<float>,<float>`. Attributes (key:value)
     or bare flag tokens come after the points block ends.
     """
-    pt_re = re.compile(r"^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
     points: list[tuple[float, float]] = []
     i = 0
-    while i < len(tokens) and pt_re.match(tokens[i]):
+    while i < len(tokens) and _POINT_RE.match(tokens[i]):
         x, y = tokens[i].split(",")
         points.append((float(x), float(y)))
         i += 1

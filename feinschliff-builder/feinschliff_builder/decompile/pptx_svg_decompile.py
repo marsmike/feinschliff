@@ -979,17 +979,9 @@ def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
         inset = w * 0.125
         return (f"M {inset:.1f},0 L {w-inset:.1f},0 L {w:.1f},{h:.1f} "
                 f"L 0,{h:.1f} Z")
-    if preset in ("pentagon", "homePlate"):
-        # Five-sided home-plate-style polygon: flat top + rooflike bottom.
+    if preset in ("pentagon", "homePlate", "hexagon"):
         # PowerPoint's `pentagon` and `homePlate` differ in spec but render
-        # similarly; same convex outline here.
-        mid = h * 0.5
-        return (f"M 0,0 L {w*0.5:.1f},{-mid:.1f} L {w:.1f},0 "
-                f"L {w:.1f},{h:.1f} L 0,{h:.1f} Z") if False else \
-               (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
-                f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
-                f"L 0,{h*0.5:.1f} Z")
-    if preset == "hexagon":
+        # similarly to `hexagon` — same convex outline for all three here.
         return (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
                 f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
                 f"L 0,{h*0.5:.1f} Z")
