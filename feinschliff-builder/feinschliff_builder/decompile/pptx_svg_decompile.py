@@ -568,6 +568,63 @@ def _layout_placeholder_default_sz(slide, ph_type: str | None, ph_idx: str | Non
     return None
 
 
+def _layout_placeholder_caps_bold(slide, ph_type: str | None, ph_idx: str | None) -> tuple[bool, bool]:
+    """Walk slide layout + master for the placeholder's inherited cap/bold.
+
+    Like `_layout_placeholder_default_sz` but for `cap="all"` (all-caps render
+    transform) + `b="1"` (bold). A title whose run states neither still renders
+    UPPERCASE + bold because the master titleStyle/bodyStyle (and sometimes the
+    layout placeholder) defRPr sets them. Returns (caps_all, bold)."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    caps = bold = False
+    # Master title/body style is the cascade base.
+    style_name = {"title": "titleStyle", "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        d = master.element.find(f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:defRPr", NS)
+        if d is not None:
+            if d.get("cap") is not None:
+                caps = d.get("cap") == "all"
+            if d.get("b") is not None:
+                bold = d.get("b") == "1"
+    # The layout's own placeholder defRPr overrides the master.
+    if layout is not None:
+        for sp in layout.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
+                if d is not None:
+                    if d.get("cap") is not None:
+                        caps = d.get("cap") == "all"
+                    if d.get("b") is not None:
+                        bold = d.get("b") == "1"
+    return caps, bold
+
+
+def _layout_placeholder_anchor(slide, ph_type: str | None, ph_idx: str | None) -> str | None:
+    """Walk slide layout + master for the placeholder's inherited vertical anchor.
+
+    Like `_layout_placeholder_default_sz` but for `<a:bodyPr anchor="ctr|b|t">`. A
+    title whose own bodyPr sets no anchor still renders centre/bottom-anchored when
+    the layout/master placeholder bodyPr does (MS Geometric: master title
+    placeholder anchor="b"). Returns "middle" / "bottom" / "top" / None."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in parent.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
+                anc = bodyPr.get("anchor") if bodyPr is not None else None
+                if anc:
+                    return {"ctr": "middle", "b": "bottom", "t": "top"}.get(anc)
+    return None
+
+
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
                               theme: dict[str, str],
                               palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -630,7 +687,8 @@ def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> 
 
 
 def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]],
-               inherited_default_sz: int | None = None) -> list[TextRun]:
+               inherited_default_sz: int | None = None,
+               inherited_caps: bool = False, inherited_bold: bool = False) -> list[TextRun]:
     runs: list[TextRun] = []
     txBody = node.find(".//p:txBody", NS)
     if txBody is None:
@@ -686,24 +744,31 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
             if t is None or t.text is None:
                 continue
             sz = default_sz
-            bold = False
+            # cap + bold cascade from the master title/body style when the run
+            # states neither (inherited_*); a title whose run carries no `b`/`cap`
+            # still decompiles bold + UPPERCASE, matching the render.
+            bold = inherited_bold
+            caps = inherited_caps
             italic = False
             color = None
             text = t.text
             if rPr is not None:
                 if rPr.get("sz"):
                     sz = int(rPr.get("sz"))
-                bold = rPr.get("b") == "1"
+                if rPr.get("b") is not None:
+                    bold = rPr.get("b") == "1"
                 italic = rPr.get("i") == "1"
                 sf = rPr.find("a:solidFill", NS)
                 if sf is not None:
                     color = _resolve_fill(rPr, theme, palette) or _resolve_solid(sf, theme, palette)
-                # PPTX `cap="all"` is a render-time text-transform: the run's
-                # stored text stays mixed-case but draws uppercase. Bake the
-                # transform into the emitted DSL since downstream layouts
-                # carry the literal text, not a `text-transform` directive.
-                if rPr.get("cap") == "all":
-                    text = text.upper()
+                if rPr.get("cap") is not None:
+                    caps = rPr.get("cap") == "all"
+            # PPTX `cap="all"` is a render-time text-transform: the run's stored
+            # text stays mixed-case but draws uppercase. Bake the transform into
+            # the emitted DSL since downstream layouts carry the literal text,
+            # not a `text-transform` directive.
+            if caps:
+                text = text.upper()
             para_runs.append(TextRun(text=text, pt=sz / 100, bold=bold, italic=italic, color=color, align=para_align))
         if para_runs:
             # Insert a newline marker between paragraphs so emit_dsl can preserve
@@ -1393,7 +1458,12 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Pull placeholder default sz from layout/master so body placeholders
     # without explicit run-level `sz` inherit the right headline size.
     inherited_sz = _layout_placeholder_default_sz(slide, ph_type, ph_idx) if (ph_type or ph_idx) else None
-    runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz)
+    # cap="all" / bold also cascade from the layout/master placeholder style.
+    inherited_caps, inherited_bold = (
+        _layout_placeholder_caps_bold(slide, ph_type, ph_idx) if (ph_type or ph_idx) else (False, False)
+    )
+    runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz,
+                      inherited_caps=inherited_caps, inherited_bold=inherited_bold)
     # G3 — capture text colour the slide run INHERITS rather than states. When a
     # run carries no explicit `<a:rPr><a:solidFill>`, fall back to (a) the shape's
     # `<p:style><a:fontRef>` (decorative styled shapes) then (b) the layout/master
@@ -1450,6 +1520,13 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             right = int(bodyPr.get("rIns") or 91440)
             bottom = int(bodyPr.get("bIns") or 45720)
             padding_emu = (left, top, right, bottom)
+    # Vertical anchor also inherits: a slide title with no own bodyPr anchor still
+    # renders bottom/centre-anchored when the layout/master placeholder bodyPr sets
+    # it (MS Geometric: master title placeholder anchor="b" → titles sit at the box
+    # bottom, not top). Mirror the size / caps / colour inheritance. Feature-2's box
+    # extension correctly skips bottom/middle text, so it won't fight this.
+    if valign is None and (ph_type or ph_idx):
+        valign = _layout_placeholder_anchor(slide, ph_type, ph_idx)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
@@ -2883,10 +2960,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
-    # Backgrounds first (large area). Append stroke / stroke-width / dash /
-    # radius captured from the source PowerPoint shape so framed cards,
-    # rounded rects, and dashed dividers survive the round-trip.
-    for r in sorted(rects, key=lambda s: -(s.w * s.h)):
+    # Preserve SOURCE z-order — `rects` is already in render order (inherited
+    # chrome behind slide content, each layer in spTree order). The previous
+    # area-descending sort wrongly buried a large CONTENT panel beneath a smaller
+    # decorative panel drawn ON TOP of it (MS Geometric: the cream content card
+    # sank under the accent strip, so the whole slide read as the accent colour).
+    # Only a near-full-bleed background rect is still forced to the bottom; a
+    # STABLE sort keeps every other rect in the order PowerPoint draws it.
+    # Stroke / dash / radius are captured so framed cards + dividers round-trip.
+    _canvas_area = max(1, cmap.cw * cmap.ch)
+    for r in sorted(rects, key=lambda s: 0 if (s.w * s.h) >= 0.9 * _canvas_area else 1):
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
         if r.gradient is not None:
             stops, angle = r.gradient
