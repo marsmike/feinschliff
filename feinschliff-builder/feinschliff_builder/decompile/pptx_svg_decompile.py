@@ -568,6 +568,41 @@ def _layout_placeholder_default_sz(slide, ph_type: str | None, ph_idx: str | Non
     return None
 
 
+def _layout_placeholder_caps_bold(slide, ph_type: str | None, ph_idx: str | None) -> tuple[bool, bool]:
+    """Walk slide layout + master for the placeholder's inherited cap/bold.
+
+    Like `_layout_placeholder_default_sz` but for `cap="all"` (all-caps render
+    transform) + `b="1"` (bold). A title whose run states neither still renders
+    UPPERCASE + bold because the master titleStyle/bodyStyle (and sometimes the
+    layout placeholder) defRPr sets them. Returns (caps_all, bold)."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    caps = bold = False
+    # Master title/body style is the cascade base.
+    style_name = {"title": "titleStyle", "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        d = master.element.find(f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:defRPr", NS)
+        if d is not None:
+            if d.get("cap") is not None:
+                caps = d.get("cap") == "all"
+            if d.get("b") is not None:
+                bold = d.get("b") == "1"
+    # The layout's own placeholder defRPr overrides the master.
+    if layout is not None:
+        for sp in layout.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
+                if d is not None:
+                    if d.get("cap") is not None:
+                        caps = d.get("cap") == "all"
+                    if d.get("b") is not None:
+                        bold = d.get("b") == "1"
+    return caps, bold
+
+
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
                               theme: dict[str, str],
                               palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -630,7 +665,8 @@ def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> 
 
 
 def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, tuple[int, int, int]],
-               inherited_default_sz: int | None = None) -> list[TextRun]:
+               inherited_default_sz: int | None = None,
+               inherited_caps: bool = False, inherited_bold: bool = False) -> list[TextRun]:
     runs: list[TextRun] = []
     txBody = node.find(".//p:txBody", NS)
     if txBody is None:
@@ -686,24 +722,31 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
             if t is None or t.text is None:
                 continue
             sz = default_sz
-            bold = False
+            # cap + bold cascade from the master title/body style when the run
+            # states neither (inherited_*); a title whose run carries no `b`/`cap`
+            # still decompiles bold + UPPERCASE, matching the render.
+            bold = inherited_bold
+            caps = inherited_caps
             italic = False
             color = None
             text = t.text
             if rPr is not None:
                 if rPr.get("sz"):
                     sz = int(rPr.get("sz"))
-                bold = rPr.get("b") == "1"
+                if rPr.get("b") is not None:
+                    bold = rPr.get("b") == "1"
                 italic = rPr.get("i") == "1"
                 sf = rPr.find("a:solidFill", NS)
                 if sf is not None:
                     color = _resolve_fill(rPr, theme, palette) or _resolve_solid(sf, theme, palette)
-                # PPTX `cap="all"` is a render-time text-transform: the run's
-                # stored text stays mixed-case but draws uppercase. Bake the
-                # transform into the emitted DSL since downstream layouts
-                # carry the literal text, not a `text-transform` directive.
-                if rPr.get("cap") == "all":
-                    text = text.upper()
+                if rPr.get("cap") is not None:
+                    caps = rPr.get("cap") == "all"
+            # PPTX `cap="all"` is a render-time text-transform: the run's stored
+            # text stays mixed-case but draws uppercase. Bake the transform into
+            # the emitted DSL since downstream layouts carry the literal text,
+            # not a `text-transform` directive.
+            if caps:
+                text = text.upper()
             para_runs.append(TextRun(text=text, pt=sz / 100, bold=bold, italic=italic, color=color, align=para_align))
         if para_runs:
             # Insert a newline marker between paragraphs so emit_dsl can preserve
@@ -1393,7 +1436,12 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # Pull placeholder default sz from layout/master so body placeholders
     # without explicit run-level `sz` inherit the right headline size.
     inherited_sz = _layout_placeholder_default_sz(slide, ph_type, ph_idx) if (ph_type or ph_idx) else None
-    runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz)
+    # cap="all" / bold also cascade from the layout/master placeholder style.
+    inherited_caps, inherited_bold = (
+        _layout_placeholder_caps_bold(slide, ph_type, ph_idx) if (ph_type or ph_idx) else (False, False)
+    )
+    runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz,
+                      inherited_caps=inherited_caps, inherited_bold=inherited_bold)
     # G3 — capture text colour the slide run INHERITS rather than states. When a
     # run carries no explicit `<a:rPr><a:solidFill>`, fall back to (a) the shape's
     # `<p:style><a:fontRef>` (decorative styled shapes) then (b) the layout/master
