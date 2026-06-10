@@ -11,6 +11,7 @@ resolution-markers = [
 [manifest]
 members = [
     "feinbild",
+    "feinblick",
     "feinklang",
     "feinschliff",
     "feinschliff-builder",
@@ -385,6 +386,25 @@ dependencies = [
 requires-dist = [
     { name = "feinschmiede", editable = "feinschmiede" },
     { name = "requests", specifier = ">=2.31" },
+]
+
+[[package]]
+name = "feinblick"
+version = "0.3.0"
+source = { editable = "feinblick" }
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8" },
+    { name = "ruff", specifier = ">=0.6" },
 ]
 
 [[package]]

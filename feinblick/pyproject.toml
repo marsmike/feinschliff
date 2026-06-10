@@ -1,6 +1,6 @@
 [project]
 name = "feinblick"
-version = "0.0.1"
+version = "0.3.0"
 description = "Codebase intelligence CLI for the feinschmiede plugin family — unified Python + Claude-skill findings, an audit gate, and an agent-consumable report."
 requires-python = ">=3.11"
 license = "MIT"

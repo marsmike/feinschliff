@@ -59,6 +59,12 @@ PLUGINS: dict[str, dict] = {
                         "jsonschema", "pyyaml", "rough", "anthropic"],
         "env_tail": "none",
     },
+    "feinblick": {
+        # stdlib-only: the wheelhouse is just our own wheel, no third-party deps.
+        "builds": ["feinblick"],
+        "third_party": [],
+        "env_tail": "none",
+    },
 }
 
 ENV_TAILS = {
@@ -226,15 +232,7 @@ CONSTRAINTS=()
 
 @BUILD_STEPS@
 @CP_STEP@
-
-# Vendor the third-party runtime closure (resolves the full closure for this platform).
-python3 -m pip download "${CONSTRAINTS[@]}" --only-binary=:all: --dest "$STAGE" \
-  @THIRD_PARTY@
-# Pure-python fallback for the one universal binary dep (ABI portability; best-effort).
-python3 -m pip download --no-deps --only-binary=:all: \
-  --implementation py --abi none --platform any --python-version 3 \
-  --dest "$STAGE" charset-normalizer || true
-
+@THIRD_PARTY_BLOCK@
 # Record the interpreter the (ABI-specific) binary wheels target so the bin/
 # launcher pins its venv to a matching Python.
 python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' > "$STAGE/.python-version"
@@ -267,11 +265,23 @@ def render_build_wheels(name: str, spec: dict) -> str:
     build_steps = "\n".join(lines)
     globs = " ".join(f'"$BUILD"/{_wheel_base(d)}-*.whl' for d in builds)
     cp_step = f'cp {globs} "$STAGE"/'
-    third = " ".join(spec["third_party"])
+    third = spec["third_party"]
+    if third:
+        third_block = (
+            "\n# Vendor the third-party runtime closure (resolves the full closure for this platform).\n"
+            'python3 -m pip download "${CONSTRAINTS[@]}" --only-binary=:all: --dest "$STAGE" \\\n'
+            f'  {" ".join(third)}\n'
+            "# Pure-python fallback for the one universal binary dep (ABI portability; best-effort).\n"
+            "python3 -m pip download --no-deps --only-binary=:all: \\\n"
+            "  --implementation py --abi none --platform any --python-version 3 \\\n"
+            '  --dest "$STAGE" charset-normalizer || true\n'
+        )
+    else:
+        third_block = "\n# stdlib-only: no third-party closure to vendor.\n"
     return (BUILD_WHEELS_TMPL
             .replace("@BUILD_STEPS@", build_steps)
             .replace("@CP_STEP@", cp_step)
-            .replace("@THIRD_PARTY@", third)
+            .replace("@THIRD_PARTY_BLOCK@", third_block)
             .replace("@NAME@", name))
 
 
