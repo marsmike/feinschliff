@@ -28,6 +28,7 @@ from pptx import Presentation
 from pptx.dml.color import RGBColor
 from pptx.enum.shapes import MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.dml import MSO_FILL_TYPE, MSO_THEME_COLOR_INDEX
+from pptx.oxml.ns import qn
 
 from feinschmiede.dsl.tokens import STYLE_BUNDLES, Tokens, load_tokens
 
@@ -191,7 +192,76 @@ def _font_color_hex(font) -> str | None:
         return None
 
 
-def _dominant_run_style(shape, color_index: _ColorIndex, style_index: _StyleIndex
+class _PlaceholderSizeIndex:
+    """Resolve a run's EFFECTIVE point size through placeholder inheritance.
+
+    PowerPoint placeholders inherit run properties they don't set explicitly
+    from the slide layout, then the master, then the master's `txStyles`
+    (titleStyle / bodyStyle / otherStyle by placeholder type). A title run
+    with no explicit `sz` therefore carries the size only via that chain —
+    `run.font.size` is None. Resolving it here keeps decompiled titles at
+    their real size instead of a hardcoded fallback.
+    """
+
+    _FALLBACK_PT = 16.0
+
+    def __init__(self, slide):
+        self._layout = slide.slide_layout
+        self._master = self._layout.slide_master
+
+    @staticmethod
+    def _first_defrpr_sz(element) -> int | None:
+        if element is None:
+            return None
+        for dr in element.iter(qn("a:defRPr")):
+            sz = dr.get("sz")
+            if sz:
+                return int(sz)
+        return None
+
+    def _ph_sz(self, part, idx) -> int | None:
+        try:
+            placeholders = part.placeholders
+        except AttributeError:
+            return None
+        for ph in placeholders:
+            if ph.placeholder_format.idx == idx:
+                return self._first_defrpr_sz(ph._element)
+        return None
+
+    @staticmethod
+    def _category(ph_type) -> str:
+        name = str(ph_type)
+        if "TITLE" in name:
+            return "p:titleStyle"
+        if any(k in name for k in ("BODY", "SUBTITLE", "OBJECT", "CONTENT")):
+            return "p:bodyStyle"
+        return "p:otherStyle"
+
+    def _txstyle_sz(self, category: str) -> int | None:
+        tx = self._master.element.find(qn("p:txStyles"))
+        if tx is None:
+            return None
+        return self._first_defrpr_sz(tx.find(qn(category)))
+
+    def size_pt(self, shape, run) -> float:
+        if run.font.size is not None:
+            return float(run.font.size.pt)
+        if not getattr(shape, "is_placeholder", False):
+            return self._FALLBACK_PT
+        idx = shape.placeholder_format.idx
+        for part in (self._layout, self._master):
+            sz = self._ph_sz(part, idx)
+            if sz:
+                return sz / 100.0  # OOXML sz is in hundredths of a point
+        sz = self._txstyle_sz(self._category(shape.placeholder_format.type))
+        if sz:
+            return sz / 100.0
+        return self._FALLBACK_PT
+
+
+def _dominant_run_style(shape, color_index: _ColorIndex, style_index: _StyleIndex,
+                        size_index: "_PlaceholderSizeIndex | None" = None
                        ) -> tuple[str, str | None, str | None]:
     """Walk the shape's text frame, return (style_name, color_role, color_hex).
 
@@ -209,7 +279,10 @@ def _dominant_run_style(shape, color_index: _ColorIndex, style_index: _StyleInde
                 continue
             font = run.font
             family = font.name or ""
-            size_pt = float(font.size.pt) if font.size else 16.0
+            if size_index is not None:
+                size_pt = size_index.size_pt(shape, run)
+            else:
+                size_pt = float(font.size.pt) if font.size else 16.0
             size_px = size_pt / _PX_TO_PT       # 1 pt = 2 design-px
             weight = 700 if font.bold else 400
             color_hex = _font_color_hex(font)
@@ -222,10 +295,12 @@ def _dominant_run_style(shape, color_index: _ColorIndex, style_index: _StyleInde
 
 
 def _emit_text(shape, x: int, y: int, w: int, h: int,
-               color_index: _ColorIndex, style_index: _StyleIndex) -> str | None:
+               color_index: _ColorIndex, style_index: _StyleIndex,
+               size_index: "_PlaceholderSizeIndex | None" = None) -> str | None:
     if not shape.has_text_frame or not shape.text_frame.text.strip():
         return None
-    style_name, color_role, color_hex = _dominant_run_style(shape, color_index, style_index)
+    style_name, color_role, color_hex = _dominant_run_style(
+        shape, color_index, style_index, size_index)
     label = _escape_label(shape.text_frame.text.strip())
     color_attr = ""
     if color_role:
@@ -377,6 +452,7 @@ def decompile_pptx(pptx_path: Path, brand_pack_dir: Path,
             "",
         ]
         _pic_counter = [0]
+        size_index = _PlaceholderSizeIndex(slide)
         for shape in slide.shapes:
             x = _scaled(_px(shape.left), scale)
             y = _scaled(_px(shape.top), scale)
@@ -386,7 +462,8 @@ def decompile_pptx(pptx_path: Path, brand_pack_dir: Path,
                              color_index=color_index, style_index=style_index,
                              assets_dir=assets_dir, slide_idx=slide_idx,
                              pic_idx_ref=lambda inc=False, _c=_pic_counter:
-                                 (_c.__setitem__(0, _c[0] + 1) if inc else _c[0]))
+                                 (_c.__setitem__(0, _c[0] + 1) if inc else _c[0]),
+                             size_index=size_index)
             if line:
                 lines.append(line)
         out = output_dir / f"slide-{slide_idx:02d}.slide.dsl"
@@ -395,7 +472,7 @@ def decompile_pptx(pptx_path: Path, brand_pack_dir: Path,
 
 
 def _emit_one(shape, x, y, w, h, *, color_index, style_index,
-              assets_dir, slide_idx, pic_idx_ref) -> str | None:
+              assets_dir, slide_idx, pic_idx_ref, size_index=None) -> str | None:
     """Dispatch a single shape to the right primitive emitter."""
     stype = shape.shape_type
     if stype == MSO_SHAPE_TYPE.PICTURE:
@@ -415,7 +492,7 @@ def _emit_one(shape, x, y, w, h, *, color_index, style_index,
             line = _emit_one(member, mx, my, mw, mh,
                              color_index=color_index, style_index=style_index,
                              assets_dir=assets_dir, slide_idx=slide_idx,
-                             pic_idx_ref=pic_idx_ref)
+                             pic_idx_ref=pic_idx_ref, size_index=size_index)
             if line:
                 out.append(line)
         return "\n".join(out) if out else None
@@ -424,9 +501,9 @@ def _emit_one(shape, x, y, w, h, *, color_index, style_index,
     has_visual = (_shape_fill_hex(shape) is not None
                   or _shape_stroke(shape)[0] is not None)
     if has_text and not has_visual:
-        return _emit_text(shape, x, y, w, h, color_index, style_index)
+        return _emit_text(shape, x, y, w, h, color_index, style_index, size_index)
     if has_text and has_visual:
         # Both: emit the shape AND the text as two adjacent lines.
         return (_emit_shape(shape, x, y, w, h, color_index)
-                + "\n" + (_emit_text(shape, x, y, w, h, color_index, style_index) or ""))
+                + "\n" + (_emit_text(shape, x, y, w, h, color_index, style_index, size_index) or ""))
     return _emit_shape(shape, x, y, w, h, color_index)
