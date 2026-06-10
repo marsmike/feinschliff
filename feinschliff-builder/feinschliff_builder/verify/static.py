@@ -74,11 +74,6 @@ _OPTIONAL_SLOT_NAMES: frozenset[str] = frozenset({
 })
 
 
-def _bundled_compounds() -> Path:
-    """Return the compounds/ directory shipped inside this plugin."""
-    return Path(__file__).resolve().parents[2] / "compounds"
-
-
 def _resolve_layout_path(plan_dir: Path, layout_rel: str) -> Path | None:
     """Resolve a layout path from the plan directory or discovered layout dirs."""
     from feinschliff.layout_discovery import all_layout_dirs
@@ -253,6 +248,7 @@ def static_verify(
         means clean.  All defects are :attr:`~feinschliff.defects.Severity.WARN`.
     """
     from feinschliff.dsl.parser import parse_file
+    from feinschmiede import compounds_dir
     from feinschmiede.dsl.tokens import load_tokens
     from feinschliff.dsl.expander import load_compounds_for_brand
     from feinschliff.slot_budget import compute_slot_budgets
@@ -272,7 +268,7 @@ def static_verify(
 
     tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=_bundled_compounds()
+        brand_dir, std_dir=compounds_dir()
     )
 
     for i, spec in enumerate(slides_spec):

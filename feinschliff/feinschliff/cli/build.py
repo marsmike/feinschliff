@@ -15,6 +15,7 @@ from pathlib import Path
 import yaml
 
 from feinschliff.dsl.parser import parse_file
+from feinschmiede import compounds_dir
 from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.dsl.expander import load_compounds_for_brand
 from feinschliff.dsl.pptx_emit import build_presentation
@@ -28,13 +29,6 @@ from feinschliff.io.image_provider import discover_providers, get_provider
 def _bundled_assets() -> Path:
     """Return the assets/ directory shipped inside this plugin."""
     return Path(__file__).resolve().parents[1] / "assets"
-
-
-def _bundled_compounds() -> Path:
-    """Return the compounds/ directory shipped inside the feinschmiede engine."""
-    import feinschmiede
-
-    return Path(feinschmiede.__file__).resolve().parent / "compounds"
 
 
 def register(parser: argparse.ArgumentParser) -> None:
@@ -90,7 +84,7 @@ def cmd_build(args) -> int:
 
     tokens = load_tokens(brand_dir)
     compounds = load_compounds_for_brand(
-        brand_dir, std_dir=_bundled_compounds()
+        brand_dir, std_dir=compounds_dir()
     )
 
     layout_nodes, layout_compounds = parse_file(layout_path)
