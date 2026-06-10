@@ -1843,6 +1843,28 @@ def _strip_theme_style(shape) -> None:
         shape._element.remove(el)
 
 
+def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
+    """native <id> b64:"<base64 of a source <p:sp>>"
+
+    Splice a native PPTX shape (complex custGeom chrome) carried verbatim from the
+    source deck, base64-embedded in the DSL so the brand pack is self-contained.
+    The shape stays a real, EDITABLE vector in the output — no rasterisation, no
+    `<p:pic>` "cheat" — preserving corporate-design geometry + colour exactly.
+    """
+    blob = node.kw_args.get("b64")
+    if not blob:
+        return
+    import base64
+    from pptx.oxml import parse_xml
+    try:
+        el = parse_xml(base64.b64decode(blob).decode("utf-8"))
+    except Exception as exc:
+        raise DSLError(
+            f"native shape (line {node.line_no}): unparseable embedded <p:sp> — {exc}"
+        )
+    slide.shapes._spTree.append(el)
+
+
 _EMITTERS = {
     "text":     _emit_text,
     "rect":     _emit_rect,
@@ -1850,6 +1872,7 @@ _EMITTERS = {
     "polyline": _emit_polyline,
     "picture":  _emit_picture,
     "shape":    _emit_shape,
+    "native":   _emit_native,
 }
 
 

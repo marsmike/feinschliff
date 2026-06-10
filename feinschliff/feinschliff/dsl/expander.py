@@ -90,7 +90,7 @@ def _safe_eval(expr: str, ctx: dict) -> float:
     return walk(tree)
 
 
-PRIMITIVES = {"canvas", "theme", "text", "rect", "line", "polyline", "picture", "shape"}
+PRIMITIVES = {"canvas", "theme", "text", "rect", "line", "polyline", "picture", "shape", "native"}
 
 
 # ---------------------------------------------------------------------------

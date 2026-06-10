@@ -51,6 +51,37 @@ def test_emit_pptx_from_document_is_valid_pptx(tmp_path):
     assert zipfile.is_zipfile(out), "Output is not a valid zip file (invalid PPTX)"
 
 
+def test_emit_native_splices_source_shape_as_vector(tmp_path):
+    """A `native` primitive splices a verbatim source <p:sp> into the slide as a
+    real, editable vector — NOT a rasterised picture. This is how complex
+    corporate-design custGeom chrome is preserved exactly without the
+    svg→raster→picture round-trip (which both distorts and is a picture cheat)."""
+    import base64
+    sp_xml = (
+        '<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        '<p:nvSpPr><p:cNvPr id="99" name="NativeTri"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="1000000" y="2000000"/><a:ext cx="3000000" cy="3000000"/></a:xfrm>'
+        '<a:custGeom><a:pathLst><a:path w="100" h="100">'
+        '<a:moveTo><a:pt x="0" y="0"/></a:moveTo>'
+        '<a:lnTo><a:pt x="100" y="0"/></a:lnTo>'
+        '<a:lnTo><a:pt x="50" y="100"/></a:lnTo>'
+        '<a:close/></a:path></a:pathLst></a:custGeom>'
+        '<a:solidFill><a:srgbClr val="EE7660"/></a:solidFill></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>'
+    )
+    b64 = base64.b64encode(sp_xml.encode()).decode()
+    out = tmp_path / "out.pptx"
+    doc = parse_document(f'canvas 1920x1080\nnative shape1 b64:"{b64}"\n')
+    pack = _make_pack(tmp_path)
+    emit_pptx_from_document(doc, pack, out)
+    with zipfile.ZipFile(out) as z:
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    assert "NativeTri" in slide, "carried native shape missing from output slide"
+    assert "custGeom" in slide, "native shape must be a vector custGeom, not rasterised"
+    assert "EE7660" in slide, "native shape colour not preserved verbatim"
+
+
 def test_emit_pptx_from_document_raises_on_empty(tmp_path):
     """A document with no slides must raise ValueError."""
     doc = Document(slides=[])
