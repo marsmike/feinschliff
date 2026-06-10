@@ -19,6 +19,9 @@ class AnalyzeError(RuntimeError):
     """User-facing analyze error (clean message, no traceback)."""
 
 
+PROCESSING_TIMEOUT_SECS = 300.0
+
+
 PROMPT = """Analyze this video in detail and produce a complete .storyboard.md document.
 
 Output EXACTLY this structure — YAML frontmatter first, then scene-by-scene markdown:
@@ -77,18 +80,38 @@ Describe layout in terms of screen zones (top, center, bottom) for a vertical/ho
 This storyboard will be used to recreate the video with Remotion."""
 
 
-def upload_and_wait(path: str, model_name: str):
+def upload_and_wait(path: str, model_name: str,
+                    timeout_s: float = PROCESSING_TIMEOUT_SECS):
     print(f"[1/4] Uploading {path} to Gemini File API...")
-    f = genai.upload_file(path)
+    try:
+        f = genai.upload_file(path)
+    except Exception as exc:
+        raise AnalyzeError(f"Gemini upload failed: {exc}") from exc
     print(f"  Uploaded: {f.name}, state={f.state.name}")
 
-    while f.state.name == "PROCESSING":
-        time.sleep(3)
-        f = genai.get_file(f.name)
-        print(f"  Processing... state={f.state.name}")
+    active = False
+    deadline = time.monotonic() + timeout_s
+    try:
+        while f.state.name == "PROCESSING":
+            if time.monotonic() >= deadline:
+                raise AnalyzeError(
+                    f"Gemini file processing timed out after {timeout_s:.0f}s")
+            time.sleep(3)
+            try:
+                f = genai.get_file(f.name)
+            except Exception as exc:
+                raise AnalyzeError(f"Gemini API: {exc}") from exc
+            print(f"  Processing... state={f.state.name}")
 
-    if f.state.name != "ACTIVE":
-        raise RuntimeError(f"File failed to process: {f.state.name}")
+        if f.state.name != "ACTIVE":
+            raise AnalyzeError(f"Gemini file failed to process: state={f.state.name}")
+        active = True
+    finally:
+        if not active:
+            try:
+                genai.delete_file(f.name)
+            except Exception:
+                pass
 
     print(f"  Ready: {f.uri}")
     return f
@@ -97,13 +120,17 @@ def upload_and_wait(path: str, model_name: str):
 def analyze(file_obj, model_name: str) -> str:
     print(f"[2/4] Analyzing with {model_name}...")
     model = genai.GenerativeModel(model_name)
-    response = model.generate_content(
-        [file_obj, PROMPT],
-        generation_config={"temperature": 0.2, "max_output_tokens": 8192},
-        request_options={"timeout": 300},
-    )
-    print(f"  Done. ~{len(response.text)} chars")
-    return response.text
+    try:
+        response = model.generate_content(
+            [file_obj, PROMPT],
+            generation_config={"temperature": 0.2, "max_output_tokens": 8192},
+            request_options={"timeout": 300},
+        )
+        text = response.text
+    except Exception as exc:
+        raise AnalyzeError(f"Gemini API: {exc}") from exc
+    print(f"  Done. ~{len(text)} chars")
+    return text
 
 
 def extract_frames(video_path: str, storyboard_text: str, frames_dir: Path) -> str:
@@ -161,7 +188,7 @@ def run_analyze(args) -> int:
     )
     frames_dir = out_path.parent / "frames"
 
-    file_obj = upload_and_wait(video_path, args.model)
+    file_obj = upload_and_wait(video_path, args.model, args.processing_timeout)
     try:
         text = analyze(file_obj, args.model)
     finally:
@@ -193,4 +220,6 @@ def add_parser(sub) -> None:
                     help="skip ffmpeg midpoint-frame extraction")
     ap.add_argument("--model", default=os.environ.get("GEMINI_MODEL", "gemini-2.0-flash"),
                     help="Gemini model (default: gemini-2.0-flash)")
+    ap.add_argument("--processing-timeout", type=float, default=PROCESSING_TIMEOUT_SECS,
+                    help="max seconds to wait for Gemini file processing (default: 300)")
     ap.set_defaults(func=run_analyze)

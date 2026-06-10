@@ -51,6 +51,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -266,7 +267,6 @@ def wait_for_banner(session: str, banner: str, timeout: float) -> bool:
         if banner in capture_pane(session):
             return True
         time.sleep(0.5)
-    print(f"  [warn] banner '{banner}' never appeared", file=sys.stderr)
     return False
 
 
@@ -320,24 +320,25 @@ def wait_for_pattern(session: str, pattern: str, timeout: float) -> bool:
         if rx.search(capture_pane(session)):
             return True
         time.sleep(IDLE_POLL_INTERVAL)
-    print(f"  [warn] pattern {pattern!r} never matched", file=sys.stderr)
     return False
 
 
 # ── Session lifecycle ────────────────────────────────────────────────────────
 
-def spawn_session(recipe: Recipe, session: str, cast_path: Path) -> None:
+def spawn_session(recipe: Recipe, session: str, cast_path: Path) -> Path:
     if session_exists(session):
         kill_session(session)
-    wrapper = Path("/tmp/cli-recorder-wrapper.sh")
-    wrapper.write_text(
-        f"#!/bin/sh\nexport TERM=xterm-256color\n"
-        f"exec asciinema rec --overwrite --quiet "
-        f"--idle-time-limit {recipe.idle_time_limit} "
-        f"--title {shlex.quote(recipe.title)} "
-        f"--command {shlex.quote(recipe.command)} "
-        f"{shlex.quote(str(cast_path.resolve()))}\n"
-    )
+    fd, wrapper_name = tempfile.mkstemp(prefix="cli-recorder-wrapper-", suffix=".sh")
+    wrapper = Path(wrapper_name)
+    with os.fdopen(fd, "w") as fh:
+        fh.write(
+            f"#!/bin/sh\nexport TERM=xterm-256color\n"
+            f"exec asciinema rec --overwrite --quiet "
+            f"--idle-time-limit {recipe.idle_time_limit} "
+            f"--title {shlex.quote(recipe.title)} "
+            f"--command {shlex.quote(recipe.command)} "
+            f"{shlex.quote(str(cast_path.resolve()))}\n"
+        )
     wrapper.chmod(0o755)
     start_cmd = f"script -q -c {shlex.quote(str(wrapper))} /dev/null"
     tmux("new-session", "-d", "-s", session,
@@ -345,6 +346,7 @@ def spawn_session(recipe: Recipe, session: str, cast_path: Path) -> None:
          start_cmd)
     tmux("set-option", "-t", session, "status", "off")
     print(f"  [spawn] session '{session}' (recording → {cast_path})")
+    return wrapper
 
 
 def wait_for_session_end(session: str, timeout: float = 45.0) -> bool:
@@ -362,8 +364,8 @@ def run_steps(recipe: Recipe, session: str, dry_run: bool, t_origin: float) -> N
     """Execute each step, recording start_s/end_s relative to t_origin."""
     if not dry_run:
         if not wait_for_banner(session, recipe.wait_for_banner, recipe.banner_timeout):
-            print("  ABORT — banner never appeared", file=sys.stderr)
-            return
+            raise RecorderError(
+                f"banner {recipe.wait_for_banner!r} never appeared within {recipe.banner_timeout}s")
         time.sleep(2.0)  # let prompt initialise
 
     n = len(recipe.steps)
@@ -392,7 +394,9 @@ def run_steps(recipe: Recipe, session: str, dry_run: bool, t_origin: float) -> N
 
         elif step.action == "wait_for_pattern":
             if not dry_run:
-                wait_for_pattern(session, step.pattern or "", step.timeout or 60)
+                if not wait_for_pattern(session, step.pattern or "", step.timeout or 60):
+                    raise RecorderError(
+                        f"step {step.id!r}: pattern {step.pattern!r} never matched within {step.timeout or 60}s")
 
         elif step.action == "pause":
             if not dry_run:
@@ -423,9 +427,17 @@ def graceful_exit_session(recipe: Recipe, session: str, dry_run: bool) -> None:
 # ── Cast post-processing ─────────────────────────────────────────────────────
 
 def postprocess_cast(src: Path, dst: Path, recipe: Recipe) -> tuple[float, float]:
-    """Strip artifacts AND compress idle gaps. Returns (saved_s, final_s)."""
+    """Strip artifacts AND compress idle gaps. Returns (saved_s, final_s).
+
+    Only asciicast v3 carries DELTA timestamps; v2 (asciinema 2.x) writes
+    ABSOLUTE times, which idle compression would silently corrupt.
+    """
     with open(src) as f:
         header = json.loads(f.readline())
+        if header.get("version", 0) < 3:
+            raise RecorderError(
+                f"{src} is asciicast v{header.get('version')} (absolute timestamps) — "
+                f"asciinema >= 3.0 required (cast v3)")
         events = [json.loads(line) for line in f
                   if line.strip() and '\x00' not in line]
 
@@ -589,7 +601,7 @@ def run_record(args) -> int:
             print(f"    {i:>2}. [{s.action:<16}] {s.id:<20} {s.label!r}{extra}")
         return 0
 
-    spawn_session(recipe, session, cast_path)
+    wrapper = spawn_session(recipe, session, cast_path)
     t_origin = time.monotonic()
     try:
         run_steps(recipe, session, args.dry_run, t_origin)
@@ -600,6 +612,7 @@ def run_record(args) -> int:
             if not wait_for_session_end(session, timeout=45.0):
                 time.sleep(3.0)
                 kill_session(session)
+        wrapper.unlink(missing_ok=True)
 
     if not cast_path.exists():
         raise RecorderError(f"cast file was not produced at {cast_path}")

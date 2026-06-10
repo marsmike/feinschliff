@@ -14,7 +14,8 @@ self-contained venv on first run):
   — drive a CLI session in tmux+asciinema from a recipe, emitting a
   post-processed `.cast` + `.scene-index.json` (+ `.gif`/`.mp4`). Recordings
   land in `${CLAUDE_PROJECT_DIR}/.recordings/<name>/`. Needs `tmux`,
-  `asciinema`, and (for rendering) `agg`/`ffmpeg` on PATH.
+  `asciinema` >= 3.0 (post-processing requires asciicast v3 delta
+  timestamps), and (for rendering) `agg`/`ffmpeg` on PATH.
 - `feinschnitt analyze <video> [out.storyboard.md] [--no-frames] [--model M]`
   — reverse-engineer an existing video into a `.storyboard.md` with Gemini.
   Needs `GEMINI_API_KEY` and `ffmpeg`.
