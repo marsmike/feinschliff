@@ -270,6 +270,7 @@ header.site-header {
   padding: 48px 32px 24px;
   border-bottom: 1px solid var(--rule);
 }
+header.site-header .site-mark { display: block; width: 58px; height: 58px; margin: 0 0 16px; }
 header.site-header h1 {
   margin: 0;
   font-size: 36px;
@@ -571,6 +572,14 @@ HEAD = dedent('''\
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>feinschmiede — Brand Pack Gallery</title>
         <meta name="description" content="Visual reference for the 12 feinschmiede brand packs and the 41 slide layouts each brand renders.">
+        <link rel="icon" type="image/svg+xml" href="../feinschmiede-mark.svg">
+        <meta name="theme-color" content="#0B1A33">
+        <meta property="og:type" content="website">
+        <meta property="og:title" content="feinschmiede — Brand Pack Gallery">
+        <meta property="og:description" content="Every feinschmiede brand pack rendered against the full layout catalog.">
+        <meta property="og:url" content="https://marsmike.github.io/feinschmiede/brands/">
+        <meta property="og:image" content="https://marsmike.github.io/feinschmiede/feinschmiede-social.png">
+        <meta name="twitter:card" content="summary_large_image">
 ''')
 
 
@@ -605,6 +614,7 @@ def main() -> int:
 
     body_top = dedent(f'''\
         <header class="site-header">
+            <img class="site-mark" src="../feinschmiede-mark.svg" alt="feinschmiede" width="58" height="58">
             <h1>feinschmiede — Brand Pack Gallery</h1>
             <p>Every feinschmiede brand pack rendered against the full {len(brands[0]["layouts"]) if brands else 0}-layout catalog. {len(brands)} brands × {len(brands[0]["layouts"]) if brands else 0} layouts = {len(brands) * (len(brands[0]["layouts"]) if brands else 0)} slides. Click any thumbnail to open the carousel — arrow keys / on-screen buttons navigate, Esc closes.</p>
         </header>

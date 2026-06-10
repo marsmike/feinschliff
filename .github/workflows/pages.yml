@@ -36,10 +36,16 @@ jobs:
           <!doctype html>
           <meta charset="utf-8">
           <title>feinschmiede brand gallery</title>
+          <link rel="icon" type="image/svg+xml" href="feinschmiede-mark.svg">
+          <meta property="og:title" content="feinschmiede — brand gallery">
+          <meta property="og:image" content="https://marsmike.github.io/feinschmiede/feinschmiede-social.png">
+          <meta name="twitter:card" content="summary_large_image">
           <meta http-equiv="refresh" content="0; url=brands/">
           <link rel="canonical" href="brands/">
           <p>Redirecting to the <a href="brands/">feinschmiede brand gallery</a>…</p>
           HTML
+      - name: Add brand assets to the Pages site
+        run: cp assets/feinschmiede-mark.svg assets/feinschmiede-mark-dark.svg assets/feinschmiede-social.png docs/
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
