@@ -53,6 +53,7 @@ Points lists for polyline/polygon/area are bounded to 2..64 elements.
 """
 from __future__ import annotations
 
+import math
 import re
 import shlex
 from pathlib import Path
@@ -142,6 +143,12 @@ def expand(dsl: str, brand_dir: Path, canvas_override: tuple[int, int] | None = 
             body.append(_emit_area(line, brand_dir, scale=scale))
         elif head == "stacked_bar":
             body.append(_emit_stacked_bar(line, brand_dir))
+        elif head == "pie":
+            body.append(_emit_pie(line, brand_dir))
+        elif head == "barchart":
+            body.append(_emit_barchart(line, brand_dir))
+        elif head == "gantt":
+            body.append(_emit_gantt(line, brand_dir))
         elif head == "brace":
             body.append(_emit_brace(line, brand_dir, scale=scale))
         elif head == "callout":
@@ -574,6 +581,136 @@ def _emit_stacked_bar(line: str, brand_dir: Path) -> str:
                 f'<rect x="{seg_x:.1f}" y="{y}" width="{seg_w:.1f}" height="{h}" fill="{fill}"/>'
             )
             cursor += seg_w
+    return "".join(out)
+
+
+def _emit_pie(line: str, brand_dir: Path) -> str:
+    """Pie chart — wedge angles scale to slice VALUES (honest part-to-whole).
+
+    `pie <id> <cx>,<cy> r:<radius> slices:<v1,token1>;<v2,token2>;...`
+    Wedges start at 12 o'clock and sweep clockwise; values sum-normalise to
+    360 degrees. One <path> per slice, brand-resolved fills.
+    """
+    parts = shlex.split(line)
+    _, _id, xy = parts[:3]
+    cx, cy = _parse_xy(xy)
+    attrs = _attr_dict(parts[3:], allowed={"r", "slices", "stroke"})
+    if "r" not in attrs:
+        raise ValueError(f"svg_expand: pie needs `r:`: {line!r}")
+    if "slices" not in attrs:
+        raise ValueError(f"svg_expand: pie needs `slices:`: {line!r}")
+    r = float(attrs["r"])
+    raw = [s.strip() for s in attrs["slices"].split(";") if s.strip()]
+    slices: list[tuple[float, str]] = []
+    for s in raw:
+        if "," not in s:
+            raise ValueError(f"svg_expand: pie slice '{s}' must be value,token")
+        val_str, token = s.split(",", 1)
+        slices.append((float(val_str), token))
+    total = sum(v for v, _ in slices) or 1.0
+    stroke = resolve(attrs["stroke"], brand_dir) if "stroke" in attrs else None
+    stroke_attr = f' stroke="{stroke}" stroke-width="2"' if stroke else ""
+    out: list[str] = []
+    angle = -90.0  # start at 12 o'clock
+    for val, token in slices:
+        sweep = 360.0 * (val / total)
+        if sweep >= 360.0:  # lone full slice: arc would be degenerate
+            fill = resolve(token, brand_dir)
+            out.append(f'<circle cx="{cx}" cy="{cy}" r="{r:.1f}" fill="{fill}"{stroke_attr}/>')
+            angle += sweep
+            continue
+        a0, a1 = math.radians(angle), math.radians(angle + sweep)
+        x1, y1 = cx + r * math.cos(a0), cy + r * math.sin(a0)
+        x2, y2 = cx + r * math.cos(a1), cy + r * math.sin(a1)
+        large = 1 if sweep > 180.0 else 0
+        fill = resolve(token, brand_dir)
+        d = (
+            f"M {cx},{cy} L {x1:.1f},{y1:.1f} "
+            f"A {r:.1f},{r:.1f} 0 {large},1 {x2:.1f},{y2:.1f} Z"
+        )
+        out.append(f'<path d="{d}" fill="{fill}"{stroke_attr}/>')
+        angle += sweep
+    return "".join(out)
+
+
+def _emit_barchart(line: str, brand_dir: Path) -> str:
+    """Bar chart — bar heights scale to VALUES (honest, not fixed).
+
+    `barchart <id> <x>,<y> <w>x<h> bars:<v1,token1>;<v2,token2>;... [max:<m>] [gap:<px>]`
+    Bars grow up from the bottom edge (y+h), evenly distributed across w.
+    `max` sets the value mapped to full height (default = largest value).
+    """
+    parts = shlex.split(line)
+    _, _id, xy, wh = parts[:4]
+    x, y = _parse_xy(xy)
+    w, h = _parse_wh(wh)
+    attrs = _attr_dict(parts[4:], allowed={"bars", "max", "gap"})
+    if "bars" not in attrs:
+        raise ValueError(f"svg_expand: barchart needs `bars:`: {line!r}")
+    raw = [s.strip() for s in attrs["bars"].split(";") if s.strip()]
+    bars: list[tuple[float, str]] = []
+    for s in raw:
+        if "," not in s:
+            raise ValueError(f"svg_expand: barchart bar '{s}' must be value,token")
+        val_str, token = s.split(",", 1)
+        bars.append((float(val_str), token))
+    vmax = float(attrs["max"]) if "max" in attrs else (max((v for v, _ in bars), default=0.0) or 1.0)
+    n = len(bars) or 1
+    slot = w / n
+    gap = float(attrs["gap"]) if "gap" in attrs else 0.15 * slot
+    bar_w = slot - gap
+    baseline = y + h
+    out: list[str] = []
+    for i, (val, token) in enumerate(bars):
+        bh = (val / vmax) * h if vmax else 0.0
+        bx = x + i * slot + gap / 2
+        by = baseline - bh
+        fill = resolve(token, brand_dir)
+        out.append(
+            f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bar_w:.1f}" height="{bh:.1f}" fill="{fill}"/>'
+        )
+    return "".join(out)
+
+
+def _emit_gantt(line: str, brand_dir: Path) -> str:
+    """Gantt — bar x / width scale to a time SPAN; one track per row index.
+
+    `gantt <id> <x>,<y> <w>x<h> span:<lo>,<hi> bars:<row,start,end,token>;... [gap:<px>]`
+    Row indices are 0-based top-to-bottom; the track count = max(row)+1.
+    """
+    parts = shlex.split(line)
+    _, _id, xy, wh = parts[:4]
+    x, y = _parse_xy(xy)
+    w, h = _parse_wh(wh)
+    attrs = _attr_dict(parts[4:], allowed={"span", "bars", "gap"})
+    if "span" not in attrs or "bars" not in attrs:
+        raise ValueError(f"svg_expand: gantt needs `span:` and `bars:`: {line!r}")
+    lo_s, hi_s = attrs["span"].split(",", 1)
+    lo, hi = float(lo_s), float(hi_s)
+    rng = (hi - lo) or 1.0
+    raw = [s.strip() for s in attrs["bars"].split(";") if s.strip()]
+    tasks: list[tuple[int, float, float, str]] = []
+    maxrow = 0
+    for s in raw:
+        f = [p.strip() for p in s.split(",")]
+        if len(f) != 4:
+            raise ValueError(f"svg_expand: gantt bar '{s}' must be row,start,end,token")
+        row = int(f[0])
+        tasks.append((row, float(f[1]), float(f[2]), f[3]))
+        maxrow = max(maxrow, row)
+    nrows = maxrow + 1
+    rowh = h / nrows
+    gap = float(attrs["gap"]) if "gap" in attrs else 0.25 * rowh
+    out: list[str] = []
+    for row, start, end, token in tasks:
+        bx = x + (start - lo) / rng * w
+        bw = (end - start) / rng * w
+        by = y + row * rowh + gap / 2
+        bh = rowh - gap
+        fill = resolve(token, brand_dir)
+        out.append(
+            f'<rect x="{bx:.1f}" y="{by:.1f}" width="{bw:.1f}" height="{bh:.1f}" fill="{fill}"/>'
+        )
     return "".join(out)
 
 
