@@ -144,7 +144,7 @@ plugin's `brands/` dir plus env/home overrides (`FEINSCHLIFF_BRAND_PATH`,
 across plugin boundaries. The discovery error lists every searched source with
 found/missing markers and the env-var fix.
 
-The public gallery at <https://marsmike.github.io/feinschliff/brands/> renders
+The public gallery at <https://marsmike.github.io/feinschmiede/brands/> renders
 every pack against every layout; see
 [`feinschliff/CLAUDE.md`](CLAUDE.md) for the publish flow.
 

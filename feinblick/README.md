@@ -13,7 +13,7 @@ CLI and never asks callers to reach into its files. Engines are *invoked* (via
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinblick@feinschmiede
 ```
 

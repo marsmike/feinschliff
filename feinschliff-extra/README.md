@@ -1,13 +1,13 @@
 # feinschliff-extra
 
-Ten additional brand packs for [feinschliff](https://github.com/marsmike/feinschliff).
+Ten additional brand packs for [feinschliff](https://github.com/marsmike/feinschmiede).
 No Python, no CLI — just brand tokens and layouts that feinschliff picks up
 automatically once the plugin is installed.
 
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinschliff-extra@feinschmiede
 ```
 

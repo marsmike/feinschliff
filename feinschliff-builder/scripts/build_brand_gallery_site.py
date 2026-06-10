@@ -613,7 +613,7 @@ def main() -> int:
         </nav>
         {sections_html}
         <footer class="site-footer">
-            <p><a href="../">← feinschliff home</a> · Source: <a href="https://github.com/marsmike/feinschliff/tree/main/feinschliff">marsmike/feinschliff</a> · {'Slide previews live in the repo at <code>docs/brand-previews/</code>.' if ASSET_BASE == LOCAL_ASSET_BASE else 'Slide previews hosted on Cloudflare R2 at <code>assets.marsmike.com</code>.'}</p>
+            <p><a href="../">← feinschmiede home</a> · Source: <a href="https://github.com/marsmike/feinschmiede/tree/main/feinschliff">marsmike/feinschmiede</a> · {'Slide previews live in the repo at <code>docs/brand-previews/</code>.' if ASSET_BASE == LOCAL_ASSET_BASE else 'Slide previews hosted on Cloudflare R2 at <code>assets.marsmike.com</code>.'}</p>
         </footer>
     ''')
     # Lightbox markup + script kept as a plain string so JS curly braces

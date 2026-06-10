@@ -57,7 +57,7 @@ def render(findings: list[Finding], verdict: str, health: dict, meta: dict) -> s
                 "tool": {
                     "driver": {
                         "name": "feinblick",
-                        "informationUri": "https://github.com/marsmike/feinschliff",
+                        "informationUri": "https://github.com/marsmike/feinschmiede",
                         "rules": _rules(findings),
                     }
                 },

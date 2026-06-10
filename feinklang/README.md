@@ -14,7 +14,7 @@ Requires `ELEVENLABS_API_KEY` (export or a line in `~/.env`). Default voice:
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinklang@feinschmiede
 ```
 

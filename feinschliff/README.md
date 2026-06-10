@@ -3,12 +3,12 @@
 > *Feinschliff* — German for "fine polish." Brand-pluggable design system that
 > builds `.pptx` decks from a DSL and per-brand tokens.
 
-[Browse the brand gallery](https://marsmike.github.io/feinschliff/brands/) — every brand pack rendered against every layout.
+[Browse the brand gallery](https://marsmike.github.io/feinschmiede/brands/) — every brand pack rendered against every layout.
 
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff
+/plugin marketplace add marsmike/feinschmiede
 ```
 
 ## What it does
@@ -54,11 +54,11 @@ feinschliff build layouts/quote.slide.dsl \
 
 Additional brands are available as separate plugins:
 
-- **[feinschliff-extra](https://github.com/marsmike/feinschliff)** — 10 more brand packs
+- **[feinschliff-extra](https://github.com/marsmike/feinschmiede)** — 10 more brand packs
   (terminal palettes, light/dark themes, bold corporate looks).
-- **[feinschliff-builder](https://github.com/marsmike/feinschliff)** — authoring toolkit
+- **[feinschliff-builder](https://github.com/marsmike/feinschmiede)** — authoring toolkit
   to compile HTML to DSL, decompile existing PPTX files, and verify brand quality.
-- **[feinbild](https://github.com/marsmike/feinschliff)** — image & 2D: AI images
+- **[feinbild](https://github.com/marsmike/feinschmiede)** — image & 2D: AI images
   (Replicate / Gemini), SVG, and Excalidraw diagrams (`/imagine`, `/svg`, `/excalidraw`
   moved here from feinschliff).
 
