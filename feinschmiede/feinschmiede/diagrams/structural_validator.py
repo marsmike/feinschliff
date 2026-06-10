@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import json
 import re
+import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -450,8 +451,7 @@ def validate_svg_structure(svg_text: str) -> list[Defect]:
     bbox lies partly outside the declared viewBox / width × height won't
     render where the author thinks it will."""
     try:
-        from lxml import etree
-        root = etree.fromstring(svg_text.encode("utf-8") if isinstance(svg_text, str) else svg_text)
+        root = ET.fromstring(svg_text)
     except Exception as exc:
         # Mark as invalid-file; caller decides whether to fail.
         return [Defect(
