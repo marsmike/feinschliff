@@ -130,11 +130,28 @@ def test_all_semantic_names_resolve_for_every_brand(brand_name):
 from feinschmiede.diagrams.brand_bridge import resolve_brand_dir
 
 
-def test_brand_resolution_directive_wins(monkeypatch):
+def test_brand_resolution_cli_flag_wins_over_directive(monkeypatch):
+    """An explicit --brand flag overrides an authored @brand directive.
+
+    The flag is the invocation-time override; the directive is a default
+    baked into the DSL. This matches feinbild's `--brand` help ("Brand
+    override (else @brand directive / FEINSCHLIFF_BRAND / default)").
+    """
     monkeypatch.setenv("FEINSCHLIFF_BRAND", "nord")
     out = resolve_brand_dir(
         directive="catppuccin-macchiato",
         cli_flag="gruvbox-dark",
+        deck_context="feinschliff",
+    )
+    assert out.name == "gruvbox-dark"
+
+
+def test_brand_resolution_directive_wins_over_env(monkeypatch):
+    """With no --brand flag, the @brand directive beats the env var."""
+    monkeypatch.setenv("FEINSCHLIFF_BRAND", "nord")
+    out = resolve_brand_dir(
+        directive="catppuccin-macchiato",
+        cli_flag=None,
         deck_context="feinschliff",
     )
     assert out.name == "catppuccin-macchiato"
@@ -168,6 +185,20 @@ def test_brand_resolution_default_to_feinschliff(monkeypatch):
         deck_context=None,
     )
     assert out.name == "feinschliff"
+
+
+def test_unknown_brand_preserves_find_brand_diagnostic(monkeypatch):
+    """An unknown brand surfaces find_brand's actionable diagnostic, not a
+    bare "not found" — the message must name the available brands and the
+    searched paths so the user knows how to fix it.
+    """
+    monkeypatch.delenv("FEINSCHLIFF_BRAND", raising=False)
+    with pytest.raises(FileNotFoundError) as excinfo:
+        resolve_brand_dir(directive=None, cli_flag="no-such-brand-xyz")
+    msg = str(excinfo.value)
+    assert "no-such-brand-xyz" in msg
+    assert "available brands:" in msg
+    assert "searched paths:" in msg
 
 
 # ---------------------------------------------------------------------------
