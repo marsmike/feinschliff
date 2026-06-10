@@ -1,21 +1,21 @@
 <p align="center">
-  <img src="feinschliff/brands/feinschliff/assets/gem.svg" alt="Feinschliff gem mark" width="120">
+  <img src="feinschliff/brands/feinschliff/assets/gem.svg" alt="feinschmiede gem mark" width="120">
 </p>
 
 <h1 align="center">feinschmiede</h1>
 
 <p align="center">
   <strong>A family of branded media plugins for Claude Code</strong><br>
-  Decks, images & 2D, video, audio, and codebase intelligence — coupled by CLI
-  capabilities, never file paths, over one shared engine.
+  Decks, images & 2D, video, audio, and codebase intelligence — independent
+  plugins coupled by CLI capabilities, never file paths, over one shared engine.
 </p>
 
-[![CI](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschliff/actions/workflows/ci.yml)
-[![Pages](https://github.com/marsmike/feinschliff/actions/workflows/pages.yml/badge.svg)](https://marsmike.github.io/feinschliff/)
+[![CI](https://github.com/marsmike/feinschmiede/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschmiede/actions/workflows/ci.yml)
+[![Pages](https://github.com/marsmike/feinschmiede/actions/workflows/pages.yml/badge.svg)](https://marsmike.github.io/feinschmiede/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-plugin%20marketplace-orange)](https://docs.claude.com/claude-code)
 
-[Browse the brand gallery](https://marsmike.github.io/feinschliff/brands/) — every brand pack rendered against every layout.
+[Browse the brand gallery](https://marsmike.github.io/feinschmiede/brands/) — every brand pack rendered against every layout.
 
 ## Plugins
 
@@ -23,7 +23,7 @@ This repo is a single Claude Code marketplace named **`feinschmiede`**. Install
 the marketplace once, then install only the plugins you need.
 
 ```bash
-/plugin marketplace add marsmike/feinschliff
+/plugin marketplace add marsmike/feinschmiede
 /plugin install feinschliff@feinschmiede
 ```
 
@@ -45,7 +45,7 @@ optional add-ons for more brands and for authoring your own brand pack.
 ## Quick start
 
 ```bash
-/plugin marketplace add marsmike/feinschliff
+/plugin marketplace add marsmike/feinschmiede
 /plugin install feinschliff@feinschmiede
 /deck "Q1 update: 12 launches, 3 customers, $4.2M ARR"
 ```

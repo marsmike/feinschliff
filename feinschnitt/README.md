@@ -8,7 +8,7 @@ storyboard images via `feinbild imagine`, voiceover via `feinklang tts`.
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinschnitt@feinschmiede
 ```
 

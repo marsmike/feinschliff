@@ -1,6 +1,6 @@
 # feinschliff-builder
 
-Brand-pack authoring toolkit for [feinschliff](https://github.com/marsmike/feinschliff).
+Brand-pack authoring toolkit for [feinschliff](https://github.com/marsmike/feinschmiede).
 Compile HTML to DSL, verify deck quality, decompile existing PPTX files, and
 iterate brand packs with an AI-assisted verify loop.
 
@@ -9,7 +9,7 @@ iterate brand packs with an AI-assisted verify loop.
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinschliff@feinschmiede        # required dependency
 /plugin install feinschliff-builder@feinschmiede
 ```

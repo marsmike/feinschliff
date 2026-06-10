@@ -957,7 +957,7 @@ class TestArraySlotApply:
 class TestArraySlotOverflowAlwaysShortens:
     """plan_fixes SLOT_OVERFLOW on array-indexed paths → shorten_slot, never swap.
 
-    Regression guard for: https://github.com/marsmike/feinschliff/issues/N
+    Regression guard for: https://github.com/marsmike/feinschmiede/issues/N
     Before the fix, 'kpis[0].unit' with content 5× over budget triggered
     swap_layout_larger, orphaning the entire kpis[] array into a layout that
     doesn't render it.  The fix: is_array_slot = '[' in slot → always shorten.

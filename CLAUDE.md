@@ -103,7 +103,7 @@ without hunting across `/tmp` or `~/Downloads`.
 
 ## Brand-gallery publish flow
 
-The gallery at `https://marsmike.github.io/feinschliff/brands/` is the
+The gallery at `https://marsmike.github.io/feinschmiede/brands/` is the
 public face of the brand-pack work. Update path:
 
 The brand-gallery scripts live in `feinschliff-builder/scripts/` (the authoring

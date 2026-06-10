@@ -24,6 +24,6 @@ with `./build-wheels.sh`.
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin marketplace add marsmike/feinschmiede   # once per machine
 /plugin install feinbild@feinschmiede
 ```
