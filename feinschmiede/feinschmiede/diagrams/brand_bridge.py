@@ -277,21 +277,28 @@ def resolve_brand_dir(
 ) -> Path:
     """Pick the active brand directory by precedence:
 
-      1. DSL @brand directive
-      2. CLI --brand flag
+      1. CLI --brand flag
+      2. DSL @brand directive
       3. FEINSCHLIFF_BRAND env var
       4. /deck build context
       5. default 'feinschliff'
+
+    The explicit --brand flag outranks an authored @brand directive: the
+    directive is a default baked into the DSL, the flag is the caller's
+    invocation-time override.
 
     Returns a Path that may or may not exist — callers (e.g. resolve())
     can decide how to handle missing brand dirs.
     """
     env = os.environ.get("FEINSCHLIFF_BRAND")
-    chosen = directive or cli_flag or env or deck_context or "feinschliff"
+    chosen = cli_flag or directive or env or deck_context or "feinschliff"
     if brands_root is not None:
         return brands_root / chosen
     from feinschmiede.brand_discovery import find_brand as _find_brand
     try:
         return _find_brand(chosen).root
-    except ValueError:
-        raise FileNotFoundError(f"Brand {chosen!r} not found in any discovery source")
+    except ValueError as exc:
+        # Preserve find_brand's actionable diagnostic (available brands +
+        # every searched path + the FEINSCHLIFF_BRAND_PATH hint) rather than
+        # collapsing it to a bare "not found" — callers surface str(exc).
+        raise FileNotFoundError(str(exc)) from exc
