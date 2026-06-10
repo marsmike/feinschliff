@@ -33,6 +33,18 @@ def main(argv: list[str] | None = None) -> int:
     verify_quality_cmd.register(sub.add_parser("verify-quality", help="LLM quality rubric"))
     verify_diagram_cmd.register(sub.add_parser("verify-diagram", help="Validate diagram DSL files"))
 
+    # The office `deck` advanced subcommands (storyline, wireframe, polish, book,
+    # strict-static/autofix, …) are built on this package. Re-expose office's own
+    # deck parser here so a `feinschliff deck …` call can delegate to
+    # `feinschliff-builder deck …` (this venv bundles office + builder, so the
+    # inline path resolves). Optional: skip cleanly if office isn't importable.
+    try:
+        from feinschliff.cli import deck as office_deck
+        office_deck.register(sub.add_parser(
+            "deck", help="Office deck pipeline (builder-backed advanced features)"))
+    except ImportError:
+        pass
+
     args = parser.parse_args(argv)
     rc = args.func(args)
     if argv is None:

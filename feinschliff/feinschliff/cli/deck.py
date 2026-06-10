@@ -86,16 +86,45 @@ except ImportError:
 from feinschliff.pipeline_log import log_event
 
 
-def _require_builder(feature: str) -> None:
-    """Raise SystemExit with a helpful message if feinschliff-builder isn't installed."""
+def _require_or_delegate_builder(feature: str) -> None:
+    """Ensure a builder-backed deck subcommand can run.
+
+    The advanced deck features (storyline, wireframe, polish, book,
+    strict-static/autofix, …) are implemented on top of the
+    ``feinschliff_builder`` package. Under the per-plugin launcher model the
+    office venv does *not* contain that package — only the builder plugin's own
+    venv does (it bundles office + engine + builder). So:
+
+      * dev / builder venv — ``import feinschliff_builder`` succeeds → run inline
+        (unchanged behaviour, the path every test exercises).
+      * office-only venv with the builder plugin installed — re-exec the same
+        command through the ``feinschliff-builder`` CLI (a capability call, the
+        family's coupling rule), which has the package importable.
+      * neither — exit 2 with an accurate install hint.
+    """
     try:
         import feinschliff_builder  # noqa: F401
-    except ImportError as e:
-        sys.stderr.write(
-            f"error: '{feature}' requires the feinschliff-builder plugin.\n"
-            f"  Install it with: uv add feinschliff-builder  (or via Claude Code marketplace)\n"
-        )
-        raise SystemExit(2) from e
+        return
+    except ImportError:
+        pass
+
+    import shutil
+    builder_cli = shutil.which("feinschliff-builder")
+    if builder_cli:
+        # `feinschliff deck <args>` → `feinschliff-builder deck <args>`; the
+        # builder CLI re-registers this exact deck parser in a venv where
+        # feinschliff_builder imports, so the inline path runs there. execv
+        # replaces this process and never returns (the return is for testability).
+        os.execv(builder_cli, [builder_cli, *sys.argv[1:]])
+        return
+
+    sys.stderr.write(
+        f"error: '{feature}' is an advanced deck feature provided by the "
+        f"feinschliff-builder plugin.\n"
+        f"  Install it with: /plugin install feinschliff-builder@feinschmiede\n"
+        f"  (or `uv pip install feinschliff-builder` in a dev checkout).\n"
+    )
+    raise SystemExit(2)
 
 
 def _bundled_assets() -> Path:
@@ -499,7 +528,7 @@ def cmd_build(args) -> int:
 
     # ── Pre-render static geometry verify (--strict-static) ──────────────
     if getattr(args, "strict_static", False):
-        _require_builder("deck build --strict-static")
+        _require_or_delegate_builder("deck build --strict-static")
         from feinschliff_builder.verify.static import validate as _validate_static
         _static_bag = _validate_static(
             plan, brand=default_brand_obj, plan_dir=plan_path.parent
@@ -522,7 +551,7 @@ def cmd_build(args) -> int:
 
     # ── Auto-fix loop (--autofix) ─────────────────────────────────────────
     if getattr(args, "autofix", False):
-        _require_builder("deck build --autofix")
+        _require_or_delegate_builder("deck build --autofix")
         from feinschliff_builder.verify.static import validate as _validate_static_af
         from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary
 
@@ -791,7 +820,7 @@ def _build_primitives_for_layout(
 
 
 def cmd_wireframe(args) -> int:
-    _require_builder("deck wireframe")
+    _require_or_delegate_builder("deck wireframe")
     from feinschliff_builder.decompile.wireframe import render_wireframe
 
     layout_path = Path(args.layout).resolve()
@@ -850,7 +879,7 @@ def cmd_wireframe(args) -> int:
 
 
 def cmd_wireframe_sheet(args) -> int:
-    _require_builder("deck wireframe-sheet")
+    _require_or_delegate_builder("deck wireframe-sheet")
     from feinschliff_builder.decompile.wireframe import render_wireframe_sheet
 
     plan_path = Path(args.plan).resolve()
@@ -972,7 +1001,7 @@ def cmd_polish(args) -> int:
     --refurbish-all is the only interactive-mode variant implemented here;
     interactive per-slide confirmation is not yet wired.
     """
-    _require_builder("deck polish")
+    _require_or_delegate_builder("deck polish")
     import shutil
 
     from pathlib import Path as _Path
@@ -1130,7 +1159,7 @@ def cmd_book(args) -> int:
     notes come from the plan's per-slide `notes:` field (preferred);
     when absent, the brief's per-slide `notes` is used as fallback.
     """
-    _require_builder("deck book")
+    _require_or_delegate_builder("deck book")
     import json as _json
     import tempfile as _tempfile
 
@@ -1217,7 +1246,7 @@ def cmd_book(args) -> int:
 
 
 def cmd_storyline(args) -> int:
-    _require_builder("deck storyline")
+    _require_or_delegate_builder("deck storyline")
     plan_path = Path(args.plan).resolve()
     out_path = Path(args.output).resolve()
     try:
@@ -1245,7 +1274,7 @@ def cmd_claim_evidence(args) -> int:
     - 1: dirty (at least one slide has a claim-evidence defect)
     - 2: plumbing error (plan not found, parse failure, etc.)
     """
-    _require_builder("deck claim-evidence")
+    _require_or_delegate_builder("deck claim-evidence")
     plan_path = Path(args.plan).resolve()
     out_path = Path(args.output).resolve()
 
@@ -1501,7 +1530,7 @@ def cmd_verify_aspect(args) -> int:
         # Pair the deck's red_line against each slide's (claim, notes).
         # The orchestrator LLM judges whether the spoken delivery tracks
         # the arc: drift / contradiction / off-arc tangents → dirty.
-        _require_builder("deck verify-aspect notes-coherence")
+        _require_or_delegate_builder("deck verify-aspect notes-coherence")
         from feinschliff_builder.verify.deck.notes_coherence import (
             SlideForCoherence,
             render_contact_sheet as _render_notes_sheet,
@@ -1665,7 +1694,7 @@ def cmd_verify_static(args) -> int:
       1 — one or more defects found
       2 — plumbing error (plan not found, brand resolution failure, etc.)
     """
-    _require_builder("deck verify-static")
+    _require_or_delegate_builder("deck verify-static")
     import json as _json
     from feinschliff_builder.verify.static import validate as _validate_static
 
@@ -1742,7 +1771,7 @@ def cmd_apply_fixes(args) -> int:
           OR no defects at all)
       2 — plumbing error
     """
-    _require_builder("deck apply-fixes")
+    _require_or_delegate_builder("deck apply-fixes")
     import json as _json
     from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary
     from feinschliff.defects import Defect, DefectKind, Severity
