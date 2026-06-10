@@ -258,47 +258,73 @@ def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, 
 _NEAREST_TOKEN_THRESHOLD_SQ = 1875
 
 
+_THEME_RELTYPE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme"
+
+
+def master_theme_blob(pres: Presentation) -> bytes | None:
+    """Raw XML of the theme part the deck's primary slide master references.
+
+    PowerPoint numbers theme parts PER-MASTER, so the active theme is often NOT
+    `theme1.xml` (a deck whose master is `slideMaster11` references
+    `theme11.xml`). Resolving via the master→theme relationship — instead of a
+    hardcoded part name — is what lets schemeClr fills/strokes, the background
+    panel, and font capture work on real corporate templates.
+    """
+    try:
+        for master in pres.slide_masters:
+            for rel in master.part.rels.values():
+                if rel.reltype == _THEME_RELTYPE:
+                    return rel.target_part.blob
+    except Exception:
+        pass
+    return None
+
+
 def load_theme_scheme(pres: Presentation) -> dict[str, str]:
     """Map theme scheme keys (accent1..6, dk1, lt1, hlink, folHlink) to #RRGGBB.
 
-    Falls back to empty dict if theme can't be reached.
+    Resolves the theme part the slide master actually references (not a
+    hardcoded `theme1.xml`); falls back to any theme part, then empty dict.
     """
     out: dict[str, str] = {}
-    # Direct XML approach: locate ppt/theme/theme1.xml inside the zip.
-    try:
-        import zipfile
-        with zipfile.ZipFile(pres.part.package._path_to_part_for_uri) as _:
-            pass
-    except Exception:
-        pass
-    # Simpler: pres.part.package iter_parts for theme parts
-    try:
-        for part in pres.part.package.iter_parts():
-            if part.partname.endswith("theme1.xml"):
-                root = etree.fromstring(part.blob)
-                scheme = root.find(".//a:clrScheme", NS)
-                if scheme is None:
-                    continue
-                for child in scheme:
-                    key = etree.QName(child).localname  # dk1, lt1, accent1, ...
-                    srgb = child.find("a:srgbClr", NS)
-                    sys_ = child.find("a:sysClr", NS)
-                    if srgb is not None:
-                        out[key] = "#" + srgb.get("val").upper()
-                    elif sys_ is not None:
-                        out[key] = "#" + (sys_.get("lastClr") or "000000").upper()
-                # PowerPoint default clrMap aliases — these slots are
-                # always present and resolve to the matching scheme entry.
-                # Without them, a shape fill of `schemeClr val="bg2"` (used
-                # widely in corporate templates that put the slide bg in a
-                # layout rect rather than `<p:bg>`) falls through unmapped.
-                for alias, real in (("bg1", "lt1"), ("bg2", "lt2"),
-                                    ("tx1", "dk1"), ("tx2", "dk2")):
-                    if alias not in out and real in out:
-                        out[alias] = out[real]
-                break
-    except Exception:
-        pass
+    blobs: list[bytes] = []
+    primary = master_theme_blob(pres)
+    if primary is not None:
+        blobs.append(primary)
+    else:
+        # Fallback: any theme part in the package (legacy behaviour).
+        try:
+            blobs = [p.blob for p in pres.part.package.iter_parts()
+                     if "/theme/theme" in str(p.partname)]
+        except Exception:
+            blobs = []
+    for blob in blobs:
+        try:
+            root = etree.fromstring(blob)
+        except Exception:
+            continue
+        scheme = root.find(".//a:clrScheme", NS)
+        if scheme is None:
+            continue
+        for child in scheme:
+            key = etree.QName(child).localname  # dk1, lt1, accent1, ...
+            srgb = child.find("a:srgbClr", NS)
+            sys_ = child.find("a:sysClr", NS)
+            if srgb is not None:
+                out[key] = "#" + srgb.get("val").upper()
+            elif sys_ is not None:
+                out[key] = "#" + (sys_.get("lastClr") or "000000").upper()
+        # PowerPoint default clrMap aliases — these slots are always present
+        # and resolve to the matching scheme entry. Without them, a shape fill
+        # of `schemeClr val="bg2"` (used widely in corporate templates that put
+        # the slide bg in a layout rect rather than `<p:bg>`) falls through
+        # unmapped.
+        for alias, real in (("bg1", "lt1"), ("bg2", "lt2"),
+                            ("tx1", "dk1"), ("tx2", "dk2")):
+            if alias not in out and real in out:
+                out[alias] = out[real]
+        if out:
+            break
     return out
 
 
@@ -1151,14 +1177,15 @@ def extract_slide_bg_fill(slide, theme: dict[str, str],
                           palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Return the slide's background solid-fill colour as a token / hex.
 
-    Walks the inheritance chain: slide → layout → master. Each level can
-    carry an explicit `<p:cSld><p:bg>` (solidFill or bgRef→theme); the
-    first one found wins. Without the layout/master fallback, decks whose
-    slides have empty bg (the common case for branded corporate templates)
-    would render with the brand default paper colour even when the master
-    declares a solid yellow / navy background.
+    Walks slide → LAYOUT only (NOT the master). A layout that wants a
+    full-bleed colour sets its own `<p:cSld><p:bg>` (kept here — e.g. a
+    timeline layout's yellow, a divider's navy). The MASTER-level bg is
+    deliberately ignored: corporate light templates carry a dark master bg
+    that the layout visually overrides with a white layer / colour panel, so
+    emitting it as a full-canvas rect paints every white content slide black
+    (a ~97% regression). solidFill or bgRef→theme; first level found wins.
     """
-    for src in [slide, *_layout_master_chain(slide)]:
+    for src in [slide, *_layout_master_chain(slide)[:1]]:
         bg = src.element.find(".//p:cSld/p:bg", NS)
         if bg is None:
             continue

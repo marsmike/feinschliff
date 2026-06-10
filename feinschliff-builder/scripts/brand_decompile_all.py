@@ -105,17 +105,19 @@ def main() -> int:
     slide_block["height_emu"] = {"$value": str(src_h_emu),
                                  "$description": "Source PPTX slide height in EMU — drives emitter scaling."}
 
-    # Detect source theme fonts (majorFont = display/title, minorFont = body)
-    # and write them as the brand's font-family tokens. Without this the
-    # emit falls back to the parent brand's font (typically Noto Sans for
-    # feinschliff), which has heavier strokes than e.g. Calibri — visible
-    # as systematic bold-weight mismatch in the redline even when source
-    # and render share the SAME pt + weight.
+    # Detect the source theme's fonts (majorFont = display/title, minorFont =
+    # body) AND its colour scheme, and seed both into tokens.json. The theme
+    # part is resolved from the master relationship (decks number themes
+    # per-master — a hardcoded `theme1.xml` silently misses decks whose master
+    # uses `theme11.xml`, skipping font + colour capture entirely). Capturing
+    # the palette here is what lets schemeClr fills (e.g. the bg panel) and
+    # strokes reverse-map to tokens instead of being dropped. Existing tokens
+    # are never overwritten — the author's semantic names win.
     import re as _re
-    import zipfile as _zf
-    try:
-        with _zf.ZipFile(str(source_pptx)) as _z:
-            theme_xml = _z.read("ppt/theme/theme1.xml").decode("utf-8")
+    from feinschliff_builder.decompile.pptx_svg_decompile import master_theme_blob
+    theme_blob = master_theme_blob(src_pres)
+    if theme_blob:
+        theme_xml = theme_blob.decode("utf-8", "replace")
         majors = _re.findall(r'<a:majorFont>.*?<a:latin[^/]+typeface="([^"]+)"', theme_xml, _re.DOTALL)
         minors = _re.findall(r'<a:minorFont>.*?<a:latin[^/]+typeface="([^"]+)"', theme_xml, _re.DOTALL)
         display_font = majors[0] if majors else None
@@ -129,8 +131,40 @@ def main() -> int:
                 ff_block["body"] = {"$value": [body_font, "Helvetica Neue", "Arial", "sans-serif"],
                                     "$description": f"Source theme minorFont: {body_font}"}
             print(f"  source fonts: display={display_font!r} body={body_font!r} → tokens.json font-family")
-    except (KeyError, _zf.BadZipFile, IndexError):
-        pass
+
+        # Theme colour scheme → seed missing colour tokens (F7 — brand-design
+        # capture is core). `theme-*` keys make every schemeClr the decompiler
+        # meets reverse-mappable; ink/black/paper/white get safe defaults for a
+        # fresh pack. setdefault semantics: an author palette is never clobbered.
+        scheme: dict[str, str] = {}
+        for m in _re.finditer(r'<a:(dk1|lt1|dk2|lt2|accent[1-6]|hlink|folHlink)>(.*?)</a:\1>',
+                              theme_xml, _re.DOTALL):
+            hm = (_re.search(r'srgbClr val="([0-9A-Fa-f]{6})"', m.group(2))
+                  or _re.search(r'lastClr="([0-9A-Fa-f]{6})"', m.group(2)))
+            if hm:
+                scheme[m.group(1)] = "#" + hm.group(1).upper()
+        if scheme:
+            color_block = tokens_data.setdefault("color", {"$type": "color"})
+
+            def _seed(name: str, hexval: str | None, desc: str | None = None) -> bool:
+                if hexval and name not in color_block:
+                    entry = {"$value": hexval}
+                    if desc:
+                        entry["$description"] = desc
+                    color_block[name] = entry
+                    return True
+                return False
+
+            seeded = 0
+            for k, v in scheme.items():
+                seeded += _seed(f"theme-{k}", v, f"Source theme {k}.")
+            seeded += _seed("ink", scheme.get("dk1"), "Body/title ink — source theme dk1.")
+            seeded += _seed("black", scheme.get("dk1"), "Display / deepest — source theme dk1.")
+            seeded += _seed("paper", scheme.get("lt1"), "Canvas on light — source theme lt1.")
+            seeded += _seed("white", scheme.get("lt1"))
+            if seeded:
+                print(f"  source palette: {len(scheme)} theme colours → tokens.json color "
+                      f"({seeded} keys seeded; existing tokens kept)")
 
     if args.dry_run:
         print(f"  would record slide size {src_w_emu} × {src_h_emu} EMU → {tokens_path}")
