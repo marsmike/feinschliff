@@ -4,10 +4,12 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+- **feinblick (codebase-intelligence plugin).** New standalone, stdlib-only plugin: unified Python + Claude-skill findings, an audit gate, and an agent-consumable report via the `feinblick` CLI.
 - **feinschnitt (video plugin).** Extracted the `remotion` + `cli-recorder` skills out of `feinschliff` into a new full-family `feinschnitt` plugin (bin/ launcher + `feinschnitt record`/`analyze` CLI over a bundled-wheel venv). Voiceover now calls the bare `feinklang tts` CLI; storyboard images call `feinbild imagine`. `plugin.json dependencies: [feinbild, feinklang]`. Recordings land in `${CLAUDE_PROJECT_DIR}/.recordings/`.
 - **Audio consolidated into feinklang.** Retired `feinschliff`'s legacy ElevenLabs `/tts` skill (`skills/elevenlabs` + `commands/tts.md`) — its `tts.sh`/`voices.sh` shell scripts and JSON-param docs are fully superseded by the canonical `feinklang` CLI (`feinklang tts` / `feinklang voices`). Audio is now exclusively feinklang's domain.
+- **Suite-wide design review hardening.** Engine: SVG validation no longer needs lxml (stdlib ElementTree), token loading unified through one loader, accurate libcairo-vs-Playwright render errors. Distribution: every plugin's `bin/` launcher + `build-wheels.sh` are generated from one manifest (`scripts/gen_launchers.py`) with a fixed update-detection content signature, atomic wheelhouse assembly, and lock-pinned (`constraints.txt`) installs; feinklang/feinschnitt/feinblick joined the uv workspace; all Python packages aligned to one version. Office↔builder: advanced `deck` subcommands delegate to the `feinschliff-builder` CLI instead of a cross-venv import. CI now covers every package, the production render path, and the wheel-install path; skill docs use the bare-CLI contract. Marketplace de-lists the Phase-0 `feinklang-consumer` smoke test.
 
-## [0.3.0] - 2026-05-19
+## [0.2.0] - 2026-05-21
 
 ### Added
 - **Deck-wide layout budget planning** (`feinschliff/lib/layout_budget.py`) — `feinschliff deck plan-skeleton` now runs a second pass on top of `lib.layout_picker` that re-ranks per-slide candidates with a usage-budget bonus (+1.5 for a never-used layout, +0.75 after one use, +0.5 after two, etc.). Eligible-but-overlooked layouts (`vertical-bullets`, `pyramid`, `funnel`, `four-column-cards`, …) now surface across long decks instead of the same two or three winners repeating. The bonus is calibrated below the role-match weight (+3), so a strong affinity match still wins on the first use; coverage only kicks in among co-eligible candidates. Singleton layouts (`agenda`, `end`, `full-bleed-cover`) are exempt. Each skeleton slide records the picker + budget rationale under `_meta.layout_rationale` for debugging. Smoke test on a 17-slide mixed deck went from ~7 distinct layouts (baseline) to 15. Covered by `tests/test_layout_budget.py` (14 tests pinning both halves of the contract: spreads usage across co-eligible layouts; never overrides a strong affinity match like a `risk-matrix` fingerprint).
@@ -74,6 +76,6 @@ All notable changes to this project will be documented here. Format follows [Kee
 - Marketplace skeleton: LICENSE (MIT), NOTICE, CONTRIBUTING (DCO), CODE_OF_CONDUCT, SECURITY.
 - GitHub: 12 topics, branch protection, issue/PR templates, DCO check, CI workflow.
 
-[Unreleased]: https://github.com/marsmike/feinschliff/compare/v0.3.0...HEAD
-[0.3.0]: https://github.com/marsmike/feinschliff/compare/v0.1.0...v0.3.0
+[Unreleased]: https://github.com/marsmike/feinschliff/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/marsmike/feinschliff/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/marsmike/feinschliff/releases/tag/v0.1.0

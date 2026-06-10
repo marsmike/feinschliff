@@ -10,6 +10,13 @@ feinblick is a standalone, stdlib-only plugin: it exposes the clean `feinblick`
 CLI and never asks callers to reach into its files. Engines are *invoked* (via
 `uvx`/`npx`), never vendored.
 
+## Install
+
+```bash
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinblick@feinschmiede
+```
+
 ## Usage
 
 ```bash

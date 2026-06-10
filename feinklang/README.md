@@ -11,6 +11,13 @@ feinklang voices --search Mike
 Requires `ELEVENLABS_API_KEY` (export or a line in `~/.env`). Default voice:
 **Hale**. See `skills/tts/references/parameters.md` for the full flag surface.
 
+## Install
+
+```bash
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinklang@feinschmiede
+```
+
 ## How it's packaged
 
 - `src/feinklang/` — the Python package (`[project.scripts] feinklang =

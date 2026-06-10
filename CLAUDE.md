@@ -9,16 +9,19 @@ gallery / R2 publish flow.
 This repo stays small on purpose. Rendered artifacts are NOT committed:
 
 - `docs/brand-previews/` — per-brand × per-layout PNGs (gitignored; ~50 MB
-  local) → uploaded to R2 via `feinschliff/scripts/upload_brand_previews_to_r2.py`.
+  local) → uploaded to R2 via
+  `feinschliff-builder/scripts/upload_brand_previews_to_r2.py`.
 - `docs/brands/` and `docs/index.html` — gallery HTML, generated fresh by
   the Pages workflow on every push to `main`.
 - `feinschliff/examples/<brand>/Template.{pdf,pptx}` — multi-slide brand
   showcases (gitignored).
 - `feinschliff/.debug/` — every intermediate / debug artifact (see below).
 
-The only committed binary assets are `feinschliff/docs/images/hero-grid.png`
-and `feinschliff/docs/images/showcase.gif` — small marketing material
-referenced from the README.
+The only committed binary assets are the brand gem marks
+(`feinschliff/brands/feinschliff/assets/gem.png`, `gem-light.png`), the
+illustration placeholder (`feinschliff/assets/illustrations/placeholder.jpg`),
+and one verify-quality test fixture
+(`feinschliff/tests/fixtures/verify_quality/clean-deck.pptx`).
 
 ## Examples folder discipline
 
@@ -69,7 +72,8 @@ without hunting across `/tmp` or `~/Downloads`.
 
 ## Diagram pipeline notes
 
-- **DSL expander** — `feinschliff/lib/diagrams/excalidraw_expand.py`.
+- **DSL expander** — `feinschmiede/feinschmiede/diagrams/excalidraw_expand.py`
+  (the diagram engine lives in the shared `feinschmiede` package, not office).
   Primitives: `box`, `ellipse`, `diamond`, `dot`, `line` (with `dashed`
   flag), `arrow` (with `label:"..."`), `text` (levels: `title`, `subtitle`,
   `eyebrow`, `body`, `detail`, `mono`), `theme dark`, `group`. Color tokens
@@ -80,14 +84,14 @@ without hunting across `/tmp` or `~/Downloads`.
   Arrow routing is **edge-to-edge straight line** along the center-to-center
   ray (matches upstream Excalidraw's `make_arrow`); no Z-elbows, no
   collision avoidance — author places boxes so straight arrows have room.
-- **Render dispatcher** — `feinschliff/lib/diagrams/render.py`. Tries
+- **Render dispatcher** — `feinschmiede/feinschmiede/diagrams/render.py`. Tries
   **`render_rough`** (pure-Python: `rough` Python port + `cairosvg`, ~150
   ms, no browser) first with `roughness=0 + disableMultiStroke=True` for
   the clean "normal" Excalidraw look. Falls back to **`render_playwright`**
   (real Excalidraw web app in headless Chromium, ~1.5 s + 200 MB) when
   the rough path is unavailable or the document contains elements it
   doesn't model (freedraw / image / frame).
-- `expand_diagram_blocks` (`feinschliff/lib/dsl/expander.py`) cache key
+- `expand_diagram_blocks` (`feinschliff/feinschliff/dsl/expander.py`) cache key
   includes `{slide_index, kind, w, h, virtual_w, virtual_h, brand_dir.name,
   tokens_hash, from_path, layout_dir.name, body}` where `tokens_hash` is a
   12-char SHA-1 of `brand_dir/tokens.json` (empty string when absent) — do
@@ -102,8 +106,12 @@ without hunting across `/tmp` or `~/Downloads`.
 The gallery at `https://marsmike.github.io/feinschliff/brands/` is the
 public face of the brand-pack work. Update path:
 
-1. `cd feinschliff && uv run python scripts/render_brand_atlas.py --force --workers 8`
-   — renders `docs/brand-previews/<brand>/<NN>-<id>.png` for all 12 brands.
+The brand-gallery scripts live in `feinschliff-builder/scripts/` (the authoring
+toolkit), so run them from there:
+
+1. `cd feinschliff-builder && uv run python scripts/render_brand_atlas.py --force --workers 8`
+   — renders `docs/brand-previews/<brand>/<NN>-<id>.png` for all brand packs
+   (3 in feinschliff + 10 in feinschliff-extra).
 2. `uv run python scripts/build_brand_atlas_overview.py` — composes the
    per-brand `_atlas.png` grid overview.
 3. `uv run python scripts/upload_brand_previews_to_r2.py --workers 8` —
@@ -112,8 +120,8 @@ public face of the brand-pack work. Update path:
 4. Push to `main` OR run `gh workflow run pages` — Pages workflow rebuilds
    the gallery HTML with a fresh `?v=<timestamp>` cache-bust on every run.
 
-The PPTX/PDF showcases (`scripts/render_brand_preview.py`) are an
-orthogonal artifact — multi-slide downloadable templates per brand, also
+The PPTX/PDF showcases (`feinschliff-builder/scripts/render_brand_preview.py`)
+are an orthogonal artifact — multi-slide downloadable templates per brand, also
 gitignored.
 
 ## Commit + push hygiene

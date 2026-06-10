@@ -9,7 +9,9 @@ iterate brand packs with an AI-assisted verify loop.
 ## Install
 
 ```bash
-/plugin marketplace add marsmike/feinschliff-builder
+/plugin marketplace add marsmike/feinschliff   # once per machine
+/plugin install feinschliff@feinschmiede        # required dependency
+/plugin install feinschliff-builder@feinschmiede
 ```
 
 ## Skills
