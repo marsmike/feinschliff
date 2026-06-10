@@ -25,7 +25,8 @@ feinschliff-builder compile-html brands/<new>/claude-design/<new>-2026.html \
   -o brands/<new>/layouts/ --theme <new>
 
 # tune one layout against any reference .pptx (hand-saved, design-tool export, prior version)
-python scripts/dsl_golden_compare.py \
+# (requires dev checkout with uv sync — dsl_golden_compare.py needs numpy/scikit-image)
+python ${CLAUDE_PLUGIN_ROOT}/scripts/dsl_golden_compare.py \
   brands/<new>/layouts/quote.slide.dsl \
   --brand <new> \
   --content brands/<new>/examples/quote.yaml \

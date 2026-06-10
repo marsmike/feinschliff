@@ -7,10 +7,10 @@ metadata:
 
 # Adding AI voiceover to a Remotion composition
 
-> In this plugin, generate the voiceover audio with the bundled ElevenLabs skill —
-> `${CLAUDE_PLUGIN_ROOT}/skills/elevenlabs/scripts/tts.sh '{"text": "...", "output": "public/voiceover.mp3"}'`
-> (or the `/tts` command) — then use the calculateMetadata pattern below to derive
-> duration. The raw `fetch` example is Remotion's reference; the `tts.sh` path is preferred here.
+> In this plugin, generate the voiceover audio with the `feinklang tts` CLI —
+> `feinklang tts --text "..." --out public/voiceover.mp3`
+> — then use the calculateMetadata pattern below to derive duration.
+> The raw `fetch` example below is Remotion's reference; `feinklang tts` is preferred here.
 
 Use ElevenLabs TTS to generate speech audio per scene, then use [`calculateMetadata`](./calculate-metadata) to dynamically size the composition to match the audio.
 

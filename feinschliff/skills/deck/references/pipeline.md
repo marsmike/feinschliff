@@ -5,17 +5,17 @@ The 7-step recipe that `/deck` follows for all modes. Read this before the skill
 ## Pipeline timing log
 
 Every step of the pipeline emits a row to `<deck-dir>/timing.jsonl` so
-you can run `uv run feinschliff deck timing <deck-dir>` after a deck
+you can run `feinschliff deck timing <deck-dir>` after a deck
 completes and see where wall-clock time went. The Python CLI
 auto-instruments `feinschliff deck build` (per-slide + total). The
 orchestrator (you) is expected to bookend each step manually:
 
 ```
 # before Step N:
-uv run feinschliff deck log-event step:1-ingest start --dir .debug/<deck>/
+feinschliff deck log-event step:1-ingest start --dir .debug/<deck>/
 
 # after Step N:
-uv run feinschliff deck log-event step:1-ingest end --dir .debug/<deck>/ --elapsed-ms <ms>
+feinschliff deck log-event step:1-ingest end --dir .debug/<deck>/ --elapsed-ms <ms>
 ```
 
 Use phase names that match the step name (`step:0-ask`, `step:1-ingest`,
@@ -48,17 +48,17 @@ win.
 
 ## Brand layout inventory — before you do anything else
 
-Every brand inherits the toolkit pool of 43 layouts (process-flow,
+Every brand inherits the toolkit pool of 50 layouts (process-flow,
 excalidraw-diagram, excalidraw-diagram-full, svg-infographic,
 svg-infographic-full, kpi-grid, bar-chart, roadmap, recommendation,
 etc.) from `feinschliff/layouts/`. A brand's own `layouts/` directory
 is **additive**: bespoke layouts add to the pool or override toolkit
 layouts by name.
 
-Before claiming a brand can't serve a brief, run (from the repo root):
+Before claiming a brand can't serve a brief, run:
 
 ```
-uv run feinschliff-builder brand inspect <brand>
+feinschliff-builder brand inspect <brand>
 ```
 
 The output reports `N inherited, M overridden, K brand-only`. Treat
@@ -85,7 +85,7 @@ If image style is ambiguous from the brief, also ask here (bundle it into the sa
 
 ## Step 1 — Ingest
 
-**Load brand-pack brief defaults (optional).** Before inferring anything from the user's brief, check whether the active brand ships priors via `brief_defaults` in its `tokens.json`. Use `load_brief_defaults(brand_dir)` (from `lib.dsl.tokens`) to read these. They provide a baseline only — apply the following precedence chain when setting each brief field:
+**Load brand-pack brief defaults (optional).** Before inferring anything from the user's brief, check whether the active brand ships priors via `brief_defaults` in its `tokens.json`. Use `load_brief_defaults(brand_dir)` (from `feinschmiede.dsl.tokens`) to read these. They provide a baseline only — apply the following precedence chain when setting each brief field:
 
 ```
 explicit CLI/API flag > user text in prompt > brand_defaults > heuristic
@@ -150,9 +150,7 @@ Given `content_plan.json`, produce `design_brief.json` in one LLM pass:
 Validate the result against the schema:
 
 ```python
-import sys
-sys.path.insert(0, "/<path>/feinschliff/feinschliff/skills/deck/lib")
-from design_brief import save_brief
+from feinschliff.skills.deck.lib.design_brief import save_brief
 
 save_brief(brief, Path("design_brief.json"))  # raises ValueError on invalid
 ```
@@ -206,7 +204,7 @@ The orchestrating LLM (you) does four things, in order:
 1. **Materialize the contact sheet.** Run:
 
    ```bash
-   uv run feinschliff deck storyline content_plan.json -o out/storyline_report.md \
+   feinschliff deck storyline content_plan.json -o out/storyline_report.md \
      --brief-summary "<one-line summary from design_brief.json>"
    ```
 
@@ -256,15 +254,15 @@ just later in the loop.
 
 ## Step 2 — Plan
 
-Score candidate layouts using `lib.layout_picker.pick_layout`. The picker
+Score candidate layouts using `feinschmiede.layout_picker.pick_layout`. The picker
 consumes the planning-time signals you already have on each slide:
 
 ```python
-from lib.layout_picker import pick_layout
-from lib.dsl.parser import parse_file
-from lib.dsl.tokens import load_tokens
-from lib.slot_budget import compute_slot_budgets, format_budget_hint
-from lib.brand_discovery import find_brand
+from feinschmiede.layout_picker import pick_layout
+from feinschmiede.dsl.parser import parse_file
+from feinschmiede.dsl.tokens import load_tokens
+from feinschmiede.slot_budget import compute_slot_budgets, format_budget_hint
+from feinschmiede.brand_discovery import find_brand
 
 brand_dir = find_brand("feinschliff").root
 tokens = load_tokens(brand_dir)
@@ -351,7 +349,7 @@ Required to be opted into — short decks should skip.
 1. Mark phase: `feinschliff deck log-event step:2a-fanout start --dir <deck-dir>`.
 2. Run centralized layout pick:
    ```bash
-   uv run feinschliff deck plan-skeleton \
+   feinschliff deck plan-skeleton \
      <deck-dir>/content_plan.json \
      -o <deck-dir>/plan.skeleton.yaml \
      --out-pptx <deck-dir>/deck.pptx
@@ -387,7 +385,7 @@ Required to be opted into — short decks should skip.
 5. Wait for all subagents to return.
 6. Merge:
    ```bash
-   uv run feinschliff deck plan-merge <deck-dir>/plan.skeleton.yaml \
+   feinschliff deck plan-merge <deck-dir>/plan.skeleton.yaml \
      --chunk <deck-dir>/chunks/slide-01.yaml \
      --chunk <deck-dir>/chunks/slide-02.yaml \
      ... \
@@ -397,7 +395,7 @@ Required to be opted into — short decks should skip.
 8. Continue to Step 3 with the merged `plan.yaml`.
 
 **Why the centralized pick first?** The variety-penalty in
-`lib.layout_picker.pick_layout` is a sliding window over `layout_history`.
+`feinschmiede.layout_picker.pick_layout` is a sliding window over `layout_history`.
 Subagents picking layouts in parallel can't see each other's choices —
 the result is monotony (three bar-charts in a row). Pre-picking on the
 parent side preserves the variety guarantee.
@@ -416,7 +414,7 @@ and weak-evidence defects *before* render — cheap text-only Haiku judgment
 class.
 
 ```bash
-uv run feinschliff deck claim-evidence out/<deck>/plan.yaml \
+feinschliff deck claim-evidence out/<deck>/plan.yaml \
   --design-brief out/<deck>/design_brief.json \
   -o out/<deck>/claim_evidence_report.md
 ```
@@ -449,9 +447,9 @@ Skip only when iterating on layout/DSL changes with unchanged content.
 **Timing:** log this phase as `step:2b-claim-evidence`:
 
 ```bash
-uv run feinschliff deck log-event step:2b-claim-evidence start --dir out/<deck>/
-uv run feinschliff deck claim-evidence ...
-uv run feinschliff deck log-event step:2b-claim-evidence end --dir out/<deck>/ --elapsed-ms <ms>
+feinschliff deck log-event step:2b-claim-evidence start --dir out/<deck>/
+feinschliff deck claim-evidence ...
+feinschliff deck log-event step:2b-claim-evidence end --dir out/<deck>/ --elapsed-ms <ms>
 ```
 
 ## Step 2c — Static verify gate (optional, recommended)
@@ -461,7 +459,7 @@ This catches slot-overflow and empty-placeholder defects from the DSL +
 populated content in ~10-50 ms/slide — far cheaper than re-rendering.
 
 ```bash
-uv run feinschliff deck verify-static out/<deck>/plan.yaml
+feinschliff deck verify-static out/<deck>/plan.yaml
 ```
 
 Exit 0 = clean; exit 1 = defects found (printed to stdout); exit 2 = plumbing
@@ -510,12 +508,12 @@ slides:
 Run:
 
 ```bash
-uv run feinschliff deck build out/<deck>/plan.yaml
+feinschliff deck build out/<deck>/plan.yaml
 ```
 
 The CLI:
-1. Resolves the active brand via `lib.brand_discovery.find_brand`.
-2. For each slide, calls `lib.pipeline.compile_slide(...)` — parsing, interpolating, expanding diagrams (running the diagram validators), and expanding compounds.
+1. Resolves the active brand via `feinschmiede.brand_discovery.find_brand`.
+2. For each slide, calls `feinschmiede.pipeline.compile_slide(...)` — parsing, interpolating, expanding diagrams (running the diagram validators), and expanding compounds.
 3. Aborts on any fatal defect (defect taxonomy: see `feinschliff/docs/quality-contract.md`). Pass `--allow-diagram-warnings` to demote diagram-overflow / diagram-text-too-small. Pass `--allow-missing-assets` to ship with grey-box pictures (not recommended for final builds).
 4. Composes all slides into one `.pptx`, writes `diagrams/` next to the output, and writes per-source asset locks under `out/<deck>/asset_lock.json` and credits under `out/<deck>/credits.md` whenever search-resolved assets were used.
 
@@ -595,7 +593,7 @@ each runnable as a subagent in parallel:
 1. Mark phase: `feinschliff deck log-event step:4a-fanout start --dir <deck-dir>`.
 2. Spawn 6 subagents in parallel (one per aspect). Each subagent runs:
    ```bash
-   uv run feinschliff deck verify-aspect <aspect> \
+   feinschliff deck verify-aspect <aspect> \
      --plan <deck-dir>/plan.yaml \
      --design-brief <deck-dir>/design_brief.json \
      --png-dir <deck-dir>/verify/ \
@@ -608,7 +606,7 @@ each runnable as a subagent in parallel:
 3. Wait for all 6 subagents to return.
 4. Collate:
    ```bash
-   uv run feinschliff deck verify-collate \
+   feinschliff deck verify-collate \
      --plan <deck-dir>/plan.yaml --iteration N --budget M \
      --png-dir <deck-dir>/verify/ \
      --aspect <deck-dir>/verify-bbox.json \

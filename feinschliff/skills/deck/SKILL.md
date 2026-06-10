@@ -8,7 +8,7 @@ description: Build or polish a brand-compliant PowerPoint deck via the v2 DSL pi
 Creates / polishes / critiques presentations via the v2 DSL pipeline.
 Brand resolves: `--brand` → `FEINSCHLIFF_BRAND` → `feinschliff`.
 
-**Brand layouts are additive to the toolkit's 43 inherited layouts** (process-flow, excalidraw-diagram, excalidraw-diagram-full, kpi-grid, charts, …). Run `uv run feinschliff-builder brand inspect <brand>` (from the repo root) for the full pool before claiming a brand-vs-brief mismatch. See [`references/pipeline.md`](references/pipeline.md) → *Brand layout inventory*.
+**Brand layouts are additive to the toolkit's 50 inherited layouts** (process-flow, excalidraw-diagram, excalidraw-diagram-full, kpi-grid, charts, …). Run `feinschliff-builder brand inspect <brand>` for the full pool before claiming a brand-vs-brief mismatch. See [`references/pipeline.md`](references/pipeline.md) → *Brand layout inventory*.
 
 ## Quick Start
 
@@ -34,7 +34,7 @@ Full step-by-step: [`references/pipeline.md`](references/pipeline.md).
 
 **Picker signals** — `diagram_kind` (`concept`/`chart`) steers diagram picks; `layout_history` applies recency penalties for variety (structural layouts exempt). **Build-time checks**: `diagram-overflow`, `diagram-color-mismatch`, `diagram-text-too-small`, `text-overlap`, `out-of-bounds`. Verify also catches filler words, vague-so-what, and bare claims.
 
-**Completion rule.** Never declare done without a passing `feinschliff-builder verify --json` → `out/verify_report.json`. **Parallel mode** (≥10 slides) fans out authoring + verify after storyline; `deck log-event` + `deck timing` write/read `timing.jsonl`. See [`references/pipeline.md`](references/pipeline.md) → *Step 2a / Step 4a*.
+**Completion rule.** Never declare done without a passing visual verify (pipeline Step 4) that writes `out/verify_report.md`. When the `feinschliff-builder` plugin is installed, `feinschliff-builder verify` and `feinschliff-builder storyline` gates are also available — but the universal gate for all installs is `out/verify_report.md` with `Verdict: clean`. **Parallel mode** (≥10 slides) fans out authoring + verify after storyline; `deck log-event` + `deck timing` write/read `timing.jsonl`. See [`references/pipeline.md`](references/pipeline.md) → *Step 2a / Step 4a*.
 
 ## References
 

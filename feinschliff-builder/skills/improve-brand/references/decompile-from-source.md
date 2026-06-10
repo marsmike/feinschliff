@@ -6,12 +6,13 @@ brand's `.slide.dsl` files in one shot, use the hybrid decompiler.
 
 ## Backends
 
-The toolkit ships two decompilers:
+The toolkit ships two decompilers (both accessed via the `feinschliff-builder decompile` CLI,
+or directly as scripts from a dev checkout):
 
 | Backend                          | When to use                                                                                |
 | -------------------------------- | ------------------------------------------------------------------------------------------ |
-| `lib/dsl/pptx_decompile.py` (default) | Primitive-level reverse mapping. Fast, no external deps. Loses chart geometry and master-inherited chrome. |
-| `lib/dsl/pptx_svg_decompile.py` (hybrid) | Combines PPTX XML semantics with optional SVG geometry. Higher fidelity on charts and custGeom. **Use this for brand bootstrap.** |
+| Default (`--no-svg`)             | Primitive-level reverse mapping. Fast, no external deps. Loses chart geometry and master-inherited chrome. |
+| Hybrid (`--with-svg`)            | Combines PPTX XML semantics with optional SVG geometry. Higher fidelity on charts and custGeom. **Use this for brand bootstrap.** |
 
 The hybrid backend is where the higher-fidelity work lives — classifier
 improvements, chart geometry extractor, and `cap="all"` detector all
@@ -22,12 +23,11 @@ sit on this path.
 ### Option A: single-slide spot-check
 
 ```bash
-uv run python lib/dsl/pptx_svg_decompile.py \
-    path/to/source-deck.pptx \
+feinschliff-builder decompile path/to/source-deck.pptx \
+    --brand <brand> \
     --slide 5 \
-    --theme <brand> \
-    --brand-tokens brands/<brand>/tokens.json \
-    --layout-name cover-orange > brands/<brand>/layouts/cover-orange.slide.dsl
+    --with-svg \
+    -o brands/<brand>/layouts/
 ```
 
 Useful when you want to redo just one layout, or when you're checking
@@ -53,25 +53,28 @@ This is the path you'll use most often. Requires:
 Then:
 
 ```bash
-uv run python scripts/brand_decompile_all.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_decompile_all.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx
 ```
+
+> **Requires dev checkout:** clone the repo and run `uv sync` — this script
+> is not a CLI subcommand and needs the full dev dependency set.
 
 Output: one `<layout>.slide.dsl` per `verify-map.yaml` entry written to
 `brands/<brand>/layouts/`. Existing files are snapshotted to
 `brands/<brand>/layouts.bak/` first. Use `--dry-run` to preview without
 writing; `--only <name> <name>` to restrict to a subset.
 
-### Option C: index-named slide-by-slide (via existing CLI)
+### Option C: index-named slide-by-slide (via CLI)
 
 ```bash
-uv run feinschliff-builder decompile path/to/source-deck.pptx \
+feinschliff-builder decompile path/to/source-deck.pptx \
     --brand <brand> -o brands/<brand>/layouts/ --with-svg
 ```
 
-Uses the existing `feinschliff-builder decompile` CLI with the new
-`--with-svg` flag. Writes `slide-NN.slide.dsl` per slide (numeric
+Uses the `feinschliff-builder decompile` CLI with `--with-svg` for
+higher-fidelity output. Writes `slide-NN.slide.dsl` per slide (numeric
 names, not layout-typed). Use this when you don't have a `verify-map.yaml`
 yet and just want a starting set of files.
 
@@ -79,7 +82,8 @@ yet and just want a starting set of files.
 
 ```bash
 # Measure the first-pass fidelity
-uv run python scripts/brand_verify_loop.py \
+# (requires dev checkout with uv sync for numpy/scikit-image scoring deps)
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx
 
@@ -94,9 +98,9 @@ cat out/<brand>/verify-loop/diff/report.json
 
 - **No asset extraction.** Pictures emit as placeholder slot
   expressions (`picture … path:"{{ image | default:'…' }}" cover:true`).
-  If you want extracted images on disk, use the default
-  (`lib/dsl/pptx_decompile.py`) which writes `source-slide-NN-K.<ext>`
-  next to the layout files.
+  If you want extracted images on disk, use `feinschliff-builder decompile`
+  without `--with-svg`; it writes `source-slide-NN-K.<ext>` next to the
+  layout files.
 - **No compound recognition.** Footer-region text emits as N plain
   `text` primitives. If your brand has a `footer(...)` compound,
   manually collapse the lines (or write a brand-specific post-pass).

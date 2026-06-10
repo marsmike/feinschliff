@@ -38,8 +38,8 @@ This enables visual iteration while voiceover is being produced or reviewed.
 ```bash
 mkdir my-video && cd my-video
 npm init -y
-npm install remotion @remotion/cli @remotion/google-fonts @remotion/transitions
-npm install @remotion/layout-utils @remotion/media-utils react react-dom
+npm install remotion@4 @remotion/cli@4 @remotion/google-fonts@4 @remotion/transitions@4
+npm install @remotion/layout-utils@4 @remotion/media-utils@4 react react-dom
 npm install -D @types/react
 ```
 

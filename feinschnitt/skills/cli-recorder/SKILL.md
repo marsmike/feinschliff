@@ -25,7 +25,7 @@ Do NOT run the recorder. Do NOT scaffold the surrounding Remotion video. Stop af
 3. Sketch the steps          → 3-9 beats; each beat ≈ one screen of action
 4. Resolve modal/interactive → which steps need dismiss keys, pattern waits, pauses
 5. Tune cadence              → typing_wpm, idle compression, idle_time_limit
-6. Write the recipe          → ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/<name>.recipe.toml
+6. Write the recipe          → ${CLAUDE_PROJECT_DIR}/.recordings/recipes/<name>.recipe.toml
 7. Show + validate           → display the file; offer a dry-run for verification
 ```
 
@@ -83,7 +83,7 @@ Defaults from the profile are fine for almost everything. Only override when:
 
 ### Step 6 — Write the recipe
 
-Save to `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/<name>.recipe.toml`. File naming: short, kebab-case, descriptive (`install-kubectl`, `claude-commands-tour`, `git-rebase-i-walkthrough`). The stem becomes the output directory name.
+Save to `${CLAUDE_PROJECT_DIR}/.recordings/recipes/<name>.recipe.toml`. File naming: short, kebab-case, descriptive (`install-kubectl`, `claude-commands-tour`, `git-rebase-i-walkthrough`). The stem becomes the output directory name.
 
 Required structure:
 
@@ -109,7 +109,7 @@ Validate against `${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/schema/recipe.schema
 Read the written file back to the user. Then suggest:
 
 ```bash
-feinschnitt record ${CLAUDE_PLUGIN_ROOT}/skills/cli-recorder/recipes/<name>.recipe.toml --dry-run
+feinschnitt record ${CLAUDE_PROJECT_DIR}/.recordings/recipes/<name>.recipe.toml --dry-run
 ```
 
 The dry-run parses the recipe, applies the profile, and prints each resolved step. The user can tweak before recording for real.

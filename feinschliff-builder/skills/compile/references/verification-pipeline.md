@@ -75,9 +75,12 @@ chart_bboxes:                # optional — for chart/diagram regions that
 
 ## Workflow
 
+These scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/` and require a dev
+checkout (clone + `uv sync`) for their numpy/scikit-image scoring dependencies.
+
 ```bash
 # 1. Initial bootstrap: extract source assets into the brand pack
-python scripts/brand_source_extract.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_source_extract.py \
     --brand-pack brands/<brand> \
     --source-dir <source-png-export>
 
@@ -87,7 +90,7 @@ python scripts/brand_source_extract.py \
 # 3. Render the brand pack (existing tooling, e.g. render-all.sh per brand)
 
 # 4. Run the visual diff
-python scripts/brand_visual_diff.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_visual_diff.py \
     --brand-pack brands/<brand> \
     --source-dir <source-png-export> \
     --render-dir out/<brand>/png \
@@ -99,7 +102,7 @@ python scripts/brand_visual_diff.py \
 # 6. Edit the DSL/content to fix the worst layout. Re-render. Re-verify.
 
 # 7. After ≥3 verify runs without a layout's score moving:
-python scripts/brand_plateau.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_plateau.py \
     --output-dir out/<brand>/verify
 
 #    Plateaued layouts get categorized (clean / fine-tuning / structural /
@@ -107,7 +110,7 @@ python scripts/brand_plateau.py \
 
 # 8. Optional: build a clean side-by-side review PDF (no diff mask) for
 #    stakeholder walkthrough.
-python scripts/brand_compare_pdf.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_compare_pdf.py \
     --brand-pack brands/<brand> \
     --source-dir <source-png-export> \
     --render-dir out/<brand>/png \
@@ -141,12 +144,12 @@ diff into one command, with mtime-keyed caching so re-runs after a
 single DSL edit only rebuild the affected layout. Drop-in usage:
 
 ```bash
-uv run python scripts/brand_verify_loop.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx
 
 # Restrict the set + reuse cached source PNGs
-uv run python scripts/brand_verify_loop.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx \
     --only quote table cover-orange \
