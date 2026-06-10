@@ -1843,6 +1843,50 @@ def _strip_theme_style(shape) -> None:
         shape._element.remove(el)
 
 
+def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
+    """native <id> b64:"<base64 element>" [media:"<base64 image>"]
+
+    Splice a native PPTX element carried verbatim from the source deck (base64 in
+    the DSL, so the brand pack is self-contained). Used for fixed corporate-design
+    chrome: complex custGeom shapes (`<p:sp>`) and template images (`<p:pic>`,
+    `media:` carries the embedded bytes). The element stays real + EDITABLE in the
+    output — no rasterisation, no picture "cheat" — preserving geometry + colour.
+    """
+    blob = node.kw_args.get("b64")
+    if not blob:
+        return
+    import base64
+    from pptx.oxml import parse_xml
+    try:
+        el = parse_xml(base64.b64decode(blob).decode("utf-8"))
+    except Exception as exc:
+        raise DSLError(
+            f"native shape (line {node.line_no}): unparseable embedded element — {exc}"
+        )
+    media_b64 = node.kw_args.get("media")
+    if media_b64:
+        # Carried <p:pic>: the source rId is meaningless in this deck, so re-embed
+        # the image here and re-point every <a:blip> to the fresh relationship.
+        import io
+        from pptx.oxml.ns import qn
+        _part, rid = slide.part.get_or_add_image_part(
+            io.BytesIO(base64.b64decode(media_b64))
+        )
+        # Drop the Microsoft svgBlip sidecar: we carry only the raster media, so
+        # its stale rId would dangle / collide with another shape's relationship
+        # (some renderers prefer the svgBlip and then show the WRONG image). The
+        # re-embedded raster blip below is the faithful fallback.
+        _SVG_NS = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+        for _svg in list(el.iter("{%s}svgBlip" % _SVG_NS)):
+            _ext = _svg.getparent()
+            if _ext is not None and _ext.getparent() is not None:
+                _ext.getparent().remove(_ext)
+        for blip in el.iter(qn("a:blip")):
+            if blip.get(qn("r:embed")) is not None:
+                blip.set(qn("r:embed"), rid)
+    slide.shapes._spTree.append(el)
+
+
 _EMITTERS = {
     "text":     _emit_text,
     "rect":     _emit_rect,
@@ -1850,6 +1894,7 @@ _EMITTERS = {
     "polyline": _emit_polyline,
     "picture":  _emit_picture,
     "shape":    _emit_shape,
+    "native":   _emit_native,
 }
 
 

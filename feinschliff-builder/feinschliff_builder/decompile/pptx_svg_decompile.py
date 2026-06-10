@@ -71,6 +71,10 @@ NS = {
 
 EMU_PER_PT = 12700
 PLACEHOLDER_REL = "assets/illustrations/placeholder.jpg"
+# A non-placeholder <p:pic> smaller than this fraction of the slide is treated as
+# fixed corporate-design chrome (logo / mark) and carried natively; larger pics
+# are changeable topical content and stay fillable picture slots.
+_TEMPLATE_IMG_MAX_AREA = 0.12
 
 
 # ---------------------------------------------------------------------------
@@ -145,6 +149,13 @@ class Shape:
     # rings, arrows, callouts, and other vector decoration that the PDF
     # pipeline would otherwise rasterise.
     svg_path_d: str | None = None
+    # Verbatim source `<p:sp>` XML (emitted as a base64 `native` primitive) for
+    # complex custGeom chrome — carried as an editable native vector instead of
+    # round-tripping through svg → raster → picture. None = use the other fields.
+    native_xml: str | None = None
+    # For a carried <p:pic> (template image): base64 of the embedded media bytes,
+    # re-embedded into the output deck by the emitter (the source rId is dead here).
+    native_media: str | None = None
 
 
 @dataclass
@@ -1357,6 +1368,21 @@ def _shape_bbox(ch, offset, slide):
     return x_emu + ox, y_emu + oy, w_emu, h_emu
 
 
+def _bake_scheme_colors(el, theme: dict[str, str]) -> None:
+    """In-place: rewrite `<a:schemeClr val=KEY>` → `<a:srgbClr val=HEX>` from the
+    SOURCE theme, so a carried-native shape keeps its EXACT source colours even
+    when the output deck's theme differs. Child mods (lumMod/alpha/…) are valid on
+    srgbClr too and ride along untouched."""
+    a_ns = NS["a"]
+    alias = {"bg1": "lt1", "bg2": "lt2", "tx1": "dk1", "tx2": "dk2"}
+    for sc in list(el.iter(f"{{{a_ns}}}schemeClr")):
+        key = sc.get("val")
+        hexv = theme.get(key) or theme.get(alias.get(key, key))
+        if hexv:
+            sc.tag = f"{{{a_ns}}}srgbClr"
+            sc.set("val", hexv.lstrip("#").upper())
+
+
 def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     spPr = ch.find("p:spPr", NS)
     bbox = _shape_bbox(ch, offset, slide)
@@ -1547,6 +1573,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # canvas-pixel space so the surrounding svg-block can simply
     # `path "<d>"` without further transforms.
     svg_d = None
+    native_xml = None
     if kind == "shape":
         svg_d = _custgeom_svg_d(spPr, cmap.w(w), cmap.h(h))
         if svg_d is None and spPr is not None:
@@ -1560,6 +1587,29 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                 preset = pg.get("prst")
                 if preset:
                     svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h))
+        # Prefer carrying the native <p:sp> verbatim for TOP-LEVEL complex chrome:
+        # a real, editable vector spliced straight into the output deck — NO
+        # svg → raster → picture round-trip (which both distorts the shape and is
+        # a picture "cheat"). The DSL stays the content layer (text + images);
+        # corporate-design geometry rides along untouched. Colours are baked
+        # schemeClr→srgbClr against the SOURCE theme so they survive the output
+        # deck's theme. Grouped shapes (offset != 0) keep the svg path — their
+        # xfrm is group-relative, not slide-absolute, so a verbatim splice would
+        # land in the wrong place.
+        if svg_d is not None and len(offset) == 2:
+            import copy as _copy
+            sp_el = _copy.deepcopy(ch)
+            _bake_scheme_colors(sp_el, theme)
+            # `offset` is the (EMU) group/layout translation this shape was walked
+            # under; its xfrm is relative to that, so shift it to slide-absolute
+            # before splicing. (Scaled groups thread an 8-tuple affine instead —
+            # those fall through to the svg path, which is bbox-correct already.)
+            ox, oy = int(offset[0]), int(offset[1])
+            _off_el = sp_el.find("p:spPr/a:xfrm/a:off", NS)
+            if _off_el is not None and (ox or oy):
+                _off_el.set("x", str(int(_off_el.get("x") or 0) + ox))
+                _off_el.set("y", str(int(_off_el.get("y") or 0) + oy))
+            native_xml = etree.tostring(sp_el).decode("utf-8")
 
     # Geometry shape (rect / oval / shape). May also carry text.
     shapes.append(Shape(
@@ -1568,6 +1618,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         stroke_dash=stroke_dash, corner_radius=corner_radius, shadow=shadow,
         gradient=gradient,
         text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, svg_path_d=svg_d,
+        native_xml=native_xml,
     ))
 
 
@@ -1595,10 +1646,32 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
                 media_part = slide.part.related_part(rid)
             except (KeyError, AttributeError):
                 media_part = None
+    # Template image: a small, non-placeholder <p:pic> (logo, mark, brand chrome)
+    # is fixed corporate-design identity — carry it natively (verbatim element +
+    # its media, base64-inline) rather than a fillable picture slot. Large or
+    # placeholder pics are CHANGEABLE topical content → they stay slots.
+    native_xml = None
+    native_media = None
+    if (ph_type is None and media_part is not None and len(offset) == 2
+            and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
+        try:
+            import copy as _copy
+            import base64 as _b64
+            pic_el = _copy.deepcopy(ch)
+            _bake_scheme_colors(pic_el, theme)
+            ox, oy = int(offset[0]), int(offset[1])
+            _off_el = pic_el.find("p:spPr/a:xfrm/a:off", NS)
+            if _off_el is not None and (ox or oy):
+                _off_el.set("x", str(int(_off_el.get("x") or 0) + ox))
+                _off_el.set("y", str(int(_off_el.get("y") or 0) + oy))
+            native_xml = etree.tostring(pic_el).decode("utf-8")
+            native_media = _b64.b64encode(media_part.blob).decode("ascii")
+        except Exception:
+            native_xml = native_media = None
     shapes.append(Shape(
         kind="pic", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         is_picture=True, ph_type=ph_type, ph_idx=ph_idx, media_rid=rid,
-        media_part=media_part,
+        media_part=media_part, native_xml=native_xml, native_media=native_media,
     ))
 
 
@@ -2843,7 +2916,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # When no path data is available we keep the lossy bbox-rect fallback
     # so the DSL still builds.
     for i, s in enumerate(custs, 1):
-        if s.svg_path_d:
+        if s.native_xml:
+            # Native vector chrome carried verbatim from the source (editable,
+            # pixel-exact). base64 so the whole <p:sp> rides inside one DSL line
+            # and the brand pack stays self-contained — no source pptx at build.
+            import base64 as _b64
+            _enc = _b64.b64encode(s.native_xml.encode("utf-8")).decode("ascii")
+            out.append(f'native shape{i} b64:"{_enc}"')
+        elif s.svg_path_d:
             # `none` is not in the SVG DSL's 17-name semantic colour
             # vocabulary, so we omit `fill:` entirely when the source has
             # no solid fill — the path primitive defaults to stroke-only
@@ -2891,6 +2971,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # bbox confuses the visual-diff coverage gate (>90% triggers a
     # struct = total fallback that masks real text deficits).
     for i, p in enumerate(pics, 1):
+        if p.native_xml and p.native_media:
+            # Template image carried natively (fixed corporate-design chrome):
+            # the <p:pic> + its media ride inline; the emitter re-embeds + splices.
+            import base64 as _b64
+            _x = _b64.b64encode(p.native_xml.encode("utf-8")).decode("ascii")
+            out.append(f'native pic{i} b64:"{_x}" media:"{p.native_media}"')
+            continue
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
         cy0 = max(0, p.y)
