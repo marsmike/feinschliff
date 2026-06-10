@@ -270,7 +270,8 @@ header.site-header {
   padding: 48px 32px 24px;
   border-bottom: 1px solid var(--rule);
 }
-header.site-header .site-mark { display: block; width: 58px; height: 58px; margin: 0 0 16px; }
+header.site-header .site-title { display: flex; align-items: center; gap: 16px; }
+header.site-header .site-mark { width: 52px; height: 52px; flex: none; }
 header.site-header h1 {
   margin: 0;
   font-size: 36px;
@@ -614,8 +615,7 @@ def main() -> int:
 
     body_top = dedent(f'''\
         <header class="site-header">
-            <img class="site-mark" src="../feinschmiede-mark.svg" alt="feinschmiede" width="58" height="58">
-            <h1>feinschmiede — Brand Pack Gallery</h1>
+            <div class="site-title"><img class="site-mark" src="../feinschmiede-mark.svg" alt="feinschmiede" width="52" height="52"><h1>feinschmiede — Brand Pack Gallery</h1></div>
             <p>Every feinschmiede brand pack rendered against the full {len(brands[0]["layouts"]) if brands else 0}-layout catalog. {len(brands)} brands × {len(brands[0]["layouts"]) if brands else 0} layouts = {len(brands) * (len(brands[0]["layouts"]) if brands else 0)} slides. Click any thumbnail to open the carousel — arrow keys / on-screen buttons navigate, Esc closes.</p>
         </header>
         <nav class="brand-nav">
