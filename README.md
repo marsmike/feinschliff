@@ -9,8 +9,8 @@
 
 <p align="center">
   <strong>A family of branded media plugins for Claude Code</strong><br>
-  Decks, images & 2D, video, audio, and codebase intelligence — independent
-  plugins coupled by CLI capabilities, never file paths, over one shared engine.
+  Decks, images & 2D, video, and audio — independent plugins coupled by CLI
+  capabilities, never file paths, over one shared engine.
 </p>
 
 [![CI](https://github.com/marsmike/feinschmiede/actions/workflows/ci.yml/badge.svg)](https://github.com/marsmike/feinschmiede/actions/workflows/ci.yml)
@@ -36,7 +36,6 @@ the marketplace once, then install only the plugins you need.
 | [`feinbild`](feinbild/) | `feinbild@feinschmiede` | **Image & 2D** — AI images (Replicate/Gemini), SVG, Excalidraw diagrams. `/imagine`, `/svg`, `/excalidraw`. |
 | [`feinklang`](feinklang/) | `feinklang@feinschmiede` | **Audio** — ElevenLabs voiceover. `/tts`. |
 | [`feinschnitt`](feinschnitt/) | `feinschnitt@feinschmiede` | **Video** — programmatic Remotion videos + CLI session recordings. `/video`, `/record`. Composes feinbild + feinklang. |
-| [`feinblick`](feinblick/) | `feinblick@feinschmiede` | **Codebase intelligence** — unified Python + Claude-skill findings, an audit gate, an agent report. |
 | [`feinschliff-extra`](feinschliff-extra/) | `feinschliff-extra@feinschmiede` | 10 extra brand packs (data only). Requires `feinschliff`. |
 | [`feinschliff-builder`](feinschliff-builder/) | `feinschliff-builder@feinschmiede` | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). Requires `feinschliff`. |
 
@@ -64,7 +63,7 @@ FEINSCHLIFF_BRAND=catppuccin-macchiato /deck "..."
 
 Each plugin ships a `bin/` launcher that provisions a self-contained Python
 venv from a bundled wheelhouse on first run, putting one clean CLI on PATH
-(`feinschliff`, `feinbild`, `feinklang`, `feinschnitt`, `feinblick`). Plugins
+(`feinschliff`, `feinbild`, `feinklang`, `feinschnitt`). Plugins
 **never import or path into each other** — when one needs another's capability
 (e.g. `feinschnitt` building a voiceover) it calls the sibling's bare command,
 guaranteed present via plugin `dependencies`. A shared engine package,

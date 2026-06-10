@@ -8,5 +8,4 @@ members = [
     "feinbild",
     "feinklang",
     "feinschnitt",
-    "feinblick",
 ]

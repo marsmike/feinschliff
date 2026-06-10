@@ -74,6 +74,10 @@ docs/brand-previews/*-client/
 # references R2 URLs; the per-layout PNGs are too heavy for the repo.
 docs/brand-previews/
 docs/brands/
+# Brand mark + social card copied into the Pages site by the pages workflow
+# (sources live in assets/); the published copies are generated, not committed.
+docs/feinschmiede-*
+docs/index.html
 
 # Wrangler local-emulator cache (sometimes created in unexpected dirs).
 .wrangler/

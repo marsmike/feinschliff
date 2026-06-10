@@ -1,7 +1,0 @@
-{
-  "name": "feinblick",
-  "description": "Codebase intelligence for Claude Code — unified Python + Claude-skill findings, an audit gate, and an agent-consumable report via the clean `feinblick` CLI. Part of the feinschmiede family.",
-  "author": { "name": "Mike Mueller", "email": "mike@objektarium.de" },
-  "license": "MIT",
-  "keywords": ["code-intelligence", "static-analysis", "dead-code", "linter", "audit", "claude-code", "claude-skills", "feinschmiede"]
-}
