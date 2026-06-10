@@ -603,6 +603,28 @@ def _layout_placeholder_caps_bold(slide, ph_type: str | None, ph_idx: str | None
     return caps, bold
 
 
+def _layout_placeholder_anchor(slide, ph_type: str | None, ph_idx: str | None) -> str | None:
+    """Walk slide layout + master for the placeholder's inherited vertical anchor.
+
+    Like `_layout_placeholder_default_sz` but for `<a:bodyPr anchor="ctr|b|t">`. A
+    title whose own bodyPr sets no anchor still renders centre/bottom-anchored when
+    the layout/master placeholder bodyPr does (MS Geometric: master title
+    placeholder anchor="b"). Returns "middle" / "bottom" / "top" / None."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in parent.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
+                anc = bodyPr.get("anchor") if bodyPr is not None else None
+                if anc:
+                    return {"ctr": "middle", "b": "bottom", "t": "top"}.get(anc)
+    return None
+
+
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
                               theme: dict[str, str],
                               palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -1498,6 +1520,13 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             right = int(bodyPr.get("rIns") or 91440)
             bottom = int(bodyPr.get("bIns") or 45720)
             padding_emu = (left, top, right, bottom)
+    # Vertical anchor also inherits: a slide title with no own bodyPr anchor still
+    # renders bottom/centre-anchored when the layout/master placeholder bodyPr sets
+    # it (MS Geometric: master title placeholder anchor="b" → titles sit at the box
+    # bottom, not top). Mirror the size / caps / colour inheritance. Feature-2's box
+    # extension correctly skips bottom/middle text, so it won't fight this.
+    if valign is None and (ph_type or ph_idx):
+        valign = _layout_placeholder_anchor(slide, ph_type, ph_idx)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
