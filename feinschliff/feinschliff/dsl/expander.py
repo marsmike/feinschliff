@@ -281,6 +281,10 @@ _DEFAULT_FILTER_RE = re.compile(
     r'^([\w\.\[\]]+)\s*\|\s*default\(\s*"([^"]*)"\s*\)\s*$'
 )
 
+# An arithmetic operator that is NOT inside `[...]` index brackets — used to
+# tell a plain key path (`columns[0].counter`) from an expression (`x+w/2`).
+_ARITH_OP_RE = re.compile(r"[+\-*/](?![^\[]*\])")
+
 
 def _lookup(key: str, ctx: dict):
     """Walk a dotted/indexed key path against ctx; return the leaf value or
@@ -328,7 +332,7 @@ def _interp(text: str, ctx: dict) -> str:
                 return fallback
             return str(val)
         # Simple key path: no arithmetic operators outside of brackets.
-        if not re.search(r"[+\-*/](?![^\[]*\])", body):
+        if not _ARITH_OP_RE.search(body):
             val = _lookup(body, ctx)
             if val is _MISSING:
                 return ""

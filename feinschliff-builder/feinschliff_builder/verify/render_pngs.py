@@ -16,12 +16,15 @@ def render_slides_to_png(deck: Path, out_dir: Path) -> dict[int, Path]:
             file=sys.stderr,
         )
         return {}
-    pdf = out_dir / (deck.stem + ".pdf")
-    subprocess.check_call([
-        soffice, "--headless", "--convert-to", "pdf",
-        "--outdir", str(out_dir), str(deck),
-    ])
-    if not pdf.exists():
+    # Reuse the canonical converter — it isolates each call with its own
+    # `UserInstallation` profile so parallel verify runs don't collide on the
+    # shared soffice profile lock (and silently produce no PDF).
+    from feinschliff.io.soffice import pptx_to_pdf
+
+    try:
+        pdf = pptx_to_pdf(deck, out_dir)
+    except RuntimeError as e:
+        print(f"WARN: soffice pdf conversion failed: {e}", file=sys.stderr)
         return {}
     pdftoppm = shutil.which("pdftoppm")
     if not pdftoppm:

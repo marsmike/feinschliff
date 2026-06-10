@@ -328,13 +328,20 @@ def _drop_weakest_bullets(text: str, keep: int = 5) -> str:
     return "\n".join(surviving)
 
 
-def _find_smaller_layout(
+# Concept-count clamp for layout swaps: at least 1 slot, at most 8 (matches
+# the picker's `concept_count >= 8` "deep" inference in layout_picker).
+_MIN_CONCEPT_COUNT = 1
+_MAX_CONCEPT_COUNT = 8
+
+
+def _find_swap_layout(
     current_layout_rel: str,
     slide: dict,
-    brand_dir: Path,
+    target_concept_count: int,
     layout_history: list[str] | None = None,
 ) -> str | None:
-    """Use pick_layout to find a layout with fewer required slots than *current_layout_rel*.
+    """Use pick_layout to find a layout (other than the current one) sized for
+    *target_concept_count* required slots.
 
     Returns a layout path string (same format as ``slide["layout"]``) or None.
 
@@ -350,13 +357,10 @@ def _find_smaller_layout(
 
     meta = slide.get("_meta") or {}
     role = meta.get("role") or "content-columns"
-    concept_count = meta.get("concept_count")
 
-    # Ask for top-5 candidates with the same role but potentially fewer slots.
-    # We want a layout whose name suggests simplicity (e.g. action-title, end, etc.)
     candidates = pick_layout(
         role=role,
-        concept_count=max(1, (concept_count or 2) - 1),
+        concept_count=target_concept_count,
         top_k=5,
         layout_history=layout_history,
     )
@@ -378,52 +382,28 @@ def _find_smaller_layout(
     return None
 
 
+def _find_smaller_layout(
+    current_layout_rel: str,
+    slide: dict,
+    brand_dir: Path,
+    layout_history: list[str] | None = None,
+) -> str | None:
+    """Find a layout with fewer required slots than *current_layout_rel*."""
+    cc = (slide.get("_meta") or {}).get("concept_count")
+    target = max(_MIN_CONCEPT_COUNT, (cc or 2) - 1)
+    return _find_swap_layout(current_layout_rel, slide, target, layout_history)
+
+
 def _find_larger_layout(
     current_layout_rel: str,
     slide: dict,
     brand_dir: Path,
     layout_history: list[str] | None = None,
 ) -> str | None:
-    """Use pick_layout to find a layout with more body/bullet room.
-
-    Returns a layout path string or None.
-
-    *layout_history* — optional list of recently-used layout IDs (most recent
-    last). When provided it is passed to ``pick_layout`` so the variety penalty
-    fires and multiple simultaneous swap patches don't all converge on the same
-    candidate.
-    """
-    try:
-        from feinschliff.layout_picker import pick_layout
-    except ImportError:
-        return None
-
-    meta = slide.get("_meta") or {}
-    role = meta.get("role") or "content-columns"
-    concept_count = meta.get("concept_count")
-
-    candidates = pick_layout(
-        role=role,
-        concept_count=min(8, (concept_count or 2) + 1),
-        top_k=5,
-        layout_history=layout_history,
-    )
-    if not candidates:
-        return None
-
-    try:
-        from feinschliff.layout_discovery import find_layout
-    except ImportError:
-        return None
-
-    current_name = _layout_name(current_layout_rel)
-    for c in candidates:
-        layout_id = c["layout"]
-        if layout_id == current_name:
-            continue
-        if find_layout(layout_id) is not None:
-            return f"layouts/{layout_id}.slide.dsl"
-    return None
+    """Find a layout with more body/bullet room than *current_layout_rel*."""
+    cc = (slide.get("_meta") or {}).get("concept_count")
+    target = min(_MAX_CONCEPT_COUNT, (cc or 2) + 1)
+    return _find_swap_layout(current_layout_rel, slide, target, layout_history)
 
 
 def _layout_name(layout_rel: str) -> str:
