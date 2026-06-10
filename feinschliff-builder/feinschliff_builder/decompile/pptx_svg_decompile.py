@@ -2883,10 +2883,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
 
     footer_y_threshold = int(cmap.ch * 0.92)
 
-    # Backgrounds first (large area). Append stroke / stroke-width / dash /
-    # radius captured from the source PowerPoint shape so framed cards,
-    # rounded rects, and dashed dividers survive the round-trip.
-    for r in sorted(rects, key=lambda s: -(s.w * s.h)):
+    # Preserve SOURCE z-order — `rects` is already in render order (inherited
+    # chrome behind slide content, each layer in spTree order). The previous
+    # area-descending sort wrongly buried a large CONTENT panel beneath a smaller
+    # decorative panel drawn ON TOP of it (MS Geometric: the cream content card
+    # sank under the accent strip, so the whole slide read as the accent colour).
+    # Only a near-full-bleed background rect is still forced to the bottom; a
+    # STABLE sort keeps every other rect in the order PowerPoint draws it.
+    # Stroke / dash / radius are captured so framed cards + dividers round-trip.
+    _canvas_area = max(1, cmap.cw * cmap.ch)
+    for r in sorted(rects, key=lambda s: 0 if (s.w * s.h) >= 0.9 * _canvas_area else 1):
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
         if r.gradient is not None:
             stops, angle = r.gradient
