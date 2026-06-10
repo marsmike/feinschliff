@@ -1,0 +1,39 @@
+# feinblick configuration for the feinschmiede monorepo — audits every plugin's
+# package + the shared engine + all skills. Code roots cover all packages so
+# cross-package usage (office → engine, builder → office) is visible and public
+# API consumed by a sibling package is not mis-flagged as dead. Cross-plugin CLI
+# calls are invisible to static analysis by design — their targets are console
+# entry points, which cytoscnpy treats as live roots.
+#
+# Run: `feinblick check all` (report) or `feinblick audit` (gated against the
+# regenerable .feinblick/baseline.json). cytoscnpy is fetched via uvx; the skills
+# engine `agnix` needs Node/npx and is skipped cleanly when absent.
+[code]
+roots = [
+  "feinschmiede/feinschmiede",
+  "feinschliff/feinschliff",
+  "feinschliff-builder/feinschliff_builder",
+  "feinbild/src/feinbild",
+  "feinklang/src/feinklang",
+  "feinschnitt/src/feinschnitt",
+  "feinblick/src/feinblick",
+]
+test_globs = ["**/tests/**", "**/test_*.py"]
+engines = ["cytoscnpy"]
+
+[skills]
+roots = ["."]
+# Exclude test-fixture skills (e.g. feinblick's intentionally-malformed
+# fixture_repo skills) and debug scratch so they don't show as real findings.
+test_globs = ["**/tests/**", "**/fixture_repo/**", "**/.debug/**"]
+engines = ["agnix"]
+skill_md_max_lines = 500
+
+[gate]
+fail_on = ["error"]
+warn_on = ["warning"]
+baseline = ".feinblick/baseline.json"
+tolerance = 0
+
+[engines.cytoscnpy]
+version = "1.2.23"
