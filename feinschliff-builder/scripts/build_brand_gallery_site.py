@@ -24,6 +24,13 @@ from textwrap import dedent
 
 REPO = Path(__file__).resolve().parent.parent  # feinschliff-builder/
 WORKSPACE = REPO.parent                          # workspace root (post-split)
+# Brands excluded from the public gallery. `blank` is a neutral base
+# template (near-black accent, pure-white canvas) that other layouts
+# inherit from; it has no distinctive visual identity of its own and
+# renders no meaningful showcase previews, so it never gets a card.
+# The pack stays on disk — it's still needed as a layout base.
+GALLERY_EXCLUDE = frozenset({"blank"})
+
 # Brands are split across feinschliff/ (core: 3 brands) and
 # feinschliff-extra/ (10 brands) since v0.2.0. Index by name so the
 # rest of the script can look up a brand root without caring which
@@ -35,6 +42,8 @@ for _plugin_brands in (
 ):
     if _plugin_brands.is_dir():
         for _d in sorted(_plugin_brands.iterdir()):
+            if _d.name in GALLERY_EXCLUDE:
+                continue
             if _d.is_dir() and (_d / "tokens.json").is_file():
                 BRAND_ROOTS[_d.name] = _d
 # Shared toolkit layouts live with the core plugin.
