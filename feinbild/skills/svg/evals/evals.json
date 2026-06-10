@@ -3,8 +3,33 @@
   "version": 1,
   "tests": [
     {
-      "name": "bar-chart-4-bars",
-      "prompt": "Make an SVG bar chart with 4 bars labeled Q1-Q4 with values $85k, $62k, $98k, $41k.",
+      "name": "bar-chart-4",
+      "prompt": "Make an SVG bar chart with 4 bars labelled Q1-Q4 with values $85k, $62k, $98k, $41k.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    },
+    {
+      "name": "bar-chart-6",
+      "prompt": "Make an SVG bar chart with 6 monthly bars Jan-Jun showing an upward trend.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    },
+    {
+      "name": "donut-share",
+      "prompt": "Make an SVG donut chart showing market share split 50/30/20 across three segments.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    },
+    {
+      "name": "line-trend",
+      "prompt": "Make an SVG line chart of revenue over 8 quarters with a labelled y-axis.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    },
+    {
+      "name": "kpi-row",
+      "prompt": "Make an SVG row of three KPI tiles: Revenue, Churn, NPS, each with a big number and a caption.",
+      "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
+    },
+    {
+      "name": "stacked-bars",
+      "prompt": "Make an SVG stacked bar chart with 4 categories and two series per bar.",
       "checks": ["valid-svg", "has-viewBox", "uses-semantic-colors"]
     }
   ]

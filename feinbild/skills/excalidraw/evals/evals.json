@@ -4,8 +4,33 @@
   "tests": [
     {
       "name": "five-box-flow",
-      "prompt": "Make an excalidraw diagram showing 5 boxes in a horizontal flow: Browser → Edge → API → Queue → Database.",
-      "checks": ["valid-excalidraw-json", "five-rectangles", "four-arrows"]
+      "prompt": "Make an excalidraw diagram showing 5 boxes in a horizontal flow: Browser -> Edge -> API -> Queue -> Database.",
+      "checks": ["valid-excalidraw-json", "rectangles==5", "arrows==4", "uses-semantic-colors"]
+    },
+    {
+      "name": "decision-branch",
+      "prompt": "Make an excalidraw diagram: a Start box leads to a decision diamond 'Authorized?' which branches to an Allow box and a Deny box.",
+      "checks": ["valid-excalidraw-json", "rectangles>=3", "diamonds>=1", "arrows>=2", "uses-semantic-colors"]
+    },
+    {
+      "name": "three-tier",
+      "prompt": "Make an excalidraw diagram of a three-tier architecture: Presentation, Application, Data, stacked vertically with arrows top to bottom.",
+      "checks": ["valid-excalidraw-json", "rectangles==3", "arrows>=2", "uses-semantic-colors"]
+    },
+    {
+      "name": "labelled-pipeline",
+      "prompt": "Make an excalidraw diagram of an ETL pipeline: Extract -> Transform -> Load, each arrow labelled with the step verb.",
+      "checks": ["valid-excalidraw-json", "rectangles==3", "arrows==2", "text>=3", "uses-semantic-colors"]
+    },
+    {
+      "name": "feedback-loop",
+      "prompt": "Make an excalidraw diagram with a Build box, a Measure box, and a Learn box arranged so arrows form a loop back to Build.",
+      "checks": ["valid-excalidraw-json", "rectangles==3", "arrows>=3", "uses-semantic-colors"]
+    },
+    {
+      "name": "single-callout",
+      "prompt": "Make an excalidraw diagram with one prominent box labelled 'Core Engine' and a short caption beneath it.",
+      "checks": ["valid-excalidraw-json", "rectangles>=1", "text>=2", "uses-semantic-colors"]
     }
   ]
 }
