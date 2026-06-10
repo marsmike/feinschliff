@@ -109,5 +109,5 @@ new target *graders* (deck, DSL template, framework code) plug in next to it.
 - **v1 (now):** deterministic diagram grader + the loop, on `excalidraw`/`svg`.
 - **Next (follow-on plans):** DSL-template target (`brand_visual_diff`), deck
   target (`deck verify-collate`), framework-code target (brief-corpus
-  build-clean + `feinblick health`) — all reuse this same loop machinery,
+  build-clean) — all reuse this same loop machinery,
   grading on **generated** results.

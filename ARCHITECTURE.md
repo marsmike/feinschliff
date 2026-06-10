@@ -1,8 +1,8 @@
 # Architecture
 
 `feinschmiede` is a family of Claude Code plugins for branded media creation —
-decks, images & 2D, video, audio — plus a codebase-intelligence plugin, built
-over one shared Python engine. This document is the map: how the pieces fit,
+decks, images & 2D, video, and audio — built over one shared Python engine.
+This document is the map: how the pieces fit,
 why the boundaries are where they are, and the rules a contributor must keep.
 
 ## The two coupling rules
@@ -37,7 +37,6 @@ That edge points builder → office (acyclic) and is declared in
 | **feinbild** | plugin | Image & 2D — AI images (Replicate/Gemini) + SVG + Excalidraw diagrams, over the engine. |
 | **feinklang** | plugin | Audio — ElevenLabs voiceover. |
 | **feinschnitt** | plugin | Video — Remotion videos + CLI session recordings; composes feinbild + feinklang. |
-| **feinblick** | plugin | Codebase intelligence — unified Python + Claude-skill findings, audit gate, agent report. Standalone, stdlib-only. |
 | **feinschliff-builder** | plugin | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). The office sub-family; imports feinschliff. |
 | **feinschliff-extra** | plugin (data) | 10 extra brand packs. No Python. |
 
@@ -50,7 +49,6 @@ feinschmiede (engine)  ◀── feinbild ◀── feinschliff ◀── feinsc
                        │                     │
         feinschnitt ───┘ (calls feinbild + feinklang CLIs)
         feinklang  (engine-free; standalone)
-        feinblick  (engine-free; standalone, stdlib-only)
 ```
 
 Solid arrows are *import/vendor* dependencies (toward the engine). `feinschnitt`
@@ -153,9 +151,9 @@ every pack against every layout; see
 CI gates, per `.github/workflows/ci.yml`:
 
 - **per-package tests + ruff** for every Python package (feinschliff,
-  feinschliff-builder, feinschmiede, feinbild, feinklang, feinschnitt,
-  feinblick) — the `feinschliff lib tests` job name is a required status check
-  and must not be renamed;
+  feinschliff-builder, feinschmiede, feinbild, feinklang, feinschnitt) — the
+  `feinschliff lib tests` job name is a required status check and must not be
+  renamed;
 - **production render path** exercised with `libcairo2` installed (the
   rough+cairosvg path, not skipped);
 - **wheel-install smoke** — each plugin's wheelhouse is built from source,

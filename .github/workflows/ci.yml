@@ -67,7 +67,7 @@ jobs:
           python3 - <<'PY'
           import tomllib, pathlib, sys
           members = ["feinschmiede", "feinschliff", "feinschliff-builder",
-                     "feinbild", "feinklang", "feinschnitt", "feinblick"]
+                     "feinbild", "feinklang", "feinschnitt"]
           versions = {m: tomllib.loads(pathlib.Path(m, "pyproject.toml").read_text())["project"]["version"]
                       for m in members}
           uniq = set(versions.values())
@@ -79,7 +79,7 @@ jobs:
       - name: Skill docs use bare CLIs (no `uv run <cli>`, no `lib.` engine paths)
         run: |
           set -euo pipefail
-          if grep -rn --include='*.md' -E 'uv run (feinschliff|feinschliff-builder|feinbild|feinklang|feinschnitt|feinblick)\b' */skills/; then
+          if grep -rn --include='*.md' -E 'uv run (feinschliff|feinschliff-builder|feinbild|feinklang|feinschnitt)\b' */skills/; then
             echo "::error::skills/ must call the bare CLI on PATH, not 'uv run <cli>'"
             exit 1
           fi
@@ -184,30 +184,13 @@ jobs:
         working-directory: ${{ matrix.pkg }}
         run: uv run pytest -q
 
-  feinblick:
-    name: feinblick tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-      - uses: astral-sh/setup-uv@v7
-        with:
-          enable-cache: true
-      - name: Lint (ruff)
-        working-directory: feinblick
-        run: uv run --group dev ruff check .
-      - name: Run tests
-        working-directory: feinblick
-        # The integration test stubs the external engines and the network smoke
-        # test is @pytest.mark.skip-ed, so the suite needs no uvx/npx/Node.
-        run: uv run --group dev pytest -q
-
   wheel-install:
     name: ${{ matrix.plugin }} wheel install + CLI smoke
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        plugin: [feinschliff, feinbild, feinklang, feinschnitt, feinschliff-builder, feinblick]
+        plugin: [feinschliff, feinbild, feinklang, feinschnitt, feinschliff-builder]
     steps:
       - uses: actions/checkout@v6
       - uses: astral-sh/setup-uv@v7

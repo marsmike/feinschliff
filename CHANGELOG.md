@@ -4,6 +4,10 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Removed
+- **`feinblick`** — the codebase-intelligence plugin moved to the `agentic-toolkit` marketplace as `codescan` (an internal static-analysis / audit tool, unrelated to media creation). Its self-audit config (`feinblick.toml` + the `.feinblick/` baseline) is dropped from this repo too.
+- **`feinklang-consumer`** — the throwaway Phase-0 cross-plugin smoke-test plugin (already de-listed from the marketplace).
+
 ## [0.3.0] - 2026-06-10
 
 - **Repository & marketplace identity: `feinschmiede`.** The umbrella repo/marketplace is now named **feinschmiede** — the same name as the shared engine package — to describe the whole branded-media family over one engine. The office/decks plugin keeps the name `feinschliff`; `feinschliff-builder`/`feinschliff-extra`, the `FEINSCHLIFF_BRAND_PATH`/`~/.feinschliff` overrides, and the `@feinschmiede` install suffixes are unchanged. In-repo links, badges, and install commands now point at `marsmike/feinschmiede` (`/plugin marketplace add marsmike/feinschmiede` → `/plugin install <name>@feinschmiede`). The GitHub repo + Pages rename is the final manual flip; old `marsmike/feinschliff` URLs auto-redirect afterward.

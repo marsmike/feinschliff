@@ -59,12 +59,6 @@ PLUGINS: dict[str, dict] = {
                         "jsonschema", "pyyaml", "rough", "anthropic"],
         "env_tail": "none",
     },
-    "feinblick": {
-        # stdlib-only: the wheelhouse is just our own wheel, no third-party deps.
-        "builds": ["feinblick"],
-        "third_party": [],
-        "env_tail": "none",
-    },
 }
 
 ENV_TAILS = {

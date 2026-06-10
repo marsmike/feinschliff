@@ -1,1 +1,0 @@
-{"error": "Circular dependency", "dependencies": ["mod_a", "mod_b"]}

@@ -1,6 +1,0 @@
-This brief.txt is a deliberate repo-discipline violation.
-
-Per CLAUDE.md, feinschliff/examples/ may only hold rendered artifacts
-(.pdf / .pptx / .png) plus README.md / ATTRIBUTION.md. A `brief.txt` is a
-forbidden "how it was built" intermediate that belongs under .debug/, so the
-native repo-discipline rule (FB-REPO-EX001) must flag this file.
