@@ -1,4 +1,4 @@
-# CLAUDE.md — feinschliff repo
+# CLAUDE.md — feinschmiede repo
 
 Working memory for AI contributors to this repo. Read before touching
 `feinschliff/examples/`, build scripts, the diagram pipeline, or the brand

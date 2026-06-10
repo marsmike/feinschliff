@@ -1,4 +1,4 @@
-# NOTICE — feinschliff
+# NOTICE — feinschmiede
 
 This repository is licensed MIT (see [LICENSE](LICENSE)).
 
