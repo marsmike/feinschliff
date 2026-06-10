@@ -569,8 +569,8 @@ HEAD = dedent('''\
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Feinschliff — Brand Pack Gallery</title>
-        <meta name="description" content="Visual reference for the 12 Feinschliff brand packs and the 41 slide layouts each brand renders.">
+        <title>feinschmiede — Brand Pack Gallery</title>
+        <meta name="description" content="Visual reference for the 12 feinschmiede brand packs and the 41 slide layouts each brand renders.">
 ''')
 
 
@@ -605,8 +605,8 @@ def main() -> int:
 
     body_top = dedent(f'''\
         <header class="site-header">
-            <h1>Feinschliff — Brand Pack Gallery</h1>
-            <p>Every Feinschliff brand pack rendered against the full {len(brands[0]["layouts"]) if brands else 0}-layout catalog. {len(brands)} brands × {len(brands[0]["layouts"]) if brands else 0} layouts = {len(brands) * (len(brands[0]["layouts"]) if brands else 0)} slides. Click any thumbnail to open the carousel — arrow keys / on-screen buttons navigate, Esc closes.</p>
+            <h1>feinschmiede — Brand Pack Gallery</h1>
+            <p>Every feinschmiede brand pack rendered against the full {len(brands[0]["layouts"]) if brands else 0}-layout catalog. {len(brands)} brands × {len(brands[0]["layouts"]) if brands else 0} layouts = {len(brands) * (len(brands[0]["layouts"]) if brands else 0)} slides. Click any thumbnail to open the carousel — arrow keys / on-screen buttons navigate, Esc closes.</p>
         </header>
         <nav class="brand-nav">
             {chr(10).join(nav_html)}

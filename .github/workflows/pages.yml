@@ -35,10 +35,10 @@ jobs:
           cat > docs/index.html <<'HTML'
           <!doctype html>
           <meta charset="utf-8">
-          <title>feinschliff brand gallery</title>
+          <title>feinschmiede brand gallery</title>
           <meta http-equiv="refresh" content="0; url=brands/">
           <link rel="canonical" href="brands/">
-          <p>Redirecting to the <a href="brands/">feinschliff brand gallery</a>…</p>
+          <p>Redirecting to the <a href="brands/">feinschmiede brand gallery</a>…</p>
           HTML
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
