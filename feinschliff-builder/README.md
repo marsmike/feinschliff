@@ -20,6 +20,7 @@ iterate brand packs with an AI-assisted verify loop.
 |---|---|
 | **`/compile`** | Scaffold v2 `.slide.dsl` skeletons from Claude Design HTML output |
 | **`/improve-brand`** | Iterate a brand pack's layouts against a source PPTX — runs the verify loop, fans out one sub-agent per layout below threshold |
+| **`/autoloop`** | Iteratively improve a target toward a measurable goal — a Claude-run `measure → mutate → keep/revert → consolidate` loop scored by `feinschliff-builder eval`; rides Claude Code's built-in `/goal` for cross-turn persistence. Invoked as `/feinschliff-builder:autoloop`. See [`skills/autoloop/README.md`](skills/autoloop/README.md) |
 
 ## CLI subcommands
 
@@ -35,6 +36,7 @@ feinschliff-builder <subcommand> [options]
 | `verify` | Structural validation of a built `.pptx` deck |
 | `verify-quality` | LLM quality rubric pass (spacing, contrast, typography) |
 | `verify-diagram` | Validate diagram DSL files for syntax and token references |
+| `eval` | Grade generated artifacts (`.excalidraw`/`.svg`) against a skill's `evals/evals.json` — the deterministic scorer behind `/autoloop` (`feinschliff-builder eval --help`) |
 
 ### Typical authoring workflow
 

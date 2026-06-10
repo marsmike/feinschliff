@@ -124,6 +124,29 @@ The PPTX/PDF showcases (`feinschliff-builder/scripts/render_brand_preview.py`)
 are an orthogonal artifact — multi-slide downloadable templates per brand, also
 gitignored.
 
+## Autonomous improvement loop (`autoloop`)
+
+"Loops are the new prompts": Claude itself runs a `measure → mutate →
+keep/revert → consolidate` loop to drive a target toward a measurable goal. The
+only code is a deterministic grader; the loop is prose Claude follows.
+
+- **Name:** the skill is `autoloop`, invoked as `/feinschliff-builder:autoloop`.
+  Do NOT name it `goal` — `/goal` is a **built-in** Claude Code command (generic
+  "loop until a condition"); `autoloop` rides that built-in for cross-turn
+  persistence instead of reinventing it.
+- **Skill + canonical spec:** `feinschliff-builder/skills/autoloop/` (`SKILL.md`
+  is the source of truth; `README.md` is the human intro; `references/` holds the
+  mutator/consolidator/redirection directives).
+- **Grader:** `feinschliff-builder eval <skill-dir> --results-dir <dir>` scores
+  **already-generated** `.excalidraw`/`.svg` artifacts against the skill's
+  `evals/evals.json` via the shared `feinschmiede` validator + brand palette
+  (`feinschliff_builder/eval/{checks,grader}.py`). No LLM. Run `… eval --help`.
+- **Always grade GENERATED results**, never static fixtures. Working state lives
+  in gitignored `.autoloop/<target>/`; kept mutations commit to an
+  `autoloop/<target>/<ts>` branch — never `main`.
+- v1 targets the `excalidraw`/`svg` skills; deck / DSL-template / framework-code
+  targets reuse the same loop and are follow-on work.
+
 ## Commit + push hygiene
 
 - All commits require DCO sign-off: `git commit -s -m "..."`. CI enforces.
