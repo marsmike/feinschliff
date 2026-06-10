@@ -51,6 +51,8 @@ def run_check(name: str, artifact: Path, ctx: CheckContext) -> bool:
         return "viewBox=" in artifact.read_text()
     if name == "uses-semantic-colors":
         return _uses_semantic_colors(artifact, ctx.brand_dir)
+    if name == "title-on-grid":
+        return _title_on_grid(artifact, ctx.brand_dir)
     m = _COUNT_RE.match(name)
     if m:
         return _count_check(artifact, m.group(1), m.group(2), int(m.group(3)))
@@ -77,6 +79,35 @@ def _count_check(artifact: Path, element: str, op: str, n: int) -> bool:
     want = _ELEMENT_TYPE[element]
     count = sum(1 for el in doc.get("elements", []) if el.get("type") == want)
     return _OPS[op](count, n)
+
+
+_TITLE_TEXT_RE = re.compile(r"^\s*text\s+(\d+),(\d+)\b")
+
+
+def _title_on_grid(artifact: Path, brand_dir: Path, *, tol: float = 8.0) -> bool:
+    """True iff the layout's title sits on the brand's left margin.
+
+    The title is the first top-anchored `text` primitive (y within the top
+    padding band). Its x must equal the brand's `slide.padding-x` (±tol).
+    Reads the pack's OWN tokens, so it generalises across brands — it
+    encodes the decompiler drift root cause (titles landing off-grid).
+    """
+    from feinschmiede.dsl.tokens import load_tokens
+
+    tokens = load_tokens(brand_dir, brands_dir=brand_dir.parent)
+    pad_x = tokens.slide("padding-x")
+    try:
+        pad_y_top = tokens.slide("padding-y-top")
+    except Exception:
+        pad_y_top = pad_x
+    for line in artifact.read_text().splitlines():
+        m = _TITLE_TEXT_RE.match(line)
+        if not m:
+            continue
+        x, y = int(m.group(1)), int(m.group(2))
+        if y <= pad_y_top + 60:  # top-anchored line => the title
+            return abs(x - pad_x) <= tol
+    return True  # no top-anchored title (e.g. a cover) => nothing to misplace
 
 
 def _uses_semantic_colors(artifact: Path, brand_dir: Path) -> bool:

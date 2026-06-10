@@ -14,7 +14,7 @@ from pathlib import Path
 from feinschliff_builder.eval.checks import CheckContext, run_check
 
 # evals.json "skill" -> generated artifact extension.
-_EXT = {"excalidraw": ".excalidraw", "svg": ".svg"}
+_EXT = {"excalidraw": ".excalidraw", "svg": ".svg", "slide-dsl": ".slide.dsl"}
 
 
 def grade(evals_path: Path, results_dir: Path, brand_dir: Path) -> dict:
