@@ -67,7 +67,6 @@ NS = {
     "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
     "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
     "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-    "svg": "http://www.w3.org/2000/svg",
 }
 
 EMU_PER_PT = 12700
@@ -330,11 +329,6 @@ class CanvasMap:
 
     def h(self, emu: float) -> int:
         return max(1, round(emu * self.sy))
-
-    def pt_to_px(self, pt: float) -> float:
-        # 1 pt in slide-y → (cy/emu_per_inch / canvas_h) ... easier:
-        # canvas_h px corresponds to slide height in pt = cy/12700
-        return pt * (self.ch / (self.cy / EMU_PER_PT))
 
 
 # ---------------------------------------------------------------------------
@@ -1144,25 +1138,6 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
                 slide_ph_idxs.add(s.ph_idx)
     # Inherited chrome draws behind slide content.
     return inherited + shapes
-
-
-def _is_custom_prompt(src, ph_idx: str | None) -> bool:
-    """True when the layout's placeholder for `ph_idx` carries the
-    `hasCustomPrompt="1"` marker. Those text bodies hold the template
-    instruction shown in PowerPoint while the slide placeholder is empty;
-    they're suppressed at render time and must not be emitted into the
-    DSL or they leak as visible template copy in derived slides.
-    """
-    if ph_idx is None:
-        return False
-    for sp in src.element.iter("{%s}sp" % NS["p"]):
-        ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-        if ph is None or ph.get("idx") != ph_idx:
-            continue
-        nvPr = sp.find(".//p:nvSpPr/p:nvPr", NS)
-        if nvPr is not None and ph.get("hasCustomPrompt") == "1":
-            return True
-    return False
 
 
 def _layout_master_chain(slide) -> list:
@@ -3005,32 +2980,6 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
 
     return "\n".join(out) + "\n"
 
-
-# ---------------------------------------------------------------------------
-# SVG bbox lookup (fallback / verification)
-# ---------------------------------------------------------------------------
-
-
-def svg_path_bboxes(svg_path: Path) -> list[tuple[float, float, float, float]]:
-    """Return crude bounding boxes of <path> elements in the SVG, in pt units.
-    Used to cross-check PPTX-derived geometry for custGeom shapes.
-    """
-    try:
-        root = etree.parse(str(svg_path)).getroot()
-    except Exception:
-        return []
-    bboxes: list[tuple[float, float, float, float]] = []
-    for p in root.iter("{%s}path" % NS["svg"]):
-        d = p.get("d") or ""
-        nums = re.findall(r"-?\d+(?:\.\d+)?", d)
-        if not nums:
-            continue
-        xs = [float(n) for n in nums[0::2]]
-        ys = [float(n) for n in nums[1::2]]
-        if not xs or not ys:
-            continue
-        bboxes.append((min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys)))
-    return bboxes
 
 
 # ---------------------------------------------------------------------------

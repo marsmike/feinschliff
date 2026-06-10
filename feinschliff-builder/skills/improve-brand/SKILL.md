@@ -1,6 +1,6 @@
 ---
 name: improve-brand
-description: Iteratively improve a brand pack's `.slide.dsl` layouts to match a source PPTX. Runs the verify-loop, then fans out one sub-agent per layout above threshold so each slide is analysed and edited in parallel.
+description: Use when a brand pack scaffold exists and you need to close the structural fidelity gap against a source PPTX — runs the verify-loop, then fans out one sub-agent per layout above threshold so each slide is analysed and edited in parallel.
 ---
 
 # improve-brand — fan-out DSL improvement loop

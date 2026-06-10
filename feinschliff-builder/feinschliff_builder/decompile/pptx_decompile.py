@@ -94,7 +94,7 @@ class _ColorIndex:
     @classmethod
     def from_tokens(cls, tokens: Tokens) -> _ColorIndex:
         idx: dict[str, str] = {}
-        for name, value in tokens.raw.get("color", {}).items():
+        for name, _ in tokens.raw.get("color", {}).items():
             if name.startswith("$"):
                 continue
             try:

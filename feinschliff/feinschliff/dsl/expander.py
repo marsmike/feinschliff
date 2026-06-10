@@ -28,7 +28,7 @@ from .parser import DSLNode, CompoundDef, parse_file
 
 if TYPE_CHECKING:
     from feinschmiede.brand import BrandPack
-    from feinschmiede.dsl.ast import Document, Element, Slide
+    from feinschmiede.dsl.ast import Document, Element
 
 
 @dataclass

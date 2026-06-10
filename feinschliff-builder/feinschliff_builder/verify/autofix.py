@@ -328,21 +328,6 @@ def _drop_weakest_bullets(text: str, keep: int = 5) -> str:
     return "\n".join(surviving)
 
 
-def _get_slide_content(plan: dict, slide_index: int) -> dict:
-    """Return the content dict for the 1-based *slide_index*."""
-    return plan["slides"][slide_index - 1].get("content") or {}
-
-
-def _set_slot(plan: dict, slide_index: int, slot: str, value: str) -> None:
-    """Write *value* into plan slides[slide_index-1].content[slot]."""
-    plan["slides"][slide_index - 1].setdefault("content", {})[slot] = value
-
-
-def _get_slot(plan: dict, slide_index: int, slot: str) -> str | None:
-    """Read plan slides[slide_index-1].content[slot]; return None if absent."""
-    return _get_slide_content(plan, slide_index).get(slot)
-
-
 def _find_smaller_layout(
     current_layout_rel: str,
     slide: dict,
