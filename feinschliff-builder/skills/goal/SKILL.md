@@ -22,9 +22,11 @@ Invocation: `/goal <target> until <condition> [budget N]`
    - `svg` -> `feinbild/skills/svg`.
 2. Create an experiment branch: `git checkout -b autoloop/<target>/<timestamp>`.
    ALL kept mutations commit here. Never touch `main`.
-3. Working dir: `.autoloop/<target>/` with `results/`, `attempts/`, `notes/`,
-   `techniques/` (gitignored). Read any existing `techniques/*.md` first —
-   that is accumulated learning from prior runs; do not re-derive it.
+3. Create the working dir (gitignored) — `feinbild expand -o` does NOT create
+   parent dirs, so make them up front:
+   `mkdir -p .autoloop/<target>/{results,attempts,notes,techniques}`.
+   Then read any existing `.autoloop/<target>/techniques/*.md` first — that is
+   accumulated learning from prior runs; do not re-derive it.
 
 ## The loop
 
