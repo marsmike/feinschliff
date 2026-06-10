@@ -1,0 +1,76 @@
+name: Release
+
+# Build a distributable marketplace zip and attach it to the GitHub Release
+# whenever a `v*` tag is pushed (a fresh tag OR a moved/retriggered one). The
+# zip is a clean `git archive` of the tagged tree: a single top-level
+# `feinschmiede-<version>/` folder containing the root
+# `.claude-plugin/marketplace.json` plus every plugin dir. A user unzips it and
+# adds the folder as a local marketplace in Claude Code / Claude Desktop:
+#
+#   unzip feinschmiede-<version>.zip
+#   /plugin marketplace add ./feinschmiede-<version>
+#
+# Re-pushing a moved tag (`git push -f origin v0.3.0`) re-runs this workflow and
+# refreshes the attached zip — that is how a release is "retriggered".
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to (re)build the release for, e.g. v0.3.0'
+        required: true
+
+permissions:
+  contents: write  # create/update releases + upload assets (default token is read-only)
+
+jobs:
+  release:
+    name: Build marketplace zip + attach to release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: meta
+        run: |
+          set -e
+          tag="${{ github.event.inputs.tag || github.ref_name }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Building release for tag: $tag"
+
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ steps.meta.outputs.tag }}
+          fetch-depth: 0  # full history so `git archive <tag>` resolves
+
+      - name: Build marketplace zip
+        id: zip
+        run: |
+          set -e
+          tag='${{ steps.meta.outputs.tag }}'
+          version='${{ steps.meta.outputs.version }}'
+          prefix="feinschmiede-${version}"
+          zip="${prefix}.zip"
+          git archive --format=zip --prefix="${prefix}/" -o "$zip" "$tag"
+          # Fail loudly if the marketplace manifest is not at the folder root.
+          if ! unzip -l "$zip" | grep -q "${prefix}/.claude-plugin/marketplace.json"; then
+            echo "::error::marketplace.json missing from zip root — bad archive" >&2
+            exit 1
+          fi
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+          ls -lh "$zip"
+
+      - name: Publish / update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          tag='${{ steps.meta.outputs.tag }}'
+          zip='${{ steps.zip.outputs.zip }}'
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release $tag exists — attaching/replacing the zip asset (notes untouched)."
+            gh release upload "$tag" "$zip" --clobber
+          else
+            echo "Release $tag does not exist — creating it with generated notes."
+            gh release create "$tag" "$zip" --title "$tag" --generate-notes
+          fi
