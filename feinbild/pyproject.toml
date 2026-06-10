@@ -1,6 +1,6 @@
 [project]
 name = "feinbild"
-version = "0.0.1"
+version = "0.3.0"
 description = "Image / 2D for Claude Code — AI images, SVG, and Excalidraw diagrams via the `feinbild` CLI."
 requires-python = ">=3.11"
 license = "MIT"
