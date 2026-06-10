@@ -8,7 +8,7 @@ The central discipline that separates Feinschliff decks from one-shot AI generat
 
 Concretely:
 - **Minimum 1 verify pass**, always — even on the happy path where the first build looks plausible.
-- **`out/verify_report.md` is the completion gate.** Markdown, human-readable, so the user can scan it without parsing JSON. If it isn't on disk, the skill hasn't finished. See `pipeline.md` step 4 for the format.
+- **`out/verify_report.md` is the universal completion gate.** Markdown, human-readable, so the user can scan it without parsing JSON. If it isn't on disk, the skill hasn't finished. See `pipeline.md` step 4 for the format. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI — but `out/verify_report.md` with `Verdict: clean` is the gate for all installs.
 - **The HTML design is the visual ground truth.** The active brand's `feinschliff/<brand-root>/claude-design/<brand>-2026.html` defines what each layout should look like (e.g. `feinschliff/brands/feinschliff/claude-design/feinschliff-2026.html` by default). When the rendered PNG diverges from the HTML reference for that layout, that's a defect — even if it doesn't map cleanly to one of the 11 named classes.
 
 ## Budget (ask the user at the start)
@@ -75,12 +75,12 @@ revise turn.
 
 ```bash
 # Standalone fix pass:
-uv run feinschliff deck verify-static plan.yaml --json > defects.json
-uv run feinschliff deck apply-fixes plan.yaml --defects defects.json
+feinschliff deck verify-static plan.yaml --json > defects.json
+feinschliff deck apply-fixes plan.yaml --defects defects.json
 # Exit 0 = patches applied; exit 1 = nothing to fix
 
 # Integrated into build (up to 3 inner cycles, writes plan back to disk):
-uv run feinschliff deck build plan.yaml --autofix
+feinschliff deck build plan.yaml --autofix
 ```
 
 The `--autofix` flag runs up to **3 inner cycles** of verify → fix → verify.
@@ -120,31 +120,31 @@ For each slide in the rendered PNG, inspect for all 29 classes. The deterministi
     from titles alone. Detection: same prompt that runs at step 1c
     storyline (see `pipeline.md` step 1c). If step 1c was skipped, run it
     here against the *built* deck's titles (use
-    `lib.verify.deck.titles.extract_titles_from_pptx`). Fix: rewrite titles
+    `feinschmiede.verify.deck.titles.extract_titles_from_pptx`). Fix: rewrite titles
     as full-sentence claims; reorder so the answer leads; ensure the deck
     has a Situation → Complication → Resolution shape.
-20. **narrative-arc-missing** *(deck-level, NEW Phase 3)*: the deck contains a Situation slide AND a Resolution slide but no Complication. Audience left asking "why act now?" — the Complication slide is what justifies action. Detection: deterministic via `lib.verify.deck.narrative_arc.check_narrative_arc(narrative_acts)`. Input: the `narrative_act` field per slide in `content_plan.json` (assigned at step 1c). Fix: add a Complication slide between Situation and Resolution that names the cost of inaction or the trigger forcing the decision.
+20. **narrative-arc-missing** *(deck-level, NEW Phase 3)*: the deck contains a Situation slide AND a Resolution slide but no Complication. Audience left asking "why act now?" — the Complication slide is what justifies action. Detection: deterministic via `feinschmiede.verify.deck.narrative_arc.check_narrative_arc(narrative_acts)`. Input: the `narrative_act` field per slide in `content_plan.json` (assigned at step 1c). Fix: add a Complication slide between Situation and Resolution that names the cost of inaction or the trigger forcing the decision.
 21. **title-body-coherence** *(per-slide, deck-level module, NEW PR A)*: each slide's title makes a claim; the body must prove that claim AND nothing more. Two failure modes:
     - Title says X but the body's evidence supports Y (mismatch).
     - Body contains content unrelated to the title's claim (drift).
 
-    Detection: per slide, extract title + body via `lib.verify.deck.title_body.extract_slide_title_and_body(pptx, slide_index)`. Pass both to an LLM judgment with the rule "nothing in title not in body; nothing in body irrelevant to title". Fire defect on either failure mode.
+    Detection: per slide, extract title + body via `feinschmiede.verify.deck.title_body.extract_slide_title_and_body(pptx, slide_index)`. Pass both to an LLM judgment with the rule "nothing in title not in body; nothing in body irrelevant to title". Fire defect on either failure mode.
 
     Fix: rewrite the title to match what the body proves, OR cut the irrelevant body content, OR add evidence so the title's claim is supported.
 22. **non-mece-breakdown** *(deck-level, NEW Phase 5)*: a breakdown slide's items don't honor the MECE principle (Mutually Exclusive, Collectively Exhaustive). Two failure modes:
-    - **Numeric**: items have explicit values/percentages and sum to something other than 100% (±2pp tolerance). Detection: deterministic via `lib.verify.deck.non_mece.check_non_mece(items)`.
+    - **Numeric**: items have explicit values/percentages and sum to something other than 100% (±2pp tolerance). Detection: deterministic via `feinschmiede.verify.deck.non_mece.check_non_mece(items)`.
     - **Semantic**: item labels overlap or have gaps that a 100%-sum check can't catch (e.g. "Enterprise", "Mid-market", "Customer churn" — first two are MECE, third overlaps both). Detection: LLM judgment per slide where `narrative_role` is "breakdown" or "segmentation".
 
     Fix: rebalance the breakdown so categories are mutually exclusive AND collectively exhaustive. Often easier to refactor as 80/20 (the top 2-3 explicit + "Other" for the long tail).
-23. **squint-test** *(visual, NEW Phase 5)*: slides that pass per-element checks but fail when you step back and squint — the headline isn't legible at thumbnail size, the visual hierarchy collapses, or the slide reads as a wall of small things. Detection: render the slide PNG at 25% scale via `lib.verify.deck.squint.make_squint_thumbnail(source, output, scale=0.25)`. LLM reads the thumbnail and judges: "Can you still identify the headline message? Does the slide read as one clear thing?". Fire defect if either fails.
+23. **squint-test** *(visual, NEW Phase 5)*: slides that pass per-element checks but fail when you step back and squint — the headline isn't legible at thumbnail size, the visual hierarchy collapses, or the slide reads as a wall of small things. Detection: render the slide PNG at 25% scale via `feinschmiede.verify.deck.squint.make_squint_thumbnail(source, output, scale=0.25)`. LLM reads the thumbnail and judges: "Can you still identify the headline message? Does the slide read as one clear thing?". Fire defect if either fails.
 
     Fix: enlarge the action title relative to body content; reduce slot count; remove decorative chrome that competes with the message.
-24. **slide-necessity** *(per-slide, NEW Phase 5, critique-only)*: a slide that doesn't earn its place in the deck. Test: if you remove this slide, does the deck still tell its story? If yes, the slide is unnecessary. Detection: pure LLM judgment using `lib.verify.deck.slide_necessity.materialize_necessity_context(titles, slide_index)` to fetch the surrounding title context. Fire defect only in `/deck critique` mode — in regular verify the fix ("cut this slide") isn't actionable mid-build.
+24. **slide-necessity** *(per-slide, NEW Phase 5, critique-only)*: a slide that doesn't earn its place in the deck. Test: if you remove this slide, does the deck still tell its story? If yes, the slide is unnecessary. Detection: pure LLM judgment using `feinschmiede.verify.deck.slide_necessity.materialize_necessity_context(titles, slide_index)` to fetch the surrounding title context. Fire defect only in `/deck critique` mode — in regular verify the fix ("cut this slide") isn't actionable mid-build.
 
     Fix: cut the slide, OR sharpen its claim so it's load-bearing rather than padding.
-25. **vague-so-what** *(per-slide, NEW Phase 5)*: a data/chart slide's `so_what` slot contains only corporate-speak vagueness ("Improving leveraging synergies", "Optimizing transformative innovation") with no concrete numeric or named-entity anchor. The slot is meant to carry the actionable insight from the data — vagueness defeats its purpose. Detection: deterministic via `lib.content_validator._check_so_what_vagueness` (fires when ≥2 vague keywords appear AND no digit/proper-noun anchor is present). Fix: rewrite the so_what as a specific claim — name the metric AND the magnitude AND the actor or driver.
+25. **vague-so-what** *(per-slide, NEW Phase 5)*: a data/chart slide's `so_what` slot contains only corporate-speak vagueness ("Improving leveraging synergies", "Optimizing transformative innovation") with no concrete numeric or named-entity anchor. The slot is meant to carry the actionable insight from the data — vagueness defeats its purpose. Detection: deterministic via `feinschmiede.content_validator._check_so_what_vagueness` (fires when ≥2 vague keywords appear AND no digit/proper-noun anchor is present). Fix: rewrite the so_what as a specific claim — name the metric AND the magnitude AND the actor or driver.
 
-26. **filler-word** *(per-slide, NEW)*: a data/chart slide's `so_what` slot is padded with meaningless intensifiers ("very", "really", "quite", "extremely", etc.) that dilute the claim without adding information. Unlike `vague-so-what`, a numeric anchor does **not** clear this defect — "Revenue very extremely grew by 12%" is still weaker than "Revenue grew 12%". Detection: deterministic via `lib.content_validator._check_filler_words` (fires when ≥2 filler words appear). Fix: delete the fillers; the sentence is stronger without them.
+26. **filler-word** *(per-slide, NEW)*: a data/chart slide's `so_what` slot is padded with meaningless intensifiers ("very", "really", "quite", "extremely", etc.) that dilute the claim without adding information. Unlike `vague-so-what`, a numeric anchor does **not** clear this defect — "Revenue very extremely grew by 12%" is still weaker than "Revenue grew 12%". Detection: deterministic via `feinschmiede.content_validator._check_filler_words` (fires when ≥2 filler words appear). Fix: delete the fillers; the sentence is stronger without them.
 
 27. **layout-monotony** *(deck-level, NEW)*: three or more consecutive content slides use the same layout, creating visual repetition that forces the audience to re-orient instead of absorb. Structural layouts (title slides, chapter openers, agenda, end) are exempt — they don't rotate. Detection: walk the `deck_plan.json` layout sequence; flag any run of ≥3 identical non-structural layouts. The layout picker's `layout_history` signal pre-empts most monotony at plan time; this check catches cases where the planner had no alternative (e.g., a data-heavy deck with 4 consecutive bar-chart slides). Fix: insert a chapter opener to break the run, or switch to an alternate chart layout (`line-chart`, `stacked-bar`, `waterfall`) if the data permits.
 
@@ -203,7 +203,7 @@ One-shot agents produce garbage. 15-shot agents spiral and burn budget. A hard s
 
 ## Per-slide verify cache
 
-`lib/verify/cache.py` provides a content-hash cache that skips LLM calls for slides whose content has not changed since the last run.
+`feinschmiede/verify/cache.py` provides a content-hash cache that skips LLM calls for slides whose content has not changed since the last run.
 
 **How it works:**
 
@@ -222,11 +222,11 @@ Each slide's hash is `sha256(brand + layout + json.dumps(content, sort_keys=True
 **CLI usage:**
 
 ```bash
-# Standard — cache is active when --plan is supplied
-uv run feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff
+# Standard — cache is active when --plan is supplied (requires feinschliff-builder plugin)
+feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff
 
 # Force full re-verify (ignore cache)
-uv run feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
+feinschliff-builder verify-quality deck.pptx --plan plan.yaml --brand feinschliff --no-cache
 ```
 
 The cache is keyed by `(slide_hash, rubric_name)`. Changing brand, layout, or any content slot produces a new key, invalidating that slide's entry automatically (old entries are not pruned in v1 — acceptable given small cache size).

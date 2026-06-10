@@ -11,6 +11,7 @@ Expand then render the user's `.svg.dsl` with the `feinbild` CLI:
 ```bash
 feinbild svg expand "<file>.svg.dsl" --brand "${FEINSCHLIFF_BRAND:-feinschliff}"
 feinbild svg render "<file>.svg"
+feinbild verify "<file>.svg"   # structural lint (overflow, overlap, label collision)
 ```
 
 `feinbild` is on PATH — call it as a bare command; never use a file path.

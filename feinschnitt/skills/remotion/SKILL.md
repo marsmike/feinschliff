@@ -7,6 +7,11 @@ description: "Use when creating programmatic videos, animated explainers, or vis
 
 Create videos using Remotion — React components rendered as video frames. Orchestrates a multi-phase pipeline from concept to verified MP4.
 
+## Prerequisites
+
+- **Node.js >= 18** and **npm >= 9** must be available on PATH. Verify with `node --version` and `npm --version` before starting.
+- Remotion requires a Chromium-capable environment for renders; headless Chromium is bundled when you install `@remotion/cli`.
+
 For project structure and full reference index, see [project-layout.md](references/project-layout.md).
 
 ## Quick Start

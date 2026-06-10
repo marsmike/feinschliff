@@ -71,8 +71,9 @@ digraph improve {
 You MUST create a task for each of these items and complete them in order:
 
 1. **Run the verify loop with `--snapshot-baseline`** —
-   `uv run python scripts/brand_verify_loop.py --brand-pack <path>
-   --source-pptx <path> --snapshot-baseline`.
+   `python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py --brand-pack <path>
+   --source-pptx <path> --snapshot-baseline`
+   (requires a dev checkout with `uv sync` for the numpy/scikit-image scoring deps).
    This builds, renders, and diffs every layout in `verify-map.yaml`,
    AND copies the first-iteration renders into `render-png.before/`
    so step 10 can compose a before/after PDF.
@@ -95,7 +96,8 @@ You MUST create a task for each of these items and complete them in order:
 9. **Final report** — print one line per layout: starting score →
    ending score → verdict (green / improved / plateau / regressed).
 10. **Produce the before/after PDF** —
-    `uv run python scripts/brand_before_after_pdf.py --brand-pack <path>`.
+    `python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_before_after_pdf.py --brand-pack <path>`
+    (requires dev checkout with scoring deps).
     Writes `<output-dir>/before-after.pdf` — one page per layout with
     the source, baseline render, and final render side-by-side, plus
     the score delta in the header. This is the artifact a reviewer
@@ -108,9 +110,11 @@ hybrid decompiler / verify loop's structural fidelity), pass
 `--carry-images` to the **initial** `brand_decompile_all.py` call:
 
 ```bash
-uv run python scripts/brand_decompile_all.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_decompile_all.py \
     --brand-pack <path> --source-pptx <path> --carry-images
 ```
+> **Requires dev checkout:** clone the repo and run `uv sync` — the script
+> depends on numpy/scikit-image which are not bundled in the plugin wheelhouse.
 
 This extracts every `<p:pic>` binary from the source slide into
 `<brand-pack>/assets/decompile/<layout>/imageN.<ext>` and rewires the

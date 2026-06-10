@@ -11,6 +11,7 @@ description: Generate Excalidraw diagrams from a compact DSL with brand-resolved
 ```bash
 feinbild excalidraw expand flow.exc.dsl --brand feinschliff   # -> flow.excalidraw
 feinbild excalidraw render flow.excalidraw                    # -> flow.png
+feinbild verify flow.excalidraw                               # lint: overflow, overlap, label collision
 ```
 
 Primitives: `box ellipse diamond dot line zone lane text` and

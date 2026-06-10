@@ -11,6 +11,7 @@ description: Generate SVG diagrams from a compact DSL with brand-resolved colors
 ```bash
 feinbild svg expand chart.svg.dsl --brand feinschliff   # -> chart.svg
 feinbild svg render chart.svg                           # -> chart.png
+feinbild verify chart.svg                               # lint: overflow, overlap, label collision
 ```
 
 `--brand` (or a leading `@brand <name>` line in the DSL) selects the brand;

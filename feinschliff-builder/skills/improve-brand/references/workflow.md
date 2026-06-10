@@ -19,8 +19,11 @@ it, the loop has nothing to compare against.
 
 ## 2. Baseline run
 
+> **Requires dev checkout:** `brand_verify_loop.py` depends on numpy/scikit-image
+> (scoring deps). Clone the repo and run `uv sync` before invoking these scripts.
+
 ```bash
-uv run python scripts/brand_verify_loop.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx
 ```
@@ -98,7 +101,7 @@ which layouts reported edits.
 ## 6. Re-render + re-verify
 
 ```bash
-uv run python scripts/brand_verify_loop.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_verify_loop.py \
     --brand-pack brands/<brand> \
     --source-pptx path/to/source-deck.pptx \
     --skip-source-export                       # source PNGs unchanged
@@ -147,7 +150,7 @@ Stop the outer loop when ANY of:
 After termination, produce the artifact a reviewer can open:
 
 ```bash
-uv run python scripts/brand_before_after_pdf.py \
+python ${CLAUDE_PLUGIN_ROOT}/scripts/brand_before_after_pdf.py \
     --brand-pack brands/<brand>
 ```
 

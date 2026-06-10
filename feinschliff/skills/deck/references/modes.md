@@ -8,7 +8,7 @@ Three user-facing modes. All share the same pipeline described in `pipeline.md`;
 /deck "content brief"
 ```
 
-Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) always runs at least once** — no matter how obviously-correct the first build looks. Completion requires `out/verify_report.json`; see `pipeline.md` step 4.
+Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) always runs at least once** — no matter how obviously-correct the first build looks. The universal completion gate is `out/verify_report.md` with `Verdict: clean`; see `pipeline.md` step 4. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI.
 
 ## plan
 
@@ -101,7 +101,7 @@ slide bodies are stripped away.
 3. Below the list, a one-paragraph **verdict**: `clean` /
    `breaks-but-recoverable` / `structurally broken`.
 
-Use `lib.verify.deck.titles.extract_titles_from_pptx` to fetch titles
+Use `feinschmiede.verify.deck.titles.extract_titles_from_pptx` to fetch titles
 from the built `.pptx`. The flag emission is LLM judgment per-title —
 no deterministic helper is appropriate here (the same title can be a
 break or a clean follow depending on the prior title's claim).
@@ -130,7 +130,7 @@ Alongside the title flip-through, emit a thumbnails-grid PDF to
 4-column grid PDF via:
 
 ```python
-from lib.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
+from feinschmiede.verify.deck.thumbnails_grid import render_thumbnails_grid_pdf
 
 render_thumbnails_grid_pdf(png_paths, Path("out/thumbnails_grid.pdf"))
 ```
