@@ -11,6 +11,7 @@ dependencies = [
     "jsonschema>=4.21",
     "pyyaml>=6.0",
     "pillow>=10",
+    "anthropic>=0.40",
 ]
 
 [project.scripts]
