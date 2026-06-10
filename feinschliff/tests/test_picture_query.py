@@ -281,8 +281,9 @@ def test_picture_query_no_hit_records_missing_and_emits_placeholder(tmp_path):
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     shapes = list(prs.slides[0].shapes)
     assert len(shapes) == 1
-    # AUTO_SHAPE for a rect; definitely not PICTURE.
-    assert shapes[0].shape_type != MSO_SHAPE_TYPE.PICTURE
+    # Gem placeholder illustration now fills the slot (was a grey rect); the
+    # no-hit is still recorded in missing_assets above.
+    assert shapes[0].shape_type == MSO_SHAPE_TYPE.PICTURE
 
     # No lock entry should have been written for a failed search — that
     # would pin the failure permanently.
@@ -416,11 +417,12 @@ def test_picture_query_search_exception_marked_as_search_error(tmp_path):
     no_hits = [e for e in prs.missing_assets if e.get("kind") == "no-hit"]
     assert no_hits == []
 
-    # Placeholder rect emitted (not a picture).
+    # Gem placeholder illustration emitted (search-error path); the error is
+    # still recorded in missing_assets above.
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     shapes = list(prs.slides[0].shapes)
     assert len(shapes) == 1
-    assert shapes[0].shape_type != MSO_SHAPE_TYPE.PICTURE
+    assert shapes[0].shape_type == MSO_SHAPE_TYPE.PICTURE
 
     # Failed search must NOT be pinned in asset_lock.json — a stale
     # "no results" entry would block the slot forever.
@@ -554,11 +556,12 @@ def test_picture_query_fetch_failed_carries_error_diagnostic(tmp_path):
         f"expected exception type in error string, got {entry['error']!r}"
     )
 
-    # Placeholder rect emitted in place of the un-fetchable picture.
+    # Gem placeholder illustration emitted in place of the un-fetchable
+    # picture; the fetch-failed entry is still recorded in missing_assets above.
     from pptx.enum.shapes import MSO_SHAPE_TYPE
     shapes = list(prs.slides[0].shapes)
     assert len(shapes) == 1
-    assert shapes[0].shape_type != MSO_SHAPE_TYPE.PICTURE
+    assert shapes[0].shape_type == MSO_SHAPE_TYPE.PICTURE
 
 
 def test_picture_query_label_used_as_slot_id(tmp_path, tiny_png):
