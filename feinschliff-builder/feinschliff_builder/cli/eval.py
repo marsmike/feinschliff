@@ -46,7 +46,13 @@ def cmd_eval(args) -> int:
         return 2
 
     brand_dir = args.brand or _default_brand_dir()
-    report = grade(evals_path, args.results_dir, brand_dir)
+    try:
+        report = grade(evals_path, args.results_dir, brand_dir)
+    except (ValueError, KeyError) as exc:
+        # Bad evals.json (unknown check name or unsupported skill) — surface a
+        # clean message, never a traceback, since /goal runs this unattended.
+        print(f"eval: {evals_path}: {exc}", file=sys.stderr)
+        return 2
 
     out = args.out or (args.results_dir / "grades.json")
     out.write_text(json.dumps(report, indent=2))
@@ -58,4 +64,6 @@ def cmd_eval(args) -> int:
             f"eval {report['skill']}: {report['passed']}/{report['total']} checks "
             f"passed (score {report['score']:.3f}) -> {out}"
         )
+    # Strict gate: any failed check exits non-zero. The /goal loop reads the
+    # numeric `score` from grades.json for trend/keep-revert decisions.
     return 0 if report["passed"] == report["total"] else 1

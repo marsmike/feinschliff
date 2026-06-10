@@ -53,12 +53,12 @@ def grade(evals_path: Path, results_dir: Path, brand_dir: Path) -> dict:
 
 
 def _safe_check(name: str, artifact: Path, ctx: CheckContext) -> bool:
-    # A malformed artifact must fail the check, never crash the grade.
-    if name == "valid-excalidraw-json" or name == "valid-svg" or name == "has-viewBox" \
-            or name == "uses-semantic-colors":
-        try:
-            return run_check(name, artifact, ctx)
-        except Exception:
-            return False
-    # Count checks (and any unknown name) — let ValueError surface for unknowns.
-    return run_check(name, artifact, ctx)
+    # Unknown check names are an authoring error — let the ValueError surface so
+    # the CLI boundary can report it cleanly. A malformed artifact, by contrast,
+    # must fail the check rather than crash the grade.
+    try:
+        return run_check(name, artifact, ctx)
+    except ValueError:
+        raise
+    except Exception:
+        return False
