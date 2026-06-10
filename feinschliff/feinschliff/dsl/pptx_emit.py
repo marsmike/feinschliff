@@ -1341,6 +1341,29 @@ def _materialise(
     return (p, None) if p.is_file() else (None, None)
 
 
+# Shared gem illustration used as the fallback when a picture asset can't be
+# resolved. Lives at the feinschliff project root `assets/illustrations/`
+# (parents[2] of this module: dsl -> feinschliff pkg -> project).
+_PLACEHOLDER_ILLUSTRATION = (
+    Path(__file__).resolve().parents[2] / "assets" / "illustrations" / "placeholder.jpg"
+)
+
+
+def _placeholder_image_path(ctx: EmitContext) -> "Path | None":
+    """Locate the shared gem placeholder illustration, if available.
+
+    Prefers the plugin asset-fallback root (so an installed wheel resolves it
+    from packaged assets); falls back to the source-tree project assets.
+    """
+    if ctx.asset_root_fallback is not None:
+        cand = ctx.asset_root_fallback / "illustrations" / "placeholder.jpg"
+        if cand.is_file():
+            return cand
+    if _PLACEHOLDER_ILLUSTRATION.is_file():
+        return _PLACEHOLDER_ILLUSTRATION
+    return None
+
+
 def _emit_picture_placeholder(
     slide,
     *,
@@ -1349,11 +1372,31 @@ def _emit_picture_placeholder(
     node: DSLNode,
     ctx: EmitContext,
 ) -> None:
-    """Emit a brand-tonal placeholder rectangle when a picture asset can't be
-    loaded (missing file, unresolvable query, failed fetch, or unset slot).
+    """Fallback for an unresolvable picture (missing file, unresolvable query,
+    failed fetch, or unset slot).
+
+    Places the shared gem illustration (`assets/illustrations/placeholder.jpg`)
+    cropped to the slot so a missing image reads as intentional brand chrome
+    rather than a grey box. Falls back to a brand-tonal rect only when the
+    illustration can't be located or fails to load.
 
     Used exclusively by ``_emit_picture`` for all four fallback branches.
     """
+    placeholder = _placeholder_image_path(ctx)
+    if placeholder is not None:
+        try:
+            x, y = parse_xy(pos_xy)
+            w, h = parse_wh(pos_wh)
+            bytes_io = _prepare_picture_bytes(
+                placeholder, target_aspect=(w / h),
+                treatment=ctx.tokens.picture_treatment,
+            )
+            slide.shapes.add_picture(
+                bytes_io, _px(x), _px(y), width=_px(w), height=_px(h)
+            )
+            return
+        except Exception:
+            pass  # any load/crop failure -> brand-tonal rect below
     _emit_rect(slide, DSLNode(
         kind="rect", pos_args=[pos_xy, pos_wh],
         kw_args={"fill": "paper-2", "stroke": "fog"},
