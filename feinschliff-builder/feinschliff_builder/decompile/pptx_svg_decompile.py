@@ -557,6 +557,41 @@ def _layout_placeholder_default_sz(slide, ph_type: str | None, ph_idx: str | Non
     return None
 
 
+def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
+                              theme: dict[str, str],
+                              palette: dict[str, tuple[int, int, int]]) -> str | None:
+    """Walk slide layout + master for the placeholder's default text colour.
+
+    Mirrors `_layout_placeholder_default_sz` but pulls `<a:defRPr><a:solidFill>`.
+    A layout's WHITE title placeholder (e.g. a `ctrTitle` sitting on a coloured
+    circle) carries no colour on the slide run; without this lookup it decompiles
+    colourless and renders ink-grey. Returns a token/hex or None.
+    """
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in parent.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
+                sf = d.find("a:solidFill", NS) if d is not None else None
+                if sf is not None:
+                    c = _resolve_solid(sf, theme, palette)
+                    if c:
+                        return c
+    style_name = {"title": "titleStyle", "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        d = master.element.find(f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:defRPr", NS)
+        sf = d.find("a:solidFill", NS) if d is not None else None
+        if sf is not None:
+            c = _resolve_solid(sf, theme, palette)
+            if c:
+                return c
+    return None
+
+
 def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> tuple[int, int, int, int] | None:
     """Walk slide layout + master to resolve an inherited placeholder bbox.
 
@@ -1333,6 +1368,22 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # without explicit run-level `sz` inherit the right headline size.
     inherited_sz = _layout_placeholder_default_sz(slide, ph_type, ph_idx) if (ph_type or ph_idx) else None
     runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz)
+    # G3 — capture text colour the slide run INHERITS rather than states. When a
+    # run carries no explicit `<a:rPr><a:solidFill>`, fall back to (a) the shape's
+    # `<p:style><a:fontRef>` (decorative styled shapes) then (b) the layout/master
+    # PLACEHOLDER default colour (e.g. a WHITE `ctrTitle` over a coloured circle).
+    # Without this, on-shape / on-placeholder titles render ink-grey. Emitted
+    # downstream only when it differs from the style-bundle default.
+    if runs and not any(r.color for r in runs):
+        _style = ch.find("p:style", NS)
+        _font_ref = _style.find("a:fontRef", NS) if _style is not None else None
+        _text_color = _resolve_solid(_font_ref, theme, palette) if _font_ref is not None else None
+        if _text_color is None and (ph_type or ph_idx):
+            _text_color = _layout_placeholder_color(slide, ph_type, ph_idx, theme, palette)
+        if _text_color:
+            for _r in runs:
+                if _r.text and _r.text != "\n":
+                    _r.color = _text_color
     kind = _shape_geometry_kind(spPr)
     # For custGeom shapes (kind="shape") — typically map polygons,
     # decorative vector clusters, or hand-drawn paths — bypass the
