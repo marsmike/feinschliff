@@ -124,3 +124,6 @@ feinblick/uv.lock
 # feinblick's runtime working dir (engine cache + baseline) — regenerable; lives
 # in whatever repo feinblick analyzes, never committed.
 .feinblick/
+
+# /goal autonomous loop working state (mirrors .debug/ discipline)
+.autoloop/
