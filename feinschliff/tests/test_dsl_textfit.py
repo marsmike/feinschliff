@@ -160,7 +160,6 @@ def test_prevent_orphan_replaces_space_with_nbsp(heuristic_metrics):
     """Given text that would wrap to a final line containing one word, the
     space between the last two words is replaced with U+00A0 (NBSP) so the
     pair wraps together."""
-    from feinschliff import textfit
     text = "This is a sentence that ends with one orphan word"
     # Narrow box → "word" gets pushed alone onto the final line.
     width_emu = 5_200_000
@@ -179,7 +178,6 @@ def test_prevent_orphan_replaces_space_with_nbsp(heuristic_metrics):
 
 
 def test_prevent_orphan_returns_original_when_no_orphan(heuristic_metrics):
-    from feinschliff import textfit
     short = "Two words"
     width_emu = 20_000_000
     out = textfit.prevent_orphan(
@@ -190,7 +188,6 @@ def test_prevent_orphan_returns_original_when_no_orphan(heuristic_metrics):
 
 def test_prevent_orphan_idempotent(heuristic_metrics):
     """Re-applying produces the same string (already-NBSP'd text doesn't re-loop)."""
-    from feinschliff import textfit
     text = "This is a sentence that ends with one orphan word"
     width_emu = 5_200_000
     once = textfit.prevent_orphan(text, font="Open Sans", size_pt=18, bold=False, width_emu=width_emu)
@@ -217,12 +214,17 @@ def test_real_metrics_beat_default_table():
 
 def test_registered_metrics_win_over_measurement():
     face = _real_face()
+    # Snapshot any builtin table entry so cleanup can restore (never delete) it.
+    builtin = textfit._FONT_WIDTH_RATIO.get(face)
     textfit.register_font_metrics(face, normal=0.99, bold=0.99)
     try:
         w = textfit._avg_char_width_emu(face, 18, False)
         assert abs(w - 0.99 * 18 * 12700) < 1.0
     finally:
-        textfit._FONT_WIDTH_RATIO.pop(face, None)
+        if builtin is None:
+            textfit._FONT_WIDTH_RATIO.pop(face, None)
+        else:
+            textfit._FONT_WIDTH_RATIO[face] = builtin
         textfit._REGISTERED.discard(face)
 
 
@@ -236,8 +238,32 @@ def test_measure_height_real_wrap_counts_lines():
     assert h2 == 2 * h1
 
 
+def test_real_wrap_counts_overwide_word_as_multiple_lines():
+    face = _real_face()
+    word = "Donaudampfschifffahrtsgesellschaftskapitaen"
+    w_pt = _measure.line_width_pt(word, face, 18)
+    half = int(w_pt * 12700 * 0.5)
+    h_half = textfit.measure_height_emu(word, font=face, size_pt=18, width_emu=half)
+    h_full = textfit.measure_height_emu(word, font=face, size_pt=18,
+                                        width_emu=int(w_pt * 12700) + 200)
+    assert h_half >= 2 * h_full      # mid-word breaking modeled, not 1 line
+
+
 def test_has_real_metrics_false_for_unknown():
     assert textfit.has_real_metrics("No Such Font Family XYZ") is False
+
+
+def test_has_real_metrics_false_when_registered():
+    """Registered ratios override measurement, so predictions for a registered
+    family are NOT based on real metrics — even when the font resolves."""
+    face = _real_face()
+    textfit.register_font_metrics(face, normal=0.99, bold=0.99)
+    try:
+        assert textfit.has_real_metrics(face) is False
+    finally:
+        textfit._FONT_WIDTH_RATIO.pop(face, None)
+        textfit._REGISTERED.discard(face)
+    assert textfit.has_real_metrics(face) is True
 
 
 def test_kill_switch_forces_heuristics(monkeypatch):
@@ -248,5 +274,3 @@ def test_kill_switch_forces_heuristics(monkeypatch):
     # falls back to the builtin/default table ratio
     table = textfit._FONT_WIDTH_RATIO.get(face, textfit._FONT_WIDTH_RATIO["default"])
     assert abs(w - table["normal"] * 18 * 12700) < 1.0
-    monkeypatch.delenv("FEINSCHMIEDE_NO_REAL_METRICS")
-    _measure.clear_caches()
