@@ -13,6 +13,11 @@ python-pptx (1.0.x) needs no special registration: a plain
 presentation part is save-reachable, and the saved ``[Content_Types].xml``
 gets a ``<Default Extension="fntdata" ContentType="application/x-fontdata"/>``
 entry derived from the part's content type (verified empirically).
+
+Licensing: no fsType (OS/2 embedding-permission bits) check is performed.
+Fonts with restrictive fsType values (2 = no-embed, 4 = print-only) are
+embedded without warning. It is the caller's responsibility to ensure the
+brand fonts permit embedding.
 """
 from __future__ import annotations
 
@@ -84,15 +89,28 @@ def embed_brand_fonts(prs, tokens) -> list[str]:
         if fam not in families:
             families.append(fam)
 
-    # Resolve font files up front — only touch the package/XML when at
-    # least one family actually embeds.
-    entries: list[tuple[str, Path, Path | None]] = []
+    # Resolve font files up front and pre-read their bytes — only touch the
+    # package/XML when at least one family actually embeds. Reading bytes here
+    # (not in _rid_for) means a vanished/unreadable file is caught before any
+    # XML mutation, so a failed face never leaves a partial embeddedFontLst.
+    entries: list[tuple[str, Path, bytes, Path | None, bytes | None]] = []
     for fam in families:
         regular = _embeddable(find_font_file(fam), fam, "regular")
         if regular is None:
+            # _embeddable already printed a WARN for non-.ttf/.otf suffix;
+            # for a fully unresolvable family (path is None) emit one here.
+            if find_font_file(fam) is None:
+                print(
+                    f"feinschliff: WARN: font '{fam}' not resolvable — not embedding.",
+                    file=sys.stderr,
+                )
+            continue
+        try:
+            regular_bytes = regular.read_bytes()
+        except OSError as exc:
             print(
-                f"feinschliff: WARN: font '{fam}' not resolvable to a "
-                f".ttf/.otf file — not embedding.",
+                f"feinschliff: WARN: font '{fam}' (regular) unreadable — "
+                f"{exc}; skipping.",
                 file=sys.stderr,
             )
             continue
@@ -101,7 +119,18 @@ def embed_brand_fonts(prs, tokens) -> list[str]:
         # don't write a <p:bold> entry pointing at the same data.
         if bold is not None and bold.resolve() == regular.resolve():
             bold = None
-        entries.append((fam, regular, bold))
+        bold_bytes: bytes | None = None
+        if bold is not None:
+            try:
+                bold_bytes = bold.read_bytes()
+            except OSError as exc:
+                print(
+                    f"feinschliff: WARN: font '{fam}' (bold) unreadable — "
+                    f"{exc}; skipping bold face.",
+                    file=sys.stderr,
+                )
+                bold = None
+        entries.append((fam, regular, regular_bytes, bold, bold_bytes))
     if not entries:
         return []
 
@@ -110,11 +139,11 @@ def embed_brand_fonts(prs, tokens) -> list[str]:
     pkg = prs.part.package
     rid_by_file: dict[str, str] = {}
 
-    def _rid_for(path: Path) -> str:
+    def _rid_for(path: Path, blob: bytes) -> str:
         key = str(path.resolve())
         if key not in rid_by_file:
             partname = pkg.next_partname("/ppt/fonts/font%d.fntdata")
-            part = Part(partname, _CT_FNTDATA, pkg, blob=path.read_bytes())
+            part = Part(partname, _CT_FNTDATA, pkg, blob=blob)
             rid_by_file[key] = prs.part.relate_to(part, _RT_FONT)
         return rid_by_file[key]
 
@@ -126,12 +155,12 @@ def embed_brand_fonts(prs, tokens) -> list[str]:
         anchor.addprevious(lst)
 
     embedded: list[str] = []
-    for fam, regular, bold in entries:
+    for fam, regular, regular_bytes, bold, bold_bytes in entries:
         ef = etree.SubElement(lst, _q("embeddedFont"))
         etree.SubElement(ef, _q("font")).set("typeface", fam)
-        etree.SubElement(ef, _q("regular")).set(f"{{{_NS_R}}}id", _rid_for(regular))
-        if bold is not None:
-            etree.SubElement(ef, _q("bold")).set(f"{{{_NS_R}}}id", _rid_for(bold))
+        etree.SubElement(ef, _q("regular")).set(f"{{{_NS_R}}}id", _rid_for(regular, regular_bytes))
+        if bold is not None and bold_bytes is not None:
+            etree.SubElement(ef, _q("bold")).set(f"{{{_NS_R}}}id", _rid_for(bold, bold_bytes))
         embedded.append(fam)
 
     pres_el.set("embedTrueTypeFonts", "1")

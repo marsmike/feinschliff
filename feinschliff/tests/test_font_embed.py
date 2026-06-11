@@ -144,6 +144,44 @@ def test_bold_entry_only_when_distinct_file(tmp_path):
         assert len(_fntdata_names(z)) == 1
 
 
+def test_embed_skips_unreadable_font_file(tmp_path, monkeypatch):
+    """OSError on read_bytes() → WARN on stderr, empty result, no partial XML."""
+    import feinschliff.dsl.font_embed as _fe
+
+    real_find = _fe.find_font_file
+    regular_path = real_find("DejaVu Sans")
+    assert regular_path is not None, "pre-condition: DejaVu Sans must resolve"
+
+    # Monkeypatch find_font_file to return a path that exists in name only.
+    ghost = tmp_path / "ghost.ttf"
+    # Do NOT create the file — it must raise OSError on read_bytes().
+
+    def _fake_find(family, bold=False):
+        return ghost
+
+    monkeypatch.setattr(_fe, "find_font_file", _fake_find)
+
+    prs, tokens = _build()
+    import io, sys as _sys
+    buf = io.StringIO()
+    monkeypatch.setattr(_sys, "stderr", buf)
+    result = embed_brand_fonts(prs, tokens)
+    monkeypatch.setattr(_sys, "stderr", _sys.__stderr__)
+
+    # Must return empty — no embedding happened.
+    assert result == []
+    # No partial XML: no <p:embeddedFontLst> and no embedTrueTypeFonts attr.
+    assert prs.element.find(f"{{{_NS_P}}}embeddedFontLst") is None
+    assert prs.element.get("embedTrueTypeFonts") is None
+    # WARN must have been emitted.
+    assert "WARN" in buf.getvalue()
+
+    # Presentation must still save cleanly (no corrupt package state).
+    out = tmp_path / "safe.pptx"
+    prs.save(str(out))
+    Presentation(str(out))
+
+
 def test_cli_flag_embeds(tmp_path):
     """End-to-end `feinschliff build --embed-fonts` via subprocess, with a
     temp brand (blank clone, fonts patched to DejaVu Sans) so the test does
