@@ -1,5 +1,6 @@
 """Default (non-cover) picture placement must contain, not stretch."""
-from PIL import Image
+import pytest
+from PIL import Image, UnidentifiedImageError
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 
 from feinschmiede.dsl.tokens import Tokens
@@ -43,3 +44,36 @@ def test_cover_still_fills_box(tmp_path):
     pic = [s for s in shapes if s.shape_type == MSO_SHAPE_TYPE.PICTURE][0]
     assert pic.width == int(400 * 6350)
     assert pic.height == int(400 * 6350)
+
+
+def test_contain_tall_image_x_centers(tmp_path):
+    """1:2 (tall) image in a 1:1 box → letterboxed on the sides, x-centered."""
+    img = tmp_path / "tall.png"
+    Image.new("RGB", (100, 200), "blue").save(img)
+    nodes, _ = parse_lines(f'picture 100,100 400x400 path:"{img}"', source="<test>")
+    tokens = Tokens.from_dict(RAW, brand_name="t")
+    prs = build_presentation(nodes, tokens)
+    pic = [s for s in prs.slides[0].shapes if s.shape_type == MSO_SHAPE_TYPE.PICTURE][0]
+    # 1:2 source in 1:1 box → height 400px, width 200px, x-centered
+    assert pic.width == int(200 * 6350)
+    assert pic.height == int(400 * 6350)
+    assert pic.left == int((100 + 100) * 6350)   # 100 + (400-200)/2
+    assert pic.top == int(100 * 6350)
+
+
+def test_unreadable_image_falls_back_to_box_geometry(tmp_path):
+    """A file with garbage bytes that PIL can't open causes add_picture to raise.
+
+    Behavior: _emit_picture's except-block falls back to stretched box geometry
+    (cx,cy,cw,ch = x,y,w,h), then the fast-path (treatment=="none") calls
+    slide.shapes.add_picture(str(p), ...) with the unreadable file. python-pptx
+    itself tries to identify the image format and raises UnidentifiedImageError.
+    This is the current unhandled-crash behavior — pinned here so a future fix
+    (wrapping bad-file into the placeholder flow) is a deliberate choice.
+    """
+    img = tmp_path / "bad.png"
+    img.write_bytes(b"not an image")
+    nodes, _ = parse_lines(f'picture 100,100 400x400 path:"{img}"', source="<test>")
+    tokens = Tokens.from_dict(RAW, brand_name="t")
+    with pytest.raises(UnidentifiedImageError):
+        build_presentation(nodes, tokens)
