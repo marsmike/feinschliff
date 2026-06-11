@@ -1474,6 +1474,8 @@ def _contain_geometry(
     """Scale img to fit w×h preserving aspect; center in the box. Design-px in/out."""
     if img_w <= 0 or img_h <= 0:
         return x, y, w, h
+    if w <= 0 or h <= 0:
+        return x, y, w, h
     src_aspect = img_w / img_h
     box_aspect = w / h
     if abs(src_aspect - box_aspect) < 1e-3:
@@ -1631,6 +1633,8 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     else:
         # Contain: scale to fit the box preserving aspect ratio, center in the slot.
         try:
+            # Header-only open — PIL defers pixel decode, so this costs a stat+header read
+            # even though _prepare_picture_bytes opens the file again.
             with Image.open(p) as _im:
                 img_w, img_h = _im.size
             cx, cy, cw, ch = _contain_geometry(img_w, img_h, x, y, w, h)
