@@ -1673,6 +1673,24 @@ def _bake_scheme_colors(el, theme: dict[str, str]) -> None:
             sc.set("val", hexv.lstrip("#").upper())
 
 
+def _carry_element(el, theme: dict[str, str], offset=(0, 0),
+                   xfrm_off_path: str | None = None):
+    """Deep-copy `el` and bake schemeClr→srgbClr against the SOURCE theme for a
+    native carry. When `xfrm_off_path` is given (e.g. "p:spPr/a:xfrm/a:off"),
+    shift that `<a:off>` by the walker's pure-translation `offset` so the
+    carried element's xfrm becomes slide-absolute before splicing."""
+    import copy as _copy
+    out = _copy.deepcopy(el)
+    _bake_scheme_colors(out, theme)
+    if xfrm_off_path is not None:
+        ox, oy = int(offset[0]), int(offset[1])
+        off_el = out.find(xfrm_off_path, NS)
+        if off_el is not None and (ox or oy):
+            off_el.set("x", str(int(off_el.get("x") or 0) + ox))
+            off_el.set("y", str(int(off_el.get("y") or 0) + oy))
+    return out
+
+
 def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     spPr = ch.find("p:spPr", NS)
     bbox = _shape_bbox(ch, offset, slide)
@@ -1943,18 +1961,11 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         # xfrm is group-relative, not slide-absolute, so a verbatim splice would
         # land in the wrong place.
         if svg_d is not None and len(offset) == 2:
-            import copy as _copy
-            sp_el = _copy.deepcopy(ch)
-            _bake_scheme_colors(sp_el, theme)
             # `offset` is the (EMU) group/layout translation this shape was walked
             # under; its xfrm is relative to that, so shift it to slide-absolute
             # before splicing. (Scaled groups thread an 8-tuple affine instead —
             # those fall through to the svg path, which is bbox-correct already.)
-            ox, oy = int(offset[0]), int(offset[1])
-            _off_el = sp_el.find("p:spPr/a:xfrm/a:off", NS)
-            if _off_el is not None and (ox or oy):
-                _off_el.set("x", str(int(_off_el.get("x") or 0) + ox))
-                _off_el.set("y", str(int(_off_el.get("y") or 0) + oy))
+            sp_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
             native_xml = etree.tostring(sp_el).decode("utf-8")
 
     # Geometry shape (rect / oval / shape). May also carry text.
@@ -2001,15 +2012,8 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     if (ph_type is None and media_part is not None and len(offset) == 2
             and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
         try:
-            import copy as _copy
             import base64 as _b64
-            pic_el = _copy.deepcopy(ch)
-            _bake_scheme_colors(pic_el, theme)
-            ox, oy = int(offset[0]), int(offset[1])
-            _off_el = pic_el.find("p:spPr/a:xfrm/a:off", NS)
-            if _off_el is not None and (ox or oy):
-                _off_el.set("x", str(int(_off_el.get("x") or 0) + ox))
-                _off_el.set("y", str(int(_off_el.get("y") or 0) + oy))
+            pic_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
             native_xml = etree.tostring(pic_el).decode("utf-8")
             native_media = _b64.b64encode(media_part.blob).decode("ascii")
         except Exception:
@@ -2100,6 +2104,86 @@ _DGM_RELID_ATTRS = (
 RELS_NS_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
 
 
+def _capture_part_graph(part, parent_key: str, reltype: str, src_rid: str,
+                        parts: list[dict], seen: set[str],
+                        shared: dict[str, dict[str, tuple[str, str]]],
+                        theme: dict[str, str]) -> None:
+    """Capture one OPC part + its transitive internal rel graph for native carry.
+
+    Appends {partname, content_type, blob (b64), reltype, parent, src_rid} to
+    `parts` and recurses into the part's own relationships. Every XML blob gets
+    schemeClr→srgbClr baked against the SOURCE theme so the carried content
+    keeps its EXACT source palette under the output deck's theme (chart series
+    are nearly always theme accent refs; without baking they'd render in Office
+    defaults instead of the brand palette). Binary parts (embedded .xlsx,
+    media) ride along verbatim.
+
+    `parent` is 'slide' for a root part (related from slide.part) else the
+    OWNING partname, so the emitter rewires bottom-up; `src_rid` is the rId by
+    which this part is referenced FROM its parent in the SOURCE deck — the
+    emitter maps src_rid→new_rid to rewrite the matching r:id / r:embed refs.
+
+    A part shared by two parents (a data part AND drawing10 both referencing
+    ../media/image131.png; two charts sharing one workbook) is materialised
+    ONCE, but EVERY parent's src_rid→(partname, reltype) mapping is recorded
+    in `shared` so the second parent's own reference gets rewritten too —
+    `_fold_shared_refs` turns the extra records into "ref" entries. Without
+    this the second parent's reference would dangle at splice time.
+    """
+    import base64 as _b64
+    pn = str(part.partname)
+    if pn in seen:
+        if src_rid:
+            shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+        return
+    seen.add(pn)
+    if src_rid:
+        shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+    raw = part.blob
+    ct = part.content_type
+    if ct.endswith("+xml") or ct.endswith("/xml"):
+        try:
+            _proot = etree.fromstring(raw)
+            _bake_scheme_colors(_proot, theme)
+            raw = etree.tostring(_proot, xml_declaration=True,
+                                 encoding="UTF-8", standalone=True)
+        except Exception:
+            raw = part.blob
+    parts.append({
+        "partname": pn, "content_type": ct,
+        "blob": _b64.b64encode(raw).decode("ascii"),
+        "reltype": reltype, "parent": parent_key, "src_rid": src_rid,
+    })
+    try:
+        child_rels = list(part.rels.values())
+    except Exception:
+        child_rels = []
+    for r in child_rels:
+        if r.is_external:
+            continue
+        try:
+            tgt = r.target_part
+        except Exception:
+            continue
+        _capture_part_graph(tgt, pn, r.reltype, r.rId, parts, seen, shared, theme)
+
+
+def _fold_shared_refs(parts: list[dict],
+                      shared: dict[str, dict[str, tuple[str, str]]]) -> None:
+    """Fold `_capture_part_graph`'s shared-child records into the parts list:
+    one extra {"ref": partname, parent, src_rid, reltype} entry per
+    (parent, src_rid) not already materialised — blob omitted; the emitter
+    recognises a ref-only entry, reuses the materialised part, and just wires
+    the second parent's relationship + rewrites its reference."""
+    for parent_key, m in shared.items():
+        for src_rid, (old_pn, reltype) in m.items():
+            if any(e.get("parent") == parent_key and e.get("src_rid") == src_rid
+                   for e in parts):
+                continue
+            parts.append({"ref": old_pn, "parent": parent_key,
+                          "src_rid": src_rid, "reltype": reltype})
+
+
 def _capture_group_parts(grp, slide, theme) -> list[dict] | None:
     """Collect the external part-graph a native-carried `<p:grpSp>` reaches, so a
     grouped chart / SmartArt / image renders pixel-exact after splicing.
@@ -2117,49 +2201,13 @@ def _capture_group_parts(grp, slide, theme) -> list[dict] | None:
     so the carried content keeps its exact source palette under the output deck's
     theme — identical to the chart/diagram branches.
     """
-    import base64 as _b64
     parts: list[dict] = []
     seen: set[str] = set()
     shared: dict[str, dict[str, tuple[str, str]]] = {}
 
     def _capture(part, parent_key: str, reltype: str, src_rid: str) -> None:
-        pn = str(part.partname)
-        if pn in seen:
-            # A part shared by two parents is materialised once, but record this
-            # parent's src_rid→part mapping so its own ref gets rewritten too.
-            if src_rid:
-                shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
-            return
-        seen.add(pn)
-        if src_rid:
-            shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
-        raw = part.blob
-        ct = part.content_type
-        if ct.endswith("+xml") or ct.endswith("/xml"):
-            try:
-                _proot = etree.fromstring(raw)
-                _bake_scheme_colors(_proot, theme)
-                raw = etree.tostring(_proot, xml_declaration=True,
-                                     encoding="UTF-8", standalone=True)
-            except Exception:
-                raw = part.blob
-        parts.append({
-            "partname": pn, "content_type": ct,
-            "blob": _b64.b64encode(raw).decode("ascii"),
-            "reltype": reltype, "parent": parent_key, "src_rid": src_rid,
-        })
-        try:
-            child_rels = list(part.rels.values())
-        except Exception:
-            child_rels = []
-        for r in child_rels:
-            if r.is_external:
-                continue
-            try:
-                tgt = r.target_part
-            except Exception:
-                continue
-            _capture(tgt, pn, r.reltype, r.rId)
+        _capture_part_graph(part, parent_key, reltype, src_rid,
+                            parts, seen, shared, theme)
 
     # Grouped chart <c:chart r:id> — the chart part + its style/colors/xlsx graph.
     for cref in grp.iter(f"{{{CHART_NS}}}chart"):
@@ -2201,15 +2249,7 @@ def _capture_group_parts(grp, slide, theme) -> list[dict] | None:
 
     if not parts:
         return None
-    # Fold shared-child mappings into ref entries so the emitter wires the second
-    # parent's relationship + rewrites its ref without re-materialising the part.
-    for parent_key, m in shared.items():
-        for src_rid, (old_pn, reltype) in m.items():
-            if any(e.get("parent") == parent_key and e.get("src_rid") == src_rid
-                   for e in parts):
-                continue
-            parts.append({"ref": old_pn, "parent": parent_key,
-                          "src_rid": src_rid, "reltype": reltype})
+    _fold_shared_refs(parts, shared)
     return parts
 
 
@@ -2245,7 +2285,6 @@ def _try_carry_group(ch, offset, shapes, slide, cmap, theme) -> bool:
     if ch.find(".//p:ph", NS) is not None:
         return False
     try:
-        import copy as _copy
         grp_xfrm = ch.find("p:grpSpPr/a:xfrm", NS)
         if grp_xfrm is None:
             return False
@@ -2261,14 +2300,9 @@ def _try_carry_group(ch, offset, shapes, slide, cmap, theme) -> bool:
         # Carry the external part-graph (grouped chart / SmartArt / pic media)
         # BEFORE mutating the copy, so blob capture reads the live source rels.
         parts = _capture_group_parts(ch, slide, theme)
-        grp = _copy.deepcopy(ch)
-        _bake_scheme_colors(grp, theme)
         # Shift the group's OWN origin by the ancestor translation; leave chOff /
         # chExt (they define the child coordinate space the group internally maps).
-        _goff = grp.find("p:grpSpPr/a:xfrm/a:off", NS)
-        if _goff is not None and (ox or oy):
-            _goff.set("x", str(int(_goff.get("x") or 0) + ox))
-            _goff.set("y", str(int(_goff.get("y") or 0) + oy))
+        grp = _carry_element(ch, theme, offset, "p:grpSpPr/a:xfrm/a:off")
         shapes.append(Shape(
             kind="graphic",
             x=cmap.x(gx), y=cmap.y(gy), w=cmap.w(gw), h=cmap.h(gh),
@@ -2287,16 +2321,13 @@ def _source_table_style(slide, style_id: str, theme: dict[str, str]):
     package has no tableStyles part / no style with that id.
     """
     try:
-        import copy as _copy
         for part in slide.part.package.iter_parts():
             if not str(part.partname).endswith("tableStyles.xml"):
                 continue
             root = etree.fromstring(part.blob)
             for st in root:
                 if st.get("styleId") == style_id:
-                    el = _copy.deepcopy(st)
-                    _bake_scheme_colors(el, theme)
-                    return el
+                    return _carry_element(st, theme)
     except Exception:
         pass
     return None
@@ -2311,11 +2342,22 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
     ext = xfrm.find("a:ext", NS)
     if off is None or ext is None:
         return
-    ox_local, oy_local = offset
-    x0 = int(off.get("x")) + ox_local
-    y0 = int(off.get("y")) + oy_local
+    x0 = int(off.get("x"))
+    y0 = int(off.get("y"))
     fw = int(ext.get("cx"))
     fh = int(ext.get("cy"))
+    # Offset is a 2-tuple (translation-only ancestor groups) or an 8-tuple
+    # (scaled-group affine). Apply it exactly like _shape_bbox so a frame
+    # inside a SCALED group doesn't crash (`ox_local, oy_local = offset` blew
+    # up on the 8-tuple) and still lands at the right place.
+    if len(offset) == 2:
+        ox_local, oy_local = offset
+        x0, y0 = x0 + ox_local, y0 + oy_local
+    else:
+        ox, oy, ax, ay, chox, choy, sx, sy = offset
+        x0 = ax + (x0 - chox) * sx + ox
+        y0 = ay + (y0 - choy) * sy + oy
+        fw, fh = fw * sx, fh * sy
 
     tbl = ch.find(".//a:tbl", NS)
     if tbl is not None:
@@ -2326,13 +2368,7 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
         if len(offset) == 2:
             try:
                 import base64 as _b64
-                import copy as _copy
-                frame = _copy.deepcopy(ch)
-                _bake_scheme_colors(frame, theme)
-                _foff = frame.find("p:xfrm/a:off", NS)
-                if _foff is not None and (offset[0] or offset[1]):
-                    _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
-                    _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+                frame = _carry_element(ch, theme, offset, "p:xfrm/a:off")
                 # The tbl's <a:tableStyleId> points into the SOURCE deck's
                 # tableStyles.xml; the output deck doesn't have that style, so
                 # the renderer falls back to its default (wrong header fill /
@@ -2369,76 +2405,18 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
         # awkward chart never crashes the decompile.
         if len(offset) == 2:
             try:
-                import copy as _copy
-                import base64 as _b64
-                frame = _copy.deepcopy(ch)
-                _bake_scheme_colors(frame, theme)
-                _foff = frame.find("p:xfrm/a:off", NS)
-                if _foff is not None and (offset[0] or offset[1]):
-                    _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
-                    _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+                frame = _carry_element(ch, theme, offset, "p:xfrm/a:off")
                 # Walk every <c:chart r:id> in the frame and collect the part-graph
-                # rooted at each chart part. Each entry records:
-                #   parent   — 'slide' for the chart part itself (related from
-                #              slide.part), else the OWNING chart-partname str for
-                #              that chart's children, so the emitter rewires
-                #              bottom-up.
-                #   src_rid  — the rId by which this part is referenced FROM its
-                #              parent in the SOURCE deck (the <c:chart r:id> for a
-                #              chart part; the chart-part rel rId for a leaf). The
-                #              emitter maps src_rid→new_rid to rewrite the matching
-                #              r:id / r:embed references (e.g. <c:externalData> →
-                #              the xlsx) so they point at the freshly-created parts.
+                # rooted at each chart part (chart → style / colors / xlsx; see
+                # `_capture_part_graph` for the parent / src_rid entry semantics
+                # the emitter rewires bottom-up).
                 parts: list[dict] = []
                 seen: set[str] = set()
+                shared: dict[str, dict[str, tuple[str, str]]] = {}
 
                 def _capture_graph(part, parent_key: str, reltype: str, src_rid: str) -> None:
-                    pn = str(part.partname)
-                    if pn in seen:
-                        return
-                    seen.add(pn)
-                    # Bake schemeClr→srgbClr against the SOURCE theme in every
-                    # carried XML part (chart, chartStyle, chartColorStyle) so the
-                    # chart keeps its EXACT source series colours. Chart series are
-                    # nearly always theme accent refs (accent1..6 in both chart.xml
-                    # and colors*.xml); without baking they'd resolve against the
-                    # OUTPUT deck's default theme and render in Office defaults
-                    # (red/green/purple) instead of the brand palette. The
-                    # embedded .xlsx is a binary zip, not XML — leave it verbatim.
-                    raw = part.blob
-                    ct = part.content_type
-                    if ct.endswith("+xml") or ct.endswith("/xml"):
-                        try:
-                            _proot = etree.fromstring(raw)
-                            _bake_scheme_colors(_proot, theme)
-                            raw = etree.tostring(
-                                _proot, xml_declaration=True,
-                                encoding="UTF-8", standalone=True,
-                            )
-                        except Exception:
-                            raw = part.blob
-                    parts.append({
-                        "partname": pn,
-                        "content_type": ct,
-                        "blob": _b64.b64encode(raw).decode("ascii"),
-                        "reltype": reltype,
-                        "parent": parent_key,
-                        "src_rid": src_rid,
-                    })
-                    # Recurse into THIS part's own relationships (chart → style /
-                    # colors / xlsx; those leaves have no further parts we carry).
-                    try:
-                        child_rels = list(part.rels.values())
-                    except Exception:
-                        child_rels = []
-                    for r in child_rels:
-                        if r.is_external:
-                            continue
-                        try:
-                            tgt = r.target_part
-                        except Exception:
-                            continue
-                        _capture_graph(tgt, pn, r.reltype, r.rId)
+                    _capture_part_graph(part, parent_key, reltype, src_rid,
+                                        parts, seen, shared, theme)
 
                 for cref in frame.iter(f"{{{CHART_NS}}}chart"):
                     rid = cref.get(f"{{{RELS_NS}}}id")
@@ -2448,6 +2426,7 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
                     _capture_graph(cp, "slide", RELS_NS_CHART, rid)
                 if not parts:
                     raise ValueError("no chart parts resolved")
+                _fold_shared_refs(parts, shared)
                 shapes.append(Shape(
                     kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
                     w=cmap.w(fw), h=cmap.h(fh),
@@ -2479,75 +2458,19 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
     relids_list = ch.findall(f".//{{{DGM_NS}}}relIds")
     if gdata_uri and gdata_uri.endswith("/diagram") and relids_list and len(offset) == 2:
         try:
-            import copy as _copy
-            import base64 as _b64
-            frame = _copy.deepcopy(ch)
-            _bake_scheme_colors(frame, theme)
-            _foff = frame.find("p:xfrm/a:off", NS)
-            if _foff is not None and (offset[0] or offset[1]):
-                _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
-                _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
-            # Collect the diagram part-graph. Each entry records the same shape as
-            # the chart branch ({partname, content_type, blob, reltype, parent,
-            # src_rid}). The four dgm parts + the drawing part hang off 'slide';
-            # a media image (data/drawing → ../media/imageN.png) hangs off its
-            # data/drawing part. schemeClr→srgbClr is baked into every XML blob
-            # (colors*.xml + the drawing reference the theme), so the diagram
-            # keeps its EXACT source palette under the output deck's theme.
+            frame = _carry_element(ch, theme, offset, "p:xfrm/a:off")
+            # Collect the diagram part-graph (same entry semantics as the chart
+            # branch — see `_capture_part_graph`). The four dgm parts + the
+            # drawing part hang off 'slide'; a media image (data/drawing →
+            # ../media/imageN.png) hangs off its data/drawing part.
             parts: list[dict] = []
             seen: set[str] = set()
+            shared: dict[str, dict[str, tuple[str, str]]] = {}
 
             def _capture_graph(part, parent_key: str, reltype: str, src_rid: str) -> None:
-                pn = str(part.partname)
-                # A part shared by two parents (a data part AND
-                # drawing10 both reference ../media/image131.png) is materialised
-                # ONCE, but we still record THIS parent's src_rid→part mapping so
-                # the SECOND parent's own <…r:embed> gets rewritten too. Without
-                # this the drawing's image ref would dangle at build time.
-                if pn in seen:
-                    if src_rid:
-                        _DGM_SHARED.setdefault(parent_key, {})[src_rid] = (pn, reltype)
-                    return
-                seen.add(pn)
-                if src_rid:
-                    _DGM_SHARED.setdefault(parent_key, {})[src_rid] = (pn, reltype)
-                raw = part.blob
-                ct = part.content_type
-                if ct.endswith("+xml") or ct.endswith("/xml"):
-                    try:
-                        _proot = etree.fromstring(raw)
-                        _bake_scheme_colors(_proot, theme)
-                        raw = etree.tostring(
-                            _proot, xml_declaration=True,
-                            encoding="UTF-8", standalone=True,
-                        )
-                    except Exception:
-                        raw = part.blob
-                parts.append({
-                    "partname": pn,
-                    "content_type": ct,
-                    "blob": _b64.b64encode(raw).decode("ascii"),
-                    "reltype": reltype,
-                    "parent": parent_key,
-                    "src_rid": src_rid,
-                })
-                try:
-                    child_rels = list(part.rels.values())
-                except Exception:
-                    child_rels = []
-                for r in child_rels:
-                    if r.is_external:
-                        continue
-                    try:
-                        tgt = r.target_part
-                    except Exception:
-                        continue
-                    _capture_graph(tgt, pn, r.reltype, r.rId)
+                _capture_part_graph(part, parent_key, reltype, src_rid,
+                                    parts, seen, shared, theme)
 
-            # `_DGM_SHARED` records, per parent-partname, the src_rid→partname of
-            # any ALREADY-captured shared child so the emitter can still wire the
-            # second parent's rel + rewrite its ref. (parent → {src_rid: old_pn})
-            _DGM_SHARED: dict[str, dict[str, str]] = {}
             for relids in relids_list:
                 # The four core parts, resolved via the slide rels.
                 data_part = None
@@ -2576,21 +2499,7 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
                         _capture_graph(dp, "slide", RELS_NS_DGM_DRAWING, draw_rid)
             if not parts:
                 raise ValueError("no diagram parts resolved")
-            # Fold the shared-child mappings into the parts list so the emitter
-            # can wire them: emit one extra entry per (parent, src_rid) that
-            # points at an EXISTING carried part (blob omitted — the emitter
-            # recognises a "ref"-only entry and reuses the materialised part).
-            for parent_key, m in _DGM_SHARED.items():
-                for src_rid, (old_pn, reltype) in m.items():
-                    if any(
-                        e["parent"] == parent_key and e.get("src_rid") == src_rid
-                        for e in parts
-                    ):
-                        continue
-                    parts.append({
-                        "ref": old_pn, "parent": parent_key,
-                        "src_rid": src_rid, "reltype": reltype,
-                    })
+            _fold_shared_refs(parts, shared)
             shapes.append(Shape(
                 kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
                 w=cmap.w(fw), h=cmap.h(fh),
