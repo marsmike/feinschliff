@@ -19,6 +19,7 @@ operator intent for fonts the build host can't resolve. Set
 """
 from __future__ import annotations
 
+import math
 
 import pyphen
 
@@ -61,8 +62,9 @@ def register_font_metrics(family: str, *, normal: float, bold: float) -> None:
 
 
 def has_real_metrics(font: str, bold: bool = False) -> bool:
-    """True when *font* resolves to a real font file (measured-width path)."""
-    return _measure.find_font_file(font, bold=bold) is not None
+    """True when textfit's predictions for *font* come from real measured
+    glyph widths (font resolved AND not overridden by registered ratios)."""
+    return font not in _REGISTERED and _measure.find_font_file(font, bold=bold) is not None
 
 
 def _avg_char_width_emu(font: str, size_pt: float, bold: bool) -> float:
@@ -139,9 +141,9 @@ def measure_height_emu(
     """
     if not text:
         return 0
-    avg_w = _avg_char_width_emu(font, size_pt, bold)
-    chars_per_line = max(1, int(width_emu / avg_w))
     line_h = _line_height_emu(size_pt, line_height)
+    width_pt = width_emu / _EMU_PER_PT
+    cols: int | None = None    # heuristic columns, computed lazily on fallback
     total_lines = 0
     for hard_line in text.split("\n"):
         visible = hard_line.replace("­", "")
@@ -150,10 +152,22 @@ def measure_height_emu(
             continue
         wrapped = _greedy_wrap_real(visible, font, size_pt, bold, width_emu)
         if wrapped is not None:
-            total_lines += len(wrapped)
+            for line_words in wrapped:
+                if len(line_words) == 1:
+                    w_pt = _measure.line_width_pt(line_words[0], font, size_pt, bold=bold)
+                    if w_pt is not None and w_pt > width_pt:
+                        # Renderers break over-wide words mid-word (and at soft
+                        # hyphens, stripped above); count the minimum lines the
+                        # glyph mass needs. Over-estimates vs. syllable
+                        # breaking — the safe direction for overflow checks.
+                        total_lines += max(1, math.ceil(w_pt / width_pt))
+                        continue
+                total_lines += 1
         else:
-            # ceil(len / chars_per_line)
-            total_lines += max(1, (len(visible) + chars_per_line - 1) // chars_per_line)
+            if cols is None:
+                cols = chars_per_line(font, size_pt, bold, width_emu)
+            # ceil(len / cols)
+            total_lines += max(1, (len(visible) + cols - 1) // cols)
     return total_lines * line_h
 
 
@@ -242,7 +256,12 @@ def prevent_orphan(
         return text
 
     # Measured greedy wrap when available; heuristic char packing otherwise.
-    lines = _greedy_wrap_real(text, font, size_pt, bold, width_emu)
+    # Strip soft hyphens (U+00AD) before measuring, mirroring
+    # measure_height_emu — they're invisible unless a break lands on one, and
+    # correctness shouldn't depend on per-font SHY advance. The NBSP glue
+    # below still happens on the ORIGINAL text.
+    visible = text.replace("­", "")
+    lines = _greedy_wrap_real(visible, font, size_pt, bold, width_emu)
     if lines is None:
         avg_w = _avg_char_width_emu(font, size_pt, bold)
         chars_per_line = max(1, int(width_emu / avg_w))
