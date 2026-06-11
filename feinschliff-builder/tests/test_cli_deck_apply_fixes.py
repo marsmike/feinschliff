@@ -21,6 +21,14 @@ Critical-bug regression (PPTX compiled from pre-fix content):
     string that exceeded the budget.  This directly catches the bug where
     `slides_spec` was captured before `apply_fixes` ran, causing the compile
     loop to iterate the pre-fix content.
+
+Round-trip regression (engine-severity round-trip):
+  - test_cli_round_trip_verify_static_to_apply_fixes exercises the full
+    documented round-trip: deck verify-static --json → deck apply-fixes --defects.
+    verify-static emits ENGINE severity values ("error"/"warning"/"info") because
+    it calls validate() which maps legacy FATAL→ERROR, WARN→WARNING.
+    apply-fixes must accept those engine values, not silently drop them as
+    "malformed defect entry" (the bug that existed before this fix).
 """
 from __future__ import annotations
 
@@ -365,4 +373,145 @@ def test_cli_build_autofix_inner_loop(tmp_path: Path, monkeypatch):
         f"PPTX does not contain the fixed action_title text.\n"
         f"Expected to find: {fixed_text!r}\n"
         f"PPTX text found: {full_pptx_text!r}"
+    )
+
+
+# ---------------------------------------------------------------------------
+# 5. Round-trip: verify-static --json → apply-fixes (engine severity values)
+# ---------------------------------------------------------------------------
+
+def test_cli_round_trip_verify_static_to_apply_fixes(tmp_path: Path):
+    """True round-trip: verify-static --json output feeds directly into apply-fixes.
+
+    verify-static --json emits ENGINE severity values ("error", "warning",
+    "info") because it calls validate() which maps:
+      legacy FATAL → engine "error"
+      legacy WARN  → engine "warning"
+      legacy INFO  → engine "info"
+
+    apply-fixes must accept these engine values (not drop them as "malformed
+    defect entry").  This test is the regression guard for the bug where
+    apply-fixes only accepted legacy vocabulary ("fatal", "warn", "info").
+
+    Steps:
+    1. Build a plan with a genuinely overflowing slot (action_title 90 chars,
+       budget 84) and write it to disk.
+    2. Run `deck verify-static --json` — expect exit 1 and ENGINE severity
+       values ("error") in the output JSON.
+    3. Pipe that JSON file directly into `deck apply-fixes --defects`.
+    4. Assert apply-fixes exits 0 (patch applied, NOT exit 1 "no defects").
+    5. Assert the fixed plan has the slot shortened — confirming the defect
+       was actually processed, not silently dropped as malformed.
+    """
+    import os
+
+    # Use heuristic metrics so the budget is deterministic (machine-independent).
+    env = os.environ.copy()
+    env["PYTHONIOENCODING"] = "utf-8"
+    env["PYTHONUTF8"] = "1"
+    env["FEINSCHMIEDE_NO_REAL_METRICS"] = "1"
+
+    # action_title budget for executive-summary = 84 chars (heuristic path).
+    # 90 chars: above budget (triggers SLOT_OVERFLOW), below swap threshold
+    # (84 * 1.20 = 100.8), so shorten_slot fires.
+    budget = 84
+    long_text = "Action required: revenue declined three quarters in a row this year."
+    assert len(long_text) == 68
+    long_text = long_text + " " + "A" * (90 - len(long_text) - 1)
+    assert len(long_text) == 90
+    assert budget < len(long_text) < budget * 1.20, (
+        f"Fixture must be above budget ({budget}) and below swap threshold "
+        f"({budget * 1.20}); got {len(long_text)}"
+    )
+
+    plan = {
+        "brand": "feinschliff",
+        "out": str(tmp_path / "deck.pptx"),
+        "slides": [
+            {
+                "layout": "layouts/executive-summary.slide.dsl",
+                "content": {
+                    "action_title": long_text,
+                    "footer_left": "Corp",
+                    "footer_right": "2026",
+                },
+            }
+        ],
+    }
+    plan_path = tmp_path / "plan.yaml"
+    plan_path.write_text(
+        yaml.safe_dump(plan, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+
+    defects_path = tmp_path / "defects.json"
+    fixed_plan_path = tmp_path / "fixed_plan.yaml"
+
+    # Step 2: run verify-static --json; expect exit 1 (defects found)
+    vs_result = subprocess.run(
+        [
+            sys.executable, "-m", "feinschliff.cli",
+            "deck", "verify-static", str(plan_path), "--json",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        cwd=str(FEINSCHLIFF),
+    )
+    assert vs_result.returncode == 1, (
+        f"Expected exit 1 from verify-static (defects present), "
+        f"got {vs_result.returncode}.\nstdout: {vs_result.stdout}\nstderr: {vs_result.stderr}"
+    )
+
+    # Parse the JSON output — must be a non-empty list of defects.
+    defects_json = json.loads(vs_result.stdout)
+    assert isinstance(defects_json, list) and len(defects_json) >= 1, (
+        f"Expected a non-empty list of defects in JSON output; got: {defects_json!r}"
+    )
+
+    # At least one defect must carry an ENGINE severity value ("error" or "warning").
+    # This is the key assertion: if it carries "fatal"/"warn" the bug isn't triggered.
+    engine_severities = {"error", "warning", "info"}
+    found_engine_sev = any(d.get("severity") in engine_severities for d in defects_json)
+    assert found_engine_sev, (
+        f"Expected at least one defect with engine severity (error/warning/info) "
+        f"in verify-static --json output; got severities: "
+        f"{[d.get('severity') for d in defects_json]}"
+    )
+
+    # Write the verify-static JSON output directly to disk (no transformation).
+    defects_path.write_text(vs_result.stdout, encoding="utf-8")
+
+    # Step 3+4: run apply-fixes with the raw verify-static output.
+    af_result = subprocess.run(
+        [
+            sys.executable, "-m", "feinschliff.cli",
+            "deck", "apply-fixes", str(plan_path),
+            "--defects", str(defects_path),
+            "-o", str(fixed_plan_path),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=env,
+        cwd=str(FEINSCHLIFF),
+    )
+
+    # Step 4: apply-fixes must exit 0 (patch applied).
+    # Before the fix, it exits 1 ("no defects to process") because every defect
+    # was dropped as "malformed" due to the legacy-only severity parser.
+    assert af_result.returncode == 0, (
+        f"Expected exit 0 from apply-fixes (patch applied). "
+        f"If you see exit 1 / 'no defects to process', the engine-severity "
+        f"round-trip bug is present.\n"
+        f"stdout: {af_result.stdout}\nstderr: {af_result.stderr}"
+    )
+
+    # Step 5: the fixed plan must exist and have the slot shortened.
+    assert fixed_plan_path.is_file(), "Expected fixed plan YAML to be written."
+    fixed = yaml.safe_load(fixed_plan_path.read_text(encoding="utf-8"))
+    fixed_text = fixed["slides"][0]["content"]["action_title"]
+    assert len(fixed_text) <= budget, (
+        f"Expected action_title shortened to ≤{budget} chars after round-trip fix; "
+        f"got {len(fixed_text)}: {fixed_text!r}"
     )

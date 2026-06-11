@@ -1816,6 +1816,43 @@ def cmd_verify_static(args) -> int:
     return 1 if bag else 0
 
 
+def _parse_severity(value: str):
+    """Parse a severity string that may use either engine or legacy vocabulary.
+
+    ``deck verify-static --json`` emits ENGINE severity values because it goes
+    through ``feinschliff_builder.verify.static.validate()``, which maps the
+    legacy Severity enum to the ``feinschmiede.diagnostics`` engine enum before
+    serialising:
+
+        legacy FATAL  → engine "error"
+        legacy WARN   → engine "warning"
+        legacy INFO   → engine "info"
+
+    Legacy values (``"fatal"``, ``"warn"``, ``"info"``) are also accepted so
+    that hand-crafted defect files and older tooling continue to work.
+
+    The inverse mapping applied here exactly undoes validate()'s forward mapping:
+
+        engine "error"   → Severity.FATAL
+        engine "warning" → Severity.WARN
+        engine "info"    → Severity.INFO
+        legacy "fatal"   → Severity.FATAL  (pass-through)
+        legacy "warn"    → Severity.WARN   (pass-through)
+
+    Raises ``ValueError`` for unrecognised values (caller logs + skips).
+    """
+    from feinschliff.defects import Severity
+    _ENGINE_TO_LEGACY = {
+        "error": Severity.FATAL,
+        "warning": Severity.WARN,
+        "info": Severity.INFO,
+    }
+    if value in _ENGINE_TO_LEGACY:
+        return _ENGINE_TO_LEGACY[value]
+    # Fall through to legacy enum constructor (handles "fatal", "warn", "info").
+    return Severity(value)
+
+
 def cmd_apply_fixes(args) -> int:
     """`feinschliff deck apply-fixes <plan.yaml> --defects <defects.json> [-o out.yaml]`
 
@@ -1829,6 +1866,11 @@ def cmd_apply_fixes(args) -> int:
       - Collated:   {"defects": {"1": [...], "2": [...]}, ...}
         (output shape used by cli/verify.py)
 
+    Severity values accepted: both ENGINE vocabulary ("error", "warning",
+    "info" — emitted by ``deck verify-static --json``) and LEGACY vocabulary
+    ("fatal", "warn", "info" — used by hand-crafted files and older tooling).
+    See ``_parse_severity()`` for the exact mapping.
+
     Exit codes:
       0 — at least one patch was applied
       1 — no patches applied (defects present but none mechanically fixable,
@@ -1838,7 +1880,7 @@ def cmd_apply_fixes(args) -> int:
     _require_or_delegate_builder("deck apply-fixes")
     import json as _json
     from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary
-    from feinschliff.defects import Defect, DefectKind, Severity
+    from feinschliff.defects import Defect, DefectKind
 
     plan_path = Path(args.plan).resolve()
     if not plan_path.is_file():
@@ -1883,7 +1925,7 @@ def cmd_apply_fixes(args) -> int:
             defects.append(Defect(
                 slide_index=int(dd["slide_index"]),
                 kind=DefectKind(dd["kind"]),
-                severity=Severity(dd["severity"]),
+                severity=_parse_severity(dd["severity"]),
                 message=str(dd.get("message", "")),
                 meta=dict(dd.get("meta") or {}),
             ))
