@@ -28,7 +28,7 @@ def _blank_16x9():
 
 
 def _maxheight(dsl: str, needle: str) -> int:
-    line = next(l for l in dsl.splitlines() if l.startswith("text ") and needle in l)
+    line = next(ln for ln in dsl.splitlines() if ln.startswith("text ") and needle in ln)
     return int(re.search(r"maxheight:(\d+)", line).group(1))
 
 
