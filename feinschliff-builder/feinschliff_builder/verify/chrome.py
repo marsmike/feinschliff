@@ -80,8 +80,11 @@ def scan_pp_chrome(prs) -> list[ChromeDefect]:
                     detail="effectLst present (drop-shadow / glow / soft-edge)",
                 ))
                 break
-            # Gradient fill.
-            if sp_el.find(f".//{{{_NS_A}}}gradFill") is not None:
+            # Gradient fill — unless this shape opted in via the allow marker.
+            if (
+                sp_el.find(f".//{{{_NS_A}}}gradFill") is not None
+                and not _has_allow_marker(sp_el)
+            ):
                 out.append(ChromeDefect(
                     kind="gradient-fill",
                     slide_index=i,

@@ -90,6 +90,25 @@ def test_pp_chrome_respects_effect_allow_marker():
     assert not any(d.kind == "drop-shadow" for d in defects)
 
 
+def test_pp_chrome_respects_effect_allow_marker_on_grad_fill():
+    """A <p:sp> with namespaced fs:effect-allow='1' must not produce a
+    gradient-fill defect — mirrors the effectLst opt-in behaviour."""
+    from lxml import etree
+    from feinschliff_builder.verify.chrome import scan_pp_chrome, _FS_NS
+
+    prs = _new_blank_pptx()
+    slide = prs.slides[0]
+    shape = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Emu(0), Emu(0), Emu(100000), Emu(100000))
+    shape._element.set(f"{{{_FS_NS}}}effect-allow", "1")
+    sp_pr = shape._element.find(f".//{{{_NS_P}}}spPr")
+    etree.SubElement(sp_pr, f"{{{_NS_A}}}gradFill")
+
+    defects = scan_pp_chrome(prs)
+    assert not any(d.kind == "gradient-fill" for d in defects), (
+        "namespaced effect-allow='1' must suppress gradient-fill defect"
+    )
+
+
 def test_pp_chrome_respects_legacy_bare_effect_allow_marker():
     """A <p:sp> with legacy bare effect-allow='1' still keeps its effectLst
     (backward-compat read path for old decks)."""
