@@ -52,12 +52,30 @@ def test_avg_char_width_ratio_plausible():
     r = measure.avg_char_width_ratio("DejaVu Sans")
     assert 0.3 < r < 0.8          # sane ratio for a text face
     rb = measure.avg_char_width_ratio("DejaVu Sans", bold=True)
-    assert rb >= r                 # bold is never narrower
+    assert rb >= r                 # bold width >= regular; equal when no distinct bold file is installed
 
 
 def test_env_kill_switch(monkeypatch):
     monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
     measure.clear_caches()
     assert measure.find_font_file("DejaVu Sans") is None
+    assert measure.line_width_pt("x", "DejaVu Sans", 12) is None
+    assert measure.avg_char_width_ratio("DejaVu Sans") is None
     monkeypatch.delenv("FEINSCHMIEDE_NO_REAL_METRICS")
     measure.clear_caches()
+
+
+def test_family_guard_rejects_substitution():
+    assert measure._family_matches("Arial", ["Liberation Sans"]) is False
+
+
+def test_family_guard_rejects_more_specific_variant():
+    assert measure._family_matches("Open Sans", ["Open Sans Condensed"]) is False
+
+
+def test_family_guard_accepts_weight_suffix_request():
+    assert measure._family_matches("Open Sans SemiBold", ["Open Sans"]) is True
+
+
+def test_family_guard_accepts_exact():
+    assert measure._family_matches("DejaVu Sans", ["DejaVu Sans"]) is True
