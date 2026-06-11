@@ -9,6 +9,8 @@ import pytest
 from pptx import Presentation
 from pptx.oxml.ns import qn
 
+from feinschliff.dsl.pptx_emit import DSLError
+
 from feinschmiede.dsl.tokens import Tokens
 from feinschliff.dsl.parser import parse_lines
 from feinschliff.dsl.pptx_emit import build_presentation
@@ -153,3 +155,22 @@ def test_single_line_bullet():
     assert pPr is not None
     bu = pPr.find(qn("a:buChar"))
     assert bu is not None and bu.get("char") == "•"
+
+
+def test_bullet_false_emits_no_buchar():
+    """`bullet:false` must suppress bullets — identical output to omitting the kwarg."""
+    tb = _build_tb('text 100,100 "First\\nSecond" style:body maxwidth:800 bullet:false')
+    for p in tb.text_frame.paragraphs:
+        pPr = p._p.find(qn("a:pPr"))
+        if pPr is not None:
+            bu = pPr.find(qn("a:buChar"))
+            assert bu is None, (
+                "bullet:false must not emit <a:buChar> "
+                f"— got char={bu.get('char')!r}"
+            )
+
+
+def test_multichar_bullet_raises():
+    """`bullet:"ab"` (two chars) must raise DSLError mentioning the value."""
+    with pytest.raises(DSLError, match="ab"):
+        _build_tb('text 100,100 "Item" style:body maxwidth:800 bullet:"ab"')
