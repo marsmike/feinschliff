@@ -81,7 +81,10 @@ def cmd_plan_skeleton(args) -> int:
     honour these limits when filling ``content`` slots to avoid
     ``slot-overflow`` defects at pre-render content-lint time."""
     import json as _json
+    from feinschliff.deck.content_metadata import load_deck_map
+    from feinschliff.deck.picker import _brand_layout_table
     from feinschliff.layout_budget import plan_deck_layouts
+    from feinschliff.layout_profile import build_profile_table
     from feinschmiede.brand_discovery import find_brand
     from feinschmiede.dsl.tokens import load_tokens
 
@@ -113,18 +116,44 @@ def cmd_plan_skeleton(args) -> int:
         brand_root = None
         tokens = None
 
+    # Brand-pack content metadata: rank the brand's own layouts alongside
+    # the toolkit pool, and load deck-map.yaml so the pack's declared
+    # cover / agenda / section / quote / closer layouts become the
+    # default picks for the matching slide roles.
+    profiles = None
+    deck_map = None
+    if brand_root is not None:
+        layouts_path = brand_root / "layouts"
+        if layouts_path.is_dir():
+            profiles = build_profile_table(
+                _brand_layout_table(layouts_path), strict=False
+            )
+        deck_map = load_deck_map(brand_root)
+
     signals = [_signals_from_slide_fn(s) for s in plan["slides"]]
-    assignments = plan_deck_layouts(signals)
+    assignments = plan_deck_layouts(signals, profiles=profiles, deck_map=deck_map)
 
     skeleton_slides: list[dict] = []
     for slide, assignment in zip(plan["slides"], assignments):
         layout = assignment["layout"]
+        if layout.endswith(".slide.dsl"):
+            # Pinned as an explicit path — carry through verbatim.
+            layout_ref = layout
+            layout = Path(layout).name[: -len(".slide.dsl")]
+        else:
+            layout_ref = f"layouts/{layout}.slide.dsl"
+            if brand_root is not None:
+                brand_local = brand_root / "layouts" / f"{layout}.slide.dsl"
+                if brand_local.is_file():
+                    # Brand-local layouts don't resolve relative to the
+                    # deck dir or toolkit root — pin the absolute path.
+                    layout_ref = str(brand_local)
         if brand_root is not None and tokens is not None:
             slot_budgets = _slot_budgets_for_layout_fn(layout, brand_root, tokens)
         else:
             slot_budgets = {}
         skeleton_slides.append({
-            "layout": f"layouts/{layout}.slide.dsl",
+            "layout": layout_ref,
             "content": {},
             "_meta": {
                 "index": slide.get("index"),

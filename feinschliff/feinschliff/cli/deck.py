@@ -46,6 +46,7 @@ from pathlib import Path
 
 import yaml
 
+from feinschliff.deck.content_metadata import auto_bind_slots
 from feinschliff.deck.orchestrate import (
     patch_set_hash as _patch_set_hash_fn,
     build_primitives_for_layout as _build_primitives_for_layout_fn,
@@ -678,6 +679,19 @@ def cmd_build(args) -> int:
                         print(f"deck: slide {i}: content_file not found: {spec['content_file']}", file=sys.stderr)
                         return 2
                 ctx = yaml.safe_load(content_path.read_text()) or {}
+
+            # Brand-layout slot metadata: auto-bind footer / page-number
+            # slots (from deck-level `vars:` / the slide index) and derive
+            # provider queries for unbound `class: replace` image slots.
+            # Explicit plan bindings — including an explicit "" — always win.
+            ctx = auto_bind_slots(
+                ctx,
+                layout_path=layout_path,
+                layout_nodes=layout_nodes,
+                slide_index=i + 1,
+                deck_vars=plan.get("vars"),
+                image_provider_available=provider is not None,
+            )
 
             if content_defects_by_slide is not None:
                 slide_index = i + 1

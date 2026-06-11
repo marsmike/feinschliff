@@ -72,7 +72,10 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
     Returns
     -------
     dict
-        Keyword-argument dict accepted by :func:`feinschliff.layout_picker.pick_layout`.
+        Keyword-argument dict accepted by :func:`feinschliff.layout_picker.pick_layout`,
+        plus an optional ``layout`` pin passthrough consumed by
+        :func:`feinschliff.layout_budget.plan_deck_layouts` (an explicitly
+        pinned slide bypasses the picker — and any deck-map default).
     """
     role = slide.get("role") or slide.get("purpose") or (
         DIAGRAM_KIND_TO_ROLE.get(str(slide.get("diagram_kind") or ""))
@@ -88,6 +91,7 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
         "time_axis_role":  slide.get("time_axis_role"),
         "audience_mode":   slide.get("audience_mode"),
         "diagram_kind":    slide.get("diagram_kind"),
+        "layout":          slide.get("layout"),
     }
 
 

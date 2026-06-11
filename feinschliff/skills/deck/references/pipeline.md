@@ -317,6 +317,21 @@ Decompiled brand packs carry planning metadata — consume it here:
 - When no brand layout fits a slide's content shape, prefer a toolkit
   layout (kpi-grid, process-flow, …) — the picker ranks both pools.
 
+**Now automatic — no LLM action needed.** The pipeline consumes this
+metadata deterministically: `deck plan-skeleton` (and the brand-aware
+`LayoutPicker`) ranks the brand's own layouts and applies the deck-map
+default — cover / agenda / section / quote / closer slides get the
+deck-map layout as a +4 rank-1 bonus (`deck-map` in the rationale)
+unless the slide pins `layout:` explicitly. At `deck build` time the
+frontmatter `slots:` roles auto-bind: `footer` slots fill from the
+plan's deck-level `vars:` (`footer_left` → leftmost slot, `footer_right`
+→ rightmost; a single footer slot takes `footer_right`), `page-number`
+slots get the slide's 1-based index, and unbound `class: replace` image
+slots get a provider query derived from the slide's title/body (falling
+back to the frontmatter `image_queries` hint) — only when an image
+provider is configured. Explicit `content:` bindings (even an explicit
+`""`) always win; `class: keep` slots are never auto-bound.
+
 **Compute slot budgets** before drafting slot values. The same call
 runs at pre-render content-lint time, so honoring the budget here
 avoids burning an iteration on `slot-overflow` defects:
