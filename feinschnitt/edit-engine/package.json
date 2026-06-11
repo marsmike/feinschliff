@@ -1,0 +1,19 @@
+{
+  "name": "feinschnitt-edit-engine",
+  "private": true,
+  "description": "Shared plan-driven Remotion engine for `feinschnitt edit` — hardened templates, props-only contract.",
+  "scripts": {
+    "studio": "remotion studio",
+    "render": "remotion render"
+  },
+  "dependencies": {
+    "@remotion/cli": "4.0.475",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "remotion": "4.0.475"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "typescript": "^5.5.0"
+  }
+}

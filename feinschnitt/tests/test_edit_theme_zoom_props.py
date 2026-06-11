@@ -81,3 +81,18 @@ def test_theme_corrupt_tokens_is_clean_error(tmp_path):
     (tmp_path / "tokens.json").write_text("not json")
     with pytest.raises(EditError):
         thememod.resolve_theme(tmp_path)
+
+
+def test_props_injects_vertical_defaults():
+    aligned = {"beats": [
+        {"kind": "word_pop", "start_sec": 2.0, "end_sec": 5.0, "reason": "r",
+         "items": [{"text": "X", "appear_sec": 2.2}]},
+        {"kind": "hook_title", "start_sec": 0.0, "end_sec": 3.0, "title": "T",
+         "reason": "r", "vertical": 0.8},
+    ]}
+    meta = {"duration": 20.0, "width": 1080, "height": 1920}
+    out = propsmod.build_props("clip.mp4", aligned, [], thememod.resolve_theme(None),
+                               meta)
+    assert out["beats"][0]["vertical"] == 0.72   # injected default
+    assert out["beats"][1]["vertical"] == 0.8    # authored value untouched
+    assert "vertical" not in aligned["beats"][0]  # input not mutated

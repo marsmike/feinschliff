@@ -1,0 +1,44 @@
+// Theme contract — filled by feinschnitt's theme.py from brand tokens.json.
+// Templates read ONLY these keys; no hardcoded brand colors anywhere.
+export type Theme = {
+  bg: string;
+  surface: string;
+  text: string;
+  muted: string;
+  accent: string; // monogamous: ONE accent element per frame, max
+  fontTitle: string;
+  fontBody: string;
+};
+
+export const DEFAULT_THEME: Theme = {
+  bg: '#10131A',
+  surface: '#1E2430',
+  text: '#F4F4F2',
+  muted: '#A7B0BE',
+  accent: '#C9A24A',
+  fontTitle: 'Archivo',
+  fontBody: 'Inter',
+};
+
+// Beats may carry extra diagnostic keys from the Python pipeline (e.g.
+// `_align`) — the index signature deliberately tolerates them.
+export type Beat = {
+  kind: string;
+  start_sec: number;
+  end_sec: number;
+  vertical?: number;
+  [key: string]: unknown;
+};
+
+export type ZoomWindow = {start_sec: number; end_sec: number; scale: number};
+
+export type EditedVideoProps = {
+  source: string;
+  durationSec: number;
+  width: number;
+  height: number;
+  fps: number;
+  beats: Beat[];
+  zoom: ZoomWindow[];
+  theme: Theme;
+};

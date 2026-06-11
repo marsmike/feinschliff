@@ -144,3 +144,8 @@ feinschliff-extra/brands/*/assets/decompile/**
 !feinschliff-extra/brands/*/assets/decompile/*/
 !feinschliff-extra/brands/*/assets/decompile/*/bg.*
 feinschliff-extra/brands/*/tokens.json.bak
+
+# feinschnitt edit-engine (committed source; deps + renders are not)
+feinschnitt/edit-engine/node_modules/
+feinschnitt/edit-engine/out/
+feinschnitt/edit-engine/public/
