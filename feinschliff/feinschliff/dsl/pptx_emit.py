@@ -372,6 +372,11 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         into the label before emission so python-pptx can break long compound
         words at syllable boundaries. Applied BEFORE autoshrink so the shrink
         sees the hyphenated string.
+    `padding:L,T,R,B` / `padding:N` (px) — explicit text-frame insets that
+        mirror the source PPTX bodyPr lIns/tIns/rIns/bIns values. Affects
+        BOTH the rendered text-frame margins (tf.margin_*) AND the fit budgets
+        (autoshrink width/height clamp); omitting it uses PowerPoint's
+        built-in defaults (~19 px left/right, ~9 px top/bottom).
     """
     if not node.pos_args:
         raise ValueError(f"text at line {node.line_no}: expected 'X,Y' positional")
@@ -479,22 +484,27 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         inset_w_emu = int(pad_left * _EMU_PER_PX) + int(pad_right * _EMU_PER_PX)
         inset_h_emu = int(pad_top * _EMU_PER_PX) + int(pad_bottom * _EMU_PER_PX)
     else:
+        # PowerPoint OOXML defaults, already in EMU — no scale conversion
         inset_w_emu = 91440 + 91440
         inset_h_emu = 45720 + 45720
 
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
+    # Resolve font face once for all fit/shrink paths (autoshrink, orphan
+    # control, autofit gating). style.weight and style.font_family are
+    # frozen at this point; only size_px changes below, which does not
+    # affect face selection. _style_run resolves its own face independently.
+    fit_face, fit_bold = _resolve_face(style.font_family[0], style.weight)
     if autoshrink and label_text:
         from dataclasses import replace as _replace
         # Use the longest single paragraph as the worst-case for width fit; the
         # height check below works on the joined text.
-        face, bold = _resolve_face(style.font_family[0], style.weight)
         max_pt = _px_to_pt(style.size_px)
         fitted_pt = textfit.autoshrink_size(
             label_text,
-            font=face,
+            font=fit_face,
             max_size_pt=max_pt,
             min_size_pt=10,
-            bold=bold,
+            bold=fit_bold,
             width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             height_emu=max(1, int(h * _EMU_PER_PX) - inset_h_emu),
             line_height=style.line_height,
@@ -507,14 +517,13 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     # word on the final line, replace its preceding space with NBSP so
     # the pair wraps together. Use the final (post-autoshrink) size.
     if label_text:
-        face_for_fit, bold_for_fit = _resolve_face(style.font_family[0], style.weight)
         paragraphs = label_text.split("\n")
         paragraphs = [
             textfit.prevent_orphan(
                 p,
-                font=face_for_fit,
+                font=fit_face,
                 size_pt=_px_to_pt(style.size_px),
-                bold=bold_for_fit,
+                bold=fit_bold,
                 width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             )
             for p in paragraphs
@@ -577,8 +586,7 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     elif valign == "bottom":
         tf.vertical_anchor = MSO_ANCHOR.BOTTOM
     if autoshrink:
-        face_af, bold_af = _resolve_face(style.font_family[0], style.weight)
-        if not textfit.has_real_metrics(face_af, bold_af):
+        if not textfit.has_real_metrics(fit_face, fit_bold):
             # Heuristic pre-shrink only: keep PPT's native shrink-to-fit as
             # the last line of defense. With real measured metrics the
             # computed size is authoritative — writing scale-less autofit
@@ -587,6 +595,9 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         else:
             # Drop the new-textbox default <a:spAutoFit/> too: the box was
             # sized for the computed fit; no renderer should regrow it.
+            # Trade-off: if real-metrics textfit ever over-estimates usable
+            # area, the box overflows visually — verify catches it post-render;
+            # there is no renderer-side fallback on this path.
             tf.auto_size = None
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
