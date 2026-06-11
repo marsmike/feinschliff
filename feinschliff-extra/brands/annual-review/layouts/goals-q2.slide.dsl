@@ -3,15 +3,15 @@
 canvas 1920x1080
 theme annual-review
 
-line 163,295 1756,295 stroke:black stroke-width:12
+line 163,295 1758,296 stroke:fog stroke-width:12
 
-text 162,126 style:title-l weight:bold color:ink size:44pt maxwidth:1230 maxheight:120 "Goals for Q2"
-text 163,353 style:body weight:bold color:ink size:18pt maxwidth:520 maxheight:102 "Business priorities"
-text 715,353 style:body weight:bold color:ink size:18pt maxwidth:491 maxheight:102 "Added priorities"
-text 1266,353 style:body weight:bold color:ink size:18pt maxwidth:491 maxheight:102 "Employee opportunities"
-text 163,466 style:body color:ink size:18pt maxwidth:480 maxheight:306 "▪  Increase customer satisfaction by 2%\n▪  Maintain growth"
-text 715,464 style:body color:ink size:18pt maxwidth:500 maxheight:306 "▪  Decrease the number of rotations by at least 2\n▪  Ensure the cost of development stays below budget"
-text 1266,464 style:body color:ink size:18pt maxwidth:540 maxheight:306 "▪  Interns begin\n▪  Indoor rec leagues\n▪  Chess tournaments\n▪  Big Game watching party\n▪  Food drive"
-text 1307,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:230 maxheight:29 "Annual Review"
-text 1548,991 style:body-sm size:12pt padding:1 maxwidth:240 maxheight:29 "September 3, 20XX"
-text 1810,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:80 maxheight:29 "11"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:1748 maxheight:102 "{{ text_1 | default(\"Goals for Q2\") }}"
+text 148,367 style:body color:black weight:bold size:18pt padding:14,7,14,7 maxwidth:545 maxheight:104 "{{ text_2 | default(\"Business priorities\") }}"
+text 703,367 style:body color:black weight:bold size:18pt padding:14,7,14,7 maxwidth:536 maxheight:102 "{{ text_3 | default(\"Added priorities\") }}"
+text 1249,367 style:body color:black weight:bold size:18pt padding:14,7,14,7 maxwidth:661 maxheight:102 "{{ text_4 | default(\"Employee opportunities\") }}"
+text 163,481 style:body color:black size:18pt valign:top padding:1 maxwidth:542 maxheight:589 "{{ text_5 | default(\"Increase customer satisfaction by 2%\nMaintain growth\") }}"
+text 715,479 style:body color:black size:18pt valign:top padding:1 maxwidth:541 maxheight:591 "{{ text_6 | default(\"Decrease the number of rotations by at least 2\nEnsure the cost of development stays below budget\") }}"
+text 1266,479 style:body color:black size:18pt valign:top padding:1 maxwidth:644 maxheight:502 "{{ text_7 | default(\"Interns begin\nIndoor rec leagues\nChess tournaments\nBig Game watching party\nFood drive\") }}"
+text 1307,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:231 maxheight:29 "{{ text_8 | default(\"Annual Review\") }}"
+text 1548,991 style:body-sm color:black size:12pt padding:1 maxwidth:252 maxheight:79 "{{ text_9 | default(\"September 3, 20XX\") }}"
+text 1810,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:100 maxheight:29 "{{ text_10 | default(\"11\") }}"

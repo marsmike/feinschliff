@@ -131,3 +131,16 @@ feinblick/uv.lock
 
 # /goal autonomous loop working state (mirrors .debug/ discipline)
 .autoloop/
+
+# --- MS-gallery brand packs (feinschliff-extra) ---
+# Source templates live in the feinschmiede-test repo (git-lfs); local copies only.
+feinschliff-extra/assets/templates/
+# Decompile working snapshots.
+feinschliff-extra/brands/*/layouts.bak/
+# Carried MS content photos stay local (slot defaults fall back to the gem
+# placeholder / image provider at render). Background ARTWORK (bg.*) is
+# template chrome and IS committed.
+feinschliff-extra/brands/*/assets/decompile/**
+!feinschliff-extra/brands/*/assets/decompile/*/
+!feinschliff-extra/brands/*/assets/decompile/*/bg.*
+feinschliff-extra/brands/*/tokens.json.bak

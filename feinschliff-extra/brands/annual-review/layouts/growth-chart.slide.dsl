@@ -1,66 +1,13 @@
-# layout: growth-chart — pale-blue section panel, heavy black title, horizontal
-# grouped bar chart (4 categories x 3 series). Source slide 5.
+# auto-derived from PPTX+SVG hybrid — review before use
+# layout: growth-chart
 canvas 1920x1080
 theme annual-review
 
-# Signature pale-blue full-bleed panel — covers all but a white footer band.
-rect 0,0 1757x916 fill:panel-blue
+rect 0,-1 1757x917 fill:highlight
+native graphic1 b64:"PHA6Z3JhcGhpY0ZyYW1lIHhtbG5zOnA9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9wcmVzZW50YXRpb25tbC8yMDA2L21haW4iIHhtbG5zOmE9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9kcmF3aW5nbWwvMjAwNi9tYWluIj48cDpudkdyYXBoaWNGcmFtZVByPjxwOmNOdlByIGlkPSI0IiBuYW1lPSJDaGFydCBQbGFjZWhvbGRlciAzIiBkZXNjcj0iR3Jvd3RoIENoYXJ0Ij48YTpleHRMc3Q+PGE6ZXh0IHVyaT0ie0ZGMkI1RUY0LUZGRjItNDBCNC1CRTQ5LUYyMzhFMjdGQzIzNn0iPjxhMTY6Y3JlYXRpb25JZCB4bWxuczphMTY9Imh0dHA6Ly9zY2hlbWFzLm1pY3Jvc29mdC5jb20vb2ZmaWNlL2RyYXdpbmcvMjAxNC9tYWluIiBpZD0ie0M2NjZCN0I1LTBERDAtMUY0MS04OUQ0LTU2MDRCMDkzOTEyRn0iLz48L2E6ZXh0PjwvYTpleHRMc3Q+PC9wOmNOdlByPjxwOmNOdkdyYXBoaWNGcmFtZVByPjxhOmdyYXBoaWNGcmFtZUxvY2tzIG5vR3JwPSIxIi8+PC9wOmNOdkdyYXBoaWNGcmFtZVByPjxwOm52UHI+PHA6cGggdHlwZT0iY2hhcnQiIHN6PSJxdWFydGVyIiBpZHg9IjExIi8+PHA6ZXh0THN0PjxwOmV4dCB1cmk9IntENDJBMjdEQi1CRDMxLTRCOEMtODNBMS1GNkVFQ0YyNDQzMjF9Ij48cDE0Om1vZElkIHhtbG5zOnAxND0iaHR0cDovL3NjaGVtYXMubWljcm9zb2Z0LmNvbS9vZmZpY2UvcG93ZXJwb2ludC8yMDEwL21haW4iIHZhbD0iMzk5NzA3NjUxNiIvPjwvcDpleHQ+PC9wOmV4dExzdD48L3A6bnZQcj48L3A6bnZHcmFwaGljRnJhbWVQcj48cDp4ZnJtPjxhOm9mZiB4PSI5NTA5MTMiIHk9IjIyODYwMDAiLz48YTpleHQgY3g9IjkxNDU1ODciIGN5PSIzMTY1NDc1Ii8+PC9wOnhmcm0+PGE6Z3JhcGhpYz48YTpncmFwaGljRGF0YSB1cmk9Imh0dHA6Ly9zY2hlbWFzLm9wZW54bWxmb3JtYXRzLm9yZy9kcmF3aW5nbWwvMjAwNi9jaGFydCI+PGM6Y2hhcnQgeG1sbnM6Yz0iaHR0cDovL3NjaGVtYXMub3BlbnhtbGZvcm1hdHMub3JnL2RyYXdpbmdtbC8yMDA2L2NoYXJ0IiB4bWxuczpyPSJodHRwOi8vc2NoZW1hcy5vcGVueG1sZm9ybWF0cy5vcmcvb2ZmaWNlRG9jdW1lbnQvMjAwNi9yZWxhdGlvbnNoaXBzIiByOmlkPSJySWQyIi8+PC9hOmdyYXBoaWNEYXRhPjwvYTpncmFwaGljPjwvcDpncmFwaGljRnJhbWU+" parts_file:"native/b9a3f0f280ad.json"
+line 163,295 1758,296 stroke:fog stroke-width:12
 
-# Heavy black display title + thick black rule beneath it.
-text 162,180 style:title-l weight:bold color:ink size:56pt maxwidth:1550 maxheight:140 "Growth by sector chart"
-line 163,295 1757,295 stroke:black stroke-width:12
-
-# ── Grouped horizontal bar chart ──────────────────────────────────────
-# Axis origin x=337 (tick "0"); ticks 0..6 at x 337,539,742,945,1147,1350,1553
-# → ~202.67 px per unit. Within each category, three contiguous 20px-tall
-# bars, top→bottom: Series 3 (black), Series 2 (teal), Series 1 (white/paper).
-# Bar widths measured from source slide-05 (len in px = value × ppu).
-
-# Category 4 (top): S3=5.0(1013) S2=2.8(567) S1=4.5(911)
-rect 337,388 1013x20 fill:chart-series-3
-rect 337,407 567x20 fill:chart-series-2
-rect 337,427 911x20 fill:paper
-
-# Category 3: S3=3.0(607) S2=1.8(364) S1=3.5(709)
-rect 337,483 607x20 fill:chart-series-3
-rect 337,502 364x20 fill:chart-series-2
-rect 337,522 709x20 fill:paper
-
-# Category 2: S3=2.0(405) S2=4.4(891) S1=2.5(506)
-rect 337,577 405x20 fill:chart-series-3
-rect 337,597 891x20 fill:chart-series-2
-rect 337,617 506x20 fill:paper
-
-# Category 1 (bottom): S3=2.0(405) S2=2.4(486) S1=4.3(871)
-rect 337,672 405x20 fill:chart-series-3
-rect 337,692 486x20 fill:chart-series-2
-rect 337,711 871x20 fill:paper
-
-# Category labels (left of plot, bold black, centered on each group).
-text 161,401 style:body weight:bold color:ink size:18pt maxwidth:185 maxheight:32 valign:middle "Category 4"
-text 161,495 style:body weight:bold color:ink size:18pt maxwidth:185 maxheight:32 valign:middle "Category 3"
-text 161,591 style:body weight:bold color:ink size:18pt maxwidth:185 maxheight:32 valign:middle "Category 2"
-text 161,684 style:body weight:bold color:ink size:18pt maxwidth:185 maxheight:32 valign:middle "Category 1"
-
-# X-axis tick labels (0–6) below the plot; box x = digit-left − inset, so the
-# glyph centers land on each gridline (337,539,742,945,1147,1350,1553).
-text 312,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "0"
-text 516,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "1"
-text 718,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "2"
-text 920,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "3"
-text 1122,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "4"
-text 1326,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "5"
-text 1529,755 style:body-sm color:ink size:18pt maxwidth:40 maxheight:30 "6"
-
-# Legend (below plot): swatch + label, S3 / S2 / S1, swatches ~13px at y=829.
-rect 694,829 13x13 fill:chart-series-3
-text 704,825 style:body-sm color:ink size:16pt maxwidth:120 maxheight:26 "Series 3"
-rect 816,829 14x13 fill:chart-series-2
-text 826,825 style:body-sm color:ink size:16pt maxwidth:120 maxheight:26 "Series 2"
-rect 939,829 13x13 fill:paper
-text 949,825 style:body-sm color:ink size:16pt maxwidth:120 maxheight:26 "Series 1"
-
-# Footer meta (three runs), on the white band.
-text 1307,991 style:body-sm weight:bold color:ink size:12pt maxwidth:230 maxheight:29 "Annual Review"
-text 1548,991 style:body-sm color:ink size:12pt maxwidth:240 maxheight:29 "September 3, 20XX"
-text 1810,991 style:body-sm color:ink size:12pt maxwidth:80 maxheight:29 "5"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:1748 maxheight:102 "{{ text_1 | default(\"Growth by sector chart\") }}"
+text 1307,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:231 maxheight:29 "{{ text_2 | default(\"Annual Review\") }}"
+text 1548,991 style:body-sm color:black size:12pt padding:1 maxwidth:252 maxheight:79 "{{ text_3 | default(\"September 3, 20XX\") }}"
+text 1810,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:100 maxheight:29 "{{ text_4 | default(\"5\") }}"

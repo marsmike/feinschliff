@@ -3,8 +3,8 @@
 canvas 1920x1080
 theme annual-review
 
-picture 0,0 1920x1080 path:{{ image }} cover:true
+picture 0,0 1920x1080 path:"{{ image | default(\"decompile/last-year/image.png\") }}" cover:true
 line 164,293 1755,294 stroke:fog stroke-width:12
 line 163,296 1757,297 stroke:fog stroke-width:12
 
-text 162,157 style:sub size:44pt padding:14,7,14,7 maxwidth:1230 maxheight:102 "Last year"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:1748 maxheight:102 "{{ text_1 | default(\"Last year\") }}"

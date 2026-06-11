@@ -3,11 +3,11 @@
 canvas 1920x1080
 theme annual-review
 
-picture 1158,156 762x762 path:{{ image }} cover:true
-line 163,294 479,294 stroke:black stroke-width:12
+picture 1158,156 762x762 path:"{{ image | default(\"decompile/introduction/image.jpg\") }}" cover:true
+line 163,294 930,295 stroke:fog stroke-width:12
 
-text 147,112 style:sub weight:bold color:ink size:56pt padding:14,7,14,7 maxwidth:768 maxheight:102 "Introduction"
-text 148,345 style:body size:18pt padding:14,7,14,7 maxwidth:768 maxheight:562 "Profits are up, and losses are down! We are very proud of the progress our team has made. Today we’ll review our wins and losses from last year and give you an overview of what you can expect for next year."
-text 1307,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:230 maxheight:29 "Annual Review"
-text 1548,991 style:body-sm size:12pt padding:1 maxwidth:240 maxheight:29 "September 3, 20XX"
-text 1810,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:80 maxheight:29 "3"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:986 maxheight:102 "{{ text_1 | default(\"Introduction\") }}"
+text 162,360 style:body color:black size:18pt padding:1 maxwidth:986 maxheight:710 "{{ text_2 | default(\"Profits are up, and losses are down! We are very proud of the progress our team has made. Today we’ll review our wins and losses from last year and give you an overview of what you can expect for next year.\") }}"
+text 1307,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:231 maxheight:29 "{{ text_3 | default(\"Annual Review\") }}"
+text 1548,991 style:body-sm color:black size:12pt padding:1 maxwidth:252 maxheight:79 "{{ text_4 | default(\"September 3, 20XX\") }}"
+text 1810,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:100 maxheight:29 "{{ text_5 | default(\"3\") }}"
