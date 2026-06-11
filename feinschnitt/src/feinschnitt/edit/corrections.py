@@ -27,6 +27,14 @@ PHRASE_CORRECTIONS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (("fine", "bild"), ("feinbild",)),
 ]
 
+def fingerprint() -> str:
+    """Cache fingerprint of the correction tables — transcription caches must
+    invalidate when a table row is added (the correction-memory workflow)."""
+    import hashlib
+    payload = repr((sorted(BRAND_WORDS.items()), PHRASE_CORRECTIONS))
+    return hashlib.sha1(payload.encode()).hexdigest()[:12]
+
+
 _PUNCT = ".,!?;:"
 
 
