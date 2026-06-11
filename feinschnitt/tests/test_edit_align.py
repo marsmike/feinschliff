@@ -7,6 +7,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from feinschnitt.edit import EditError  # noqa: E402
 from feinschnitt.edit import align  # noqa: E402
+from feinschnitt.edit import verify as verifymod  # noqa: E402
 
 WORDS = [
     {"w": "they", "s": 5.0, "e": 5.2}, {"w": "used", "s": 5.3, "e": 5.5},
@@ -113,3 +114,13 @@ def test_run_clean_error_on_malformed_words(tmp_path):
     bad.write_text("{}")
     with pytest.raises(EditError):
         align.run({"beats": []}, bad, tmp_path / "out.json")
+
+
+def test_verify_duration_mismatch_fails():
+    problems = verifymod.check_durations(source_dur=20.0, output_dur=18.0)
+    assert problems
+    assert "duration" in problems[0]
+
+
+def test_verify_duration_within_tolerance_passes():
+    assert verifymod.check_durations(20.0, 20.1) == []
