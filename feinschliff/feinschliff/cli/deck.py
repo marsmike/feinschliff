@@ -204,7 +204,9 @@ def register(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Embed brand display/body font files into the .pptx so "
              "recipients without the fonts render faithfully (opt-in; "
-             "enlarges the file).",
+             "enlarges the file). "
+             "No font-license (fsType) check is performed — verify your "
+             "brand fonts permit embedding.",
     )
     p_build.set_defaults(func=cmd_build)
 
