@@ -197,7 +197,7 @@ def register(parser: argparse.ArgumentParser) -> None:
              "swap_layout_*) for known defect classes.  Up to 3 inner fix "
              "cycles are attempted; residual WARN defects are printed but do "
              "NOT block the compile.  Residual FATAL defects (slot-overflow) "
-             "still abort via the default static gate.  The fixed plan is "
+             "abort via the default static gate.  The fixed plan is "
              "written back to disk before compile.",
     )
     p_build.set_defaults(func=cmd_build)
@@ -651,10 +651,15 @@ def cmd_build(args) -> int:
                     f"[{_d.severity.value.upper()}] {_d.kind.value} — {_d.message}",
                     file=sys.stderr,
                 )
+            _autofix_hint = (
+                ""
+                if getattr(args, "autofix", False)
+                else " or run --autofix"
+            )
             print(
                 f"deck build: aborting — {len(_gate_fatal)} fatal static "
                 f"defect(s) found pre-render. Shorten the flagged content, "
-                f"enable autoshrink on the layout, or run --autofix.",
+                f"enable autoshrink on the layout{_autofix_hint}.",
                 file=sys.stderr,
             )
             return 1
