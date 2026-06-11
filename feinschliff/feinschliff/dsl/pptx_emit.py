@@ -363,7 +363,7 @@ def _align_pp(name: str) -> PP_ALIGN:
 # ---------------------------------------------------------------------------
 
 def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
-    """text X,Y "label" style:S align:A maxwidth:W maxheight:H color:T autoshrink:true lang:de_DE
+    """text X,Y "label" style:S align:A maxwidth:W maxheight:H color:T autoshrink:true lang:de_DE italic:true
 
     `autoshrink:true` — shrink font from style size down to a 10pt floor until
         the label fits the `maxwidth × maxheight` box. Off by default; preserves
@@ -442,6 +442,9 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             size_px=new_size, weight=new_weight,
             color_hex=new_color_hex, color_role=new_color_role,
         )
+    if str(node.kw_args.get("italic", "")).lower() == "true":
+        from dataclasses import replace as _replace
+        style = _replace(style, italic=True)
     align = _align_pp(node.kw_args.get("align", "left"))
     # Default right margin = brand's slide.padding-x token; fall back to a
     # sensible canvas-relative inset if the brand omits it.
@@ -655,6 +658,8 @@ def _style_run(run, text: str, style, *, tokens: Tokens | None = None) -> None:
     f.name = face
     f.size = Pt(_px_to_pt(style.size_px))
     f.bold = bold
+    if style.italic:
+        f.italic = True
     color = style.color_hex
     if style.opacity < 1.0:
         # python-pptx has no native alpha on text runs; approximate by
