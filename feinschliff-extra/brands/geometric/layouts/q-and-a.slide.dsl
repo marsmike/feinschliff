@@ -1,3 +1,18 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 8
+slots:
+  text_1: {role: page-number, chars: 46, default: '8'}
+  text_2: {role: title, chars: 94, default: NAVIGATING Q&A\nSESSIONS}
+  text_3: {role: body, chars: 855, default: Maintaining composure during the Q&A session is essential for projecting conf…}
+  text_4: {role: body, chars: 931, default: Know your material in advance\nAnticipate common questions\nRehearse your res…}
+image_queries: {image: navigating sessions}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: q-and-a
 canvas 1920x1080

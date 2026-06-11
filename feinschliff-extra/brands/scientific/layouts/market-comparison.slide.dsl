@@ -1,3 +1,15 @@
+---
+role: content-columns
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 7
+slots:
+  text_1: {role: title, chars: 748, default: STANDS OUT IN MARKET\nINNOVATIVE FEATURES\nPROVIDES UNIQUE SOLUTION\nEDGE OVE…}
+  text_2: {role: body, chars: 140, default: MARKET COMPARISON}
+image_queries: {image: market comparison stands innovative}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: market-comparison
 canvas 1920x1080

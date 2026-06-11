@@ -1,3 +1,17 @@
+---
+role: quote
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+family: voice
+slide_index: 7
+slots:
+  text_1: {role: title, chars: 12, default: “}
+  text_2: {role: body, chars: 935, default: Contoso was great to work with. Patrice was my representative and she anticip…}
+  text_3: {role: footer, chars: 26, default: Annual Review}
+  text_4: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_5: {role: page-number, chars: 11, default: '7'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: quote
 canvas 1920x1080

@@ -1,3 +1,18 @@
+---
+role: chapter-opener
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
+family: framing
+fixed_chrome: true
+chrome_note: 'carries native source chrome verbatim: 5 illustration'
+slide_index: 6
+slots:
+  text_1: {role: page-number, chars: 44, default: '6'}
+  text_2: {role: title, chars: 230, default: SELECTING\nVISUAL AIDS}
+  text_3: {role: body, chars: 621, default: Enhancing your presentation}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: visual-aids
 canvas 1920x1080

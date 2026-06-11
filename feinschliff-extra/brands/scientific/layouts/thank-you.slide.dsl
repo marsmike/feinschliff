@@ -1,3 +1,16 @@
+---
+role: closer
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+family: closing
+slide_index: 13
+slots:
+  text_1: {role: title, chars: 132, default: THANK YOU}
+  text_2: {role: body, chars: 188, default: AIDYN ZHANBOLAT | AIDYN@ADATUM.COM | WWW.ADATUM.COM}
+image_queries: {image: thank you}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: thank-you
 canvas 1920x1080

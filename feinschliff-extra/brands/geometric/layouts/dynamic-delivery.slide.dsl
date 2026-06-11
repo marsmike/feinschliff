@@ -1,3 +1,16 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+chrome_note: 'carries native source chrome verbatim: 3 illustration, 1 table'
+slide_index: 10
+slots:
+  text_1: {role: page-number, chars: 46, default: '10'}
+  text_2: {role: title, chars: 126, default: DYNAMIC DELIVERY}
+  text_3: {role: body, chars: 779, default: Learn to infuse energy into your delivery to leave a lasting impression\nOne …}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: dynamic-delivery
 canvas 1920x1080

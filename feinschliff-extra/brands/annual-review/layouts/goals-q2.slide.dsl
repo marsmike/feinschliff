@@ -1,3 +1,22 @@
+---
+role: content-columns
+ideal_count: [6, 6]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 11
+slots:
+  text_1: {role: title, chars: 54, default: Goals for Q2}
+  text_2: {role: body, chars: 82, default: Business priorities}
+  text_3: {role: body, chars: 80, default: Added priorities}
+  text_4: {role: body, chars: 100, default: Employee opportunities}
+  text_5: {role: body, chars: 656, default: Increase customer satisfaction by 2%\nMaintain growth}
+  text_6: {role: body, chars: 640, default: Decrease the number of rotations by at least 2\nEnsure the cost of developmen…}
+  text_7: {role: body, chars: 624, default: Interns begin\nIndoor rec leagues\nChess tournaments\nBig Game watching party…}
+  text_8: {role: footer, chars: 26, default: Annual Review}
+  text_9: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_10: {role: page-number, chars: 11, default: '11'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: goals-q2
 canvas 1920x1080

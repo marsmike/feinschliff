@@ -1,3 +1,15 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 12
+slots:
+  text_1: {role: title, chars: 144, default: SUMMARY}
+  text_2: {role: body, chars: 1121, default: 'With this product, Adatum Corporation is positioned for success in the dynami…'}
+  text_3: {role: body, chars: 1311, default: STRONG MARKET POSITIONING\nROBUST GROWTH STRATEGY\nINNOVATIVE PRODUCT DEVELOP…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: summary
 canvas 1920x1080

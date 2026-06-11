@@ -1,3 +1,18 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 7
+slots:
+  text_1: {role: title, chars: 110, default: Effective delivery techniques}
+  text_2: {role: body, chars: 1216, default: 'Effective body language enhances your message, making it more impactful and
+      m…'}
+  text_3: {role: body, chars: 1064, default: 'This is a powerful tool in public speaking. It involves varying pitch, tone,
+      …'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: delivery
 canvas 1920x1080

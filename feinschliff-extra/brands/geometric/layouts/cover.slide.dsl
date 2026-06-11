@@ -1,3 +1,15 @@
+---
+role: title-primary
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+chrome_note: 'carries native source chrome verbatim: 3 illustration'
+slide_index: 1
+slots:
+  text_1: {role: title, chars: 440, default: BASIC\nPRESENTATION}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: cover
 canvas 1920x1080

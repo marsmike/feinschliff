@@ -1,3 +1,19 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 12
+slots:
+  text_1: {role: title, chars: 54, default: Summary}
+  text_2: {role: body, chars: 1190, default: Our customers keep coming back\nWe increased customer retention by 4%\nWe’re
+      …}
+  text_3: {role: body, chars: 1159, default: Our business is good\nProfits are up in the last quarter by 3%\nWe’re deliver…}
+  text_4: {role: footer, chars: 26, default: Annual Review}
+  text_5: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_6: {role: page-number, chars: 11, default: '12'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: summary
 canvas 1920x1080

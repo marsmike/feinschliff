@@ -1,3 +1,25 @@
+---
+role: content-columns
+ideal_count: [8, 8]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 8
+slots:
+  text_1: {role: title, chars: 54, default: Our team}
+  text_2: {role: body, chars: 32, default: Ana}
+  text_3: {role: body, chars: 32, default: Larissa}
+  text_4: {role: body, chars: 32, default: Roman}
+  text_5: {role: body, chars: 33, default: Federico}
+  text_6: {role: body, chars: 360, default: CEO}
+  text_7: {role: body, chars: 360, default: CFO}
+  text_8: {role: body, chars: 252, default: CTO}
+  text_9: {role: body, chars: 266, default: COO}
+  text_10: {role: footer, chars: 26, default: Annual Review}
+  text_11: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_12: {role: page-number, chars: 11, default: '8'}
+image_queries: {image1: team, image2: team, image3: team, image4: team}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: team
 canvas 1920x1080

@@ -1,3 +1,15 @@
+---
+role: title-primary
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+slide_index: 1
+slots:
+  text_1: {role: title, chars: 78, default: Annual Review}
+  text_2: {role: body, chars: 1480, default: 'Contoso Customer Success Team September 3, 20XX'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: cover
 canvas 1920x1080
