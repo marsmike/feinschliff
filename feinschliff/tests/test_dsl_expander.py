@@ -193,3 +193,18 @@ def test_expand_default_max_depth_matches_docs():
     import inspect
     sig = inspect.signature(expand_compounds)
     assert sig.parameters["max_depth"].default == 8
+
+
+def test_default_filter_explicit_empty_string_blanks_slot():
+    """Binding "" must BLANK a default() slot, not resurrect the fallback.
+
+    Content plans built on slotified brand layouts need a way to suppress
+    showcase copy ("85", "*Geographic borders…") per slide; only a MISSING
+    key may fall back to the default.
+    """
+    from feinschliff.dsl.expander import _interp
+
+    tpl = '{{ note | default("showcase copy") }}'
+    assert _interp(tpl, {"note": ""}) == ""
+    assert _interp(tpl, {}) == "showcase copy"
+    assert _interp(tpl, {"note": "real"}) == "real"

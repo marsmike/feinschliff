@@ -328,8 +328,13 @@ def _interp(text: str, ctx: dict) -> str:
         if dm is not None:
             key, fallback = dm.group(1), dm.group(2)
             val = _lookup(key, ctx)
-            if val is _MISSING or val == "":
+            # Only a MISSING key falls back. An explicit "" (or None) BLANKS
+            # the slot — content plans on slotified brand layouts need a way
+            # to suppress showcase copy per slide, and "" is that way.
+            if val is _MISSING:
                 return fallback
+            if val is None:
+                return ""
             return str(val)
         # Simple key path: no arithmetic operators outside of brackets.
         if not _ARITH_OP_RE.search(body):

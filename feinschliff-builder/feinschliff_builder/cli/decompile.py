@@ -118,6 +118,8 @@ def _decompile_with_svg(pptx_path: Path, brand_dir: Path,
             tokens_path=tokens_path if tokens_path.exists() else None,
             layout_name=layout_name,
             theme_name=brand_name,
+            native_extract_dir=brand_dir / "assets" / "native",
+            native_extract_rel="native",
         )
         target = output_dir / f"{layout_name}.slide.dsl"
         target.write_text(dsl, encoding="utf-8")
