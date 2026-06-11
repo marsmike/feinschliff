@@ -457,6 +457,31 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     if lang:
         label_text = textfit.hyphenate(label_text, lang=lang)
 
+    # Text-frame insets: source PPTX bodyPr carries `lIns/tIns/rIns/bIns`
+    # (EMU). When the decompiler captures them they ride through as
+    # `padding:` kwarg (px, applied to tf.margin_* once the frame exists
+    # below). Parsed here, before the fit math, because the insets eat into
+    # the wrap width/height — the fit predictor must see the same usable
+    # area the renderer sees. Without explicit padding, PowerPoint's
+    # defaults apply: lIns/rIns 91440 EMU, tIns/bIns 45720 EMU.
+    padding = node.kw_args.get("padding")
+    pad_left = pad_top = pad_right = pad_bottom = None
+    if padding is not None:
+        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
+        parts = [p.strip() for p in str(padding).split(",")]
+        if len(parts) == 1:
+            pad_left = pad_top = pad_right = pad_bottom = float(parts[0])
+        elif len(parts) == 4:
+            pad_left, pad_top, pad_right, pad_bottom = (float(p) for p in parts)
+        else:
+            pad_left = pad_top = pad_right = pad_bottom = 0.0
+    if pad_left is not None:
+        inset_w_emu = int(pad_left * _EMU_PER_PX) + int(pad_right * _EMU_PER_PX)
+        inset_h_emu = int(pad_top * _EMU_PER_PX) + int(pad_bottom * _EMU_PER_PX)
+    else:
+        inset_w_emu = 91440 + 91440
+        inset_h_emu = 45720 + 45720
+
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
     if autoshrink and label_text:
         from dataclasses import replace as _replace
@@ -470,8 +495,8 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             max_size_pt=max_pt,
             min_size_pt=10,
             bold=bold,
-            width_emu=int(maxw * _EMU_PER_PX),
-            height_emu=int(h * _EMU_PER_PX),
+            width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
+            height_emu=max(1, int(h * _EMU_PER_PX) - inset_h_emu),
             line_height=style.line_height,
         )
         if fitted_pt < max_pt:
@@ -490,7 +515,7 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
                 font=face_for_fit,
                 size_pt=_px_to_pt(style.size_px),
                 bold=bold_for_fit,
-                width_emu=int(maxw * _EMU_PER_PX),
+                width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             )
             for p in paragraphs
         ]
@@ -534,41 +559,35 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         box.name = f"feinschliff-title-{style_name}"
     tf = box.text_frame
     tf.word_wrap = True
-    # Text-frame insets: source PPTX bodyPr carries `lIns/tIns/rIns/bIns`
-    # (EMU). When the decompiler captures them they ride through as
-    # `padding:` kwarg. Zeroing here when nothing is set bakes "render at
-    # frame edge" which mismatches PowerPoint's default 91440/45720 insets
-    # (~19px / ~9px at the source slide scale) and shifts text by exactly
-    # those amounts versus source. Honour explicit padding; otherwise leave
-    # python-pptx defaults (which mirror PowerPoint's authoring defaults).
-    padding = node.kw_args.get("padding")
-    if padding is not None:
-        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
-        parts = [p.strip() for p in str(padding).split(",")]
-        if len(parts) == 1:
-            left = top = right = bottom = float(parts[0])
-        elif len(parts) == 4:
-            left, top, right, bottom = (float(p) for p in parts)
-        else:
-            left = top = right = bottom = 0.0
-        tf.margin_left = _px(left)
-        tf.margin_right = _px(right)
-        tf.margin_top = _px(top)
-        tf.margin_bottom = _px(bottom)
+    # Apply the explicit `padding:` (parsed above, before the fit math) to
+    # the text-frame margins. Zeroing when nothing is set would bake "render
+    # at frame edge" which mismatches PowerPoint's default 91440/45720
+    # insets (~19px / ~9px at the source slide scale) and shifts text by
+    # exactly those amounts versus source. Honour explicit padding;
+    # otherwise leave python-pptx defaults (which mirror PowerPoint's
+    # authoring defaults).
+    if pad_left is not None:
+        tf.margin_left = _px(pad_left)
+        tf.margin_right = _px(pad_right)
+        tf.margin_top = _px(pad_top)
+        tf.margin_bottom = _px(pad_bottom)
     valign = node.kw_args.get("valign", "top")
     if valign == "middle":
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     elif valign == "bottom":
         tf.vertical_anchor = MSO_ANCHOR.BOTTOM
-    # When autoshrink:true is set, also enable PowerPoint's native
-    # shrink-text-to-fit autofit. The Python-side textfit estimate is
-    # rough — real font metrics in PPT can wrap a line earlier and
-    # overflow the bbox even after our pre-shrink. The native autofit
-    # uses PPT's true metrics as a last line of defense; it's a no-op
-    # when the (already-shrunk) text fits, but rescues edge cases that
-    # the heuristic underestimates.
     if autoshrink:
-        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        face_af, bold_af = _resolve_face(style.font_family[0], style.weight)
+        if not textfit.has_real_metrics(face_af, bold_af):
+            # Heuristic pre-shrink only: keep PPT's native shrink-to-fit as
+            # the last line of defense. With real measured metrics the
+            # computed size is authoritative — writing scale-less autofit
+            # would let PowerPoint and LibreOffice re-derive different sizes.
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        else:
+            # Drop the new-textbox default <a:spAutoFit/> too: the box was
+            # sized for the computed fit; no renderer should regrow it.
+            tf.auto_size = None
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
     p0.alignment = align
