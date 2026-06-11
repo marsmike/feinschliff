@@ -81,6 +81,8 @@ def plan_deck_layouts(
     slide_signals: list[dict],
     *,
     candidate_window: int = _CANDIDATE_WINDOW,
+    profiles: dict[str, dict] | None = None,
+    deck_map: dict | None = None,
 ) -> list[dict]:
     """Pick a layout for every slide using two-pass budget planning.
 
@@ -91,11 +93,24 @@ def plan_deck_layouts(
         accepted by `feinschliff.layout_picker.pick_layout` (`role`,
         `concept_count`, `data_quantity`, `comparison`, `narrative_role`,
         `narrative_act`, `time_axis_role`, `audience_mode`,
-        `diagram_kind`). Missing keys are treated as `None`.
+        `diagram_kind`). Missing keys are treated as `None`. An optional
+        `layout` key pins that slide: the pinned layout is used verbatim
+        (rationale `["pinned"]`, no picker call) while still counting
+        toward usage and history bookkeeping.
     candidate_window
         How many candidates per slide to consider for budget reranking.
         Defaults to 20 so every member of the largest role bucket
         (data-comparison, 10) is visible.
+    profiles
+        Optional `{name: affinity-profile}` table passed through to
+        `pick_layout`. Brand-aware callers (e.g. `deck plan-skeleton`)
+        pass the brand-merged table so brand-only layouts are ranked.
+    deck_map
+        Optional brand `deck-map.yaml` dict. When the slide's role maps
+        to a deck-map entry (cover / agenda / section / quote / closer),
+        that layout gets the additive
+        :data:`feinschliff.deck.content_metadata.DECK_MAP_BONUS` so it
+        ranks first by default — never a hard override.
 
     Returns
     -------
@@ -114,11 +129,28 @@ def plan_deck_layouts(
     so a later slide that genuinely qualifies for `text-picture` should
     receive its full unused-layout bonus.
     """
+    from feinschliff.deck.content_metadata import apply_deck_map_bonus
+
     usage: Counter[str] = Counter()
     history: list[str] = []
     assignments: list[dict] = []
 
     for signals in slide_signals:
+        pinned = signals.get("layout")
+        if isinstance(pinned, str) and pinned:
+            # Explicit `layout:` pin — bypasses the picker (and any
+            # deck-map default) entirely, but still counts toward usage
+            # and history so later slides rotate around it.
+            assignments.append({
+                "layout":       pinned,
+                "base_score":   0.0,
+                "budget_bonus": 0.0,
+                "rationale":    ["pinned"],
+            })
+            history.append(pinned)
+            usage[pinned] += 1
+            continue
+
         kwargs = {
             "role":            signals.get("role"),
             "concept_count":   signals.get("concept_count"),
@@ -134,7 +166,16 @@ def plan_deck_layouts(
             **kwargs,
             layout_history=history,
             top_k=candidate_window,
+            profiles=profiles,
         )
+        if deck_map is not None:
+            # Deck-map default: additive bonus on the brand's declared
+            # cover / agenda / section / quote / closer layout for this
+            # role, applied before the budget re-rank so the bonus flows
+            # into the adjusted score.
+            candidates = apply_deck_map_bonus(
+                candidates, role=signals.get("role"), deck_map=deck_map,
+            )
         if not candidates:
             # Fallback: no signals matched any layout. Record the
             # text-picture pick but skip the usage/history bookkeeping

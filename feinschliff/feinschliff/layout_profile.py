@@ -33,9 +33,11 @@ The internal profile dict mirrors the keys the picker's scoring loop reads:
 ``narrative_role`` / ``narrative_act`` / ``time_axis_role`` /
 ``diagram_complexity`` / ``when_not_to_use`` / ``variety_exempt`` fields.
 Decompiled brand-pack layouts may additionally carry content metadata —
-``fixed_chrome`` (bool), ``description`` (str), ``chrome_subject`` (str) —
-which is passed through verbatim when well-typed and silently omitted
-otherwise (type-or-ignore; never required, never validated beyond type).
+``fixed_chrome`` (bool), ``description`` (str), ``chrome_subject`` (str),
+``slots`` (per-slot role/chars/class map), ``image_queries`` (slot → query
+hint) — which is passed through verbatim when well-typed and silently
+omitted otherwise (type-or-ignore; never required, never validated beyond
+type).
 """
 from __future__ import annotations
 
@@ -159,6 +161,27 @@ def parse_profile(frontmatter_text: str, *, source: str) -> dict:
         val = raw.get(key)
         if isinstance(val, str) and val:
             profile[key] = val
+
+    # `slots:` (per-slot role/chars/class metadata) and `image_queries`
+    # pass through the same tolerant way so deck-build slot auto-binding
+    # (feinschliff.deck.content_metadata) can read them off the profile
+    # without re-parsing frontmatter. Mistyped entries are dropped.
+    slots = raw.get("slots")
+    if isinstance(slots, dict):
+        well_typed = {
+            name: entry for name, entry in slots.items()
+            if isinstance(entry, dict)
+        }
+        if well_typed:
+            profile["slots"] = well_typed
+    queries = raw.get("image_queries")
+    if isinstance(queries, dict):
+        well_typed_q = {
+            name: q for name, q in queries.items()
+            if isinstance(q, str) and q
+        }
+        if well_typed_q:
+            profile["image_queries"] = well_typed_q
 
     return profile
 

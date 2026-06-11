@@ -25,7 +25,19 @@ from pathlib import Path
 from typing import Any
 
 from feinschliff import layout_discovery
+from feinschliff.deck.content_metadata import (
+    apply_deck_map_bonus,
+    deck_map_layouts_for_role,
+    load_deck_map,
+)
 from feinschliff.layout_picker import pick_layout
+
+# How many candidates to fetch from `pick_layout` when a deck-map default
+# exists for the slide's role, so the deck-map layout is visible to the
+# re-rank even when the caller asked for a small top_k. Matches the
+# budget planner's `_CANDIDATE_WINDOW` rationale (largest role bucket
+# plus headroom).
+_DECK_MAP_WINDOW = 20
 
 
 # ── layout discovery (was BrandPack.find_layout / .layout_table) ──────────────
@@ -108,6 +120,8 @@ class LayoutPicker:
         self.brand = brand
         self.top_k = top_k
         self._profile_table_cache: dict[str, dict] | None = None
+        self._deck_map_cache: dict | None = None
+        self._deck_map_loaded = False
 
     # ── helpers ───────────────────────────────────────────────────────────
 
@@ -129,6 +143,18 @@ class LayoutPicker:
                 _brand_layout_table(self.brand.layouts_path), strict=False
             )
         return self._profile_table_cache
+
+    def _deck_map(self) -> dict | None:
+        """The brand's ``deck-map.yaml`` role→layout table, loaded lazily.
+
+        ``None`` when there is no brand or the brand ships no deck-map.
+        """
+        if self.brand is None:
+            return None
+        if not self._deck_map_loaded:
+            self._deck_map_loaded = True
+            self._deck_map_cache = load_deck_map(self.brand)
+        return self._deck_map_cache
 
     def _resolve_path(self, layout_name: str) -> Path | None:
         """Return the filesystem path for *layout_name*.
@@ -185,6 +211,16 @@ class LayoutPicker:
             }
         """
         k = top_k if top_k is not None else self.top_k
+        # Deck-map default: when the brand's deck-map.yaml names a layout
+        # for this slide's role (cover / agenda / section / quote / closer),
+        # fetch a wider window so the deck-map layout is visible, then
+        # re-rank with the additive bonus. NOT a hard override — explicit
+        # `layout:` pins bypass the picker, and when_not_to_use / the
+        # fixed-chrome guard can still sink the layout.
+        deck_map = self._deck_map()
+        role = slot_hint.get("role")
+        has_deck_map_default = bool(deck_map_layouts_for_role(deck_map, role))
+        fetch_k = max(k, _DECK_MAP_WINDOW) if has_deck_map_default else k
         raw = pick_layout(
             role=slot_hint.get("role"),
             concept_count=slot_hint.get("concept_count"),
@@ -197,9 +233,11 @@ class LayoutPicker:
             diagram_kind=slot_hint.get("diagram_kind"),
             diagram_complexity=slot_hint.get("diagram_complexity"),
             layout_history=slot_hint.get("layout_history"),
-            top_k=k,
+            top_k=fetch_k,
             profiles=self._profile_table(),
         )
+        if has_deck_map_default:
+            raw = apply_deck_map_bonus(raw, role=role, deck_map=deck_map)[:k]
         return [
             self._to_match(c, self._resolve_path(c["layout"]))
             for c in raw
