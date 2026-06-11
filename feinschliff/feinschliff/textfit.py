@@ -26,18 +26,22 @@ _EMU_PER_PT = 12700
 _FONT_WIDTH_RATIO: dict[str, dict[str, float]] = {
     "Open Sans":         {"normal": 0.50, "bold": 0.54},
     "Noto Sans":         {"normal": 0.51, "bold": 0.55},
-    # Bosch corporate font (brand pack: feinschliff-bosch). Measured from the
-    # shipped TTFs (Regular/Bold) over a representative slide sample, plus the
-    # same conservative margin the other entries carry. It is noticeably
-    # narrower than the generic default, so registering it lets the slot-budget
-    # / verify-static predictors estimate width accurately instead of warning
-    # "font 'Bosch Office Sans' not in width-ratio table".
-    "Bosch Office Sans": {"normal": 0.48, "bold": 0.53},
     "Consolas":          {"normal": 0.55, "bold": 0.55},
     "Noto Sans Mono":    {"normal": 0.60, "bold": 0.60},
     "JetBrains Mono":    {"normal": 0.60, "bold": 0.60},
     "default":           {"normal": 0.52, "bold": 0.56},
 }
+
+
+def register_font_metrics(family: str, *, normal: float, bold: float) -> None:
+    """Register / override the average-glyph-width ratios for *family*.
+
+    Brand packs ship metrics for their own (often proprietary) fonts via a
+    `font-metrics` block in tokens.json — the build pipeline registers them
+    here, so the slot-budget / verify-static width predictors stay accurate
+    without this module hardcoding any client font name.
+    """
+    _FONT_WIDTH_RATIO[family] = {"normal": float(normal), "bold": float(bold)}
 
 
 def _avg_char_width_emu(font: str, size_pt: float, bold: bool) -> float:

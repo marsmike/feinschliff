@@ -143,7 +143,7 @@ Frame-by-frame observations, then this JSON block (machine-parsed):
   "total_score": 0.00,
   "scores": {"design_quality": 0, "originality": 0, "craft": 0, "functionality": 0},
   "fixes": [
-    {"priority": 1, "component": "BeatXxx", "file": "src/scenes/BoschShort.tsx", "issue": "...", "instruction": "..."}
+    {"priority": 1, "component": "BeatXxx", "file": "src/scenes/ProductShort.tsx", "issue": "...", "instruction": "..."}
   ],
   "strengths": ["preserve this"]
 }
@@ -188,7 +188,7 @@ You are a Remotion component developer fixing visual issues in a YouTube Shorts 
 {list of strengths}
 
 ## Instructions
-1. Read the source: {project_dir}/src/scenes/BoschShort.tsx
+1. Read the source: {project_dir}/src/scenes/ProductShort.tsx
 2. Read the theme: {project_dir}/src/theme.ts
 3. Apply ONLY the listed fixes. Do not refactor or "improve" anything else.
 4. Use the Edit tool for precise changes.

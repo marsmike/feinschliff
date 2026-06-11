@@ -32,7 +32,7 @@ audio:
 content:
   type: "product_demo"
   framework: "Before-After"
-  key_message: "Bosch GlassVAC cleans windows 40x faster"
+  key_message: "AcmeBot GlassVac cleans windows 40x faster"
 ---
 ```
 
@@ -46,7 +46,7 @@ content:
 - **Shot Type**: wide
 - **Camera Movement**: static
 - **Subject**: Large window emoji centered, title text below
-- **Background**: Radial gradient, Bosch blue center glow
+- **Background**: Radial gradient, brand-blue center glow
 - **Text On Screen**: "Window Cleaning" / "The Old Way"
 - **Graphics/Animation**: Spring entrance, floating decorative dots
 - **Layout**: Top 30% empty, content centered, bottom 30% badge
