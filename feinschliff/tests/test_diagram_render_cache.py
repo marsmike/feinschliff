@@ -113,6 +113,7 @@ def test_changed_body_rerenders_and_drops_stale(tmp_path, monkeypatch):
 
     _expand(_parse(body="rect bg 0,0 700x300 paper"), tmp_path)
     assert len(calls) == 2
+    assert calls[0] != calls[1], "different bodies must produce different hash names"
 
     remaining = {p.name for p in tmp_path.glob("s1-chart-*")}
     assert remaining, "second expansion must write new artifacts"

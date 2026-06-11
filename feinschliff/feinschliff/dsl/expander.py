@@ -641,6 +641,8 @@ def expand_diagram_blocks(
 
         x: int = n.kw_args["x"]  # type: ignore[assignment]
         y: int = n.kw_args["y"]  # type: ignore[assignment]
+        # w, h, dsl_id are re-read from the node here (always present); only
+        # render-affecting inputs are stashed in `info` to keep the stash small.
         w = n.kw_args["w"]  # type: ignore[assignment]
         h = n.kw_args["h"]  # type: ignore[assignment]
         dsl_id = n.kw_args["id"]  # type: ignore[assignment]
@@ -658,10 +660,11 @@ def expand_diagram_blocks(
         else:
             prims = primitives_from_excalidraw_dsl(body, brand_dir, canvas_w=virtual_w)
 
-        # Cache hit requires BOTH the expanded artifact text and the PNG: the
-        # lint loops read the artifact, pptx emit reads the PNG. Anything
-        # less re-expands and re-renders from scratch.
-        if not (artifact.exists() and png.exists()):
+        # Cache hit requires BOTH the expanded artifact text and a non-empty PNG:
+        # the lint loops read the artifact, pptx emit reads the PNG. A zero-byte
+        # PNG from an interrupted render is treated as a miss so it gets
+        # re-rendered cleanly. Anything less re-expands and re-renders from scratch.
+        if not (artifact.exists() and png.exists() and png.stat().st_size > 0):
             if n.kind == "svg":
                 expanded_text = svg_expand.expand(
                     body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
