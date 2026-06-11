@@ -2522,8 +2522,23 @@ def build_multi_slide(
         _min = None
     _set_theme_fonts(prs, _maj, _min)
     missing: list[dict] = []
+    try:
+        first_w_emu = first_tokens.slide("width_emu")
+    except Exception:
+        first_w_emu = 0
     for slide_idx, entry in enumerate(slides, start=1):
         nodes, tokens, asset_root, notes = _unpack_slide_payload(entry)
+        try:
+            slide_w_emu = tokens.slide("width_emu")
+        except Exception:
+            slide_w_emu = 0
+        if slide_w_emu and first_w_emu and slide_w_emu != first_w_emu:
+            print(
+                f"WARN: build_multi_slide: slide {slide_idx} tokens declare "
+                f"width_emu={slide_w_emu} but the deck renders at "
+                f"{first_w_emu} (first slide wins; geometry will be scaled "
+                f"to the deck size)", file=sys.stderr,
+            )
         per_slide: list[dict] = []
         _append_slide(prs, nodes, tokens, asset_root=asset_root,
                       asset_root_fallback=asset_root_fallback,
