@@ -30,10 +30,23 @@ Required top-level groups:
 | `font-size` | Named dimensions | `"display": { "$value": "160px" }` |
 
 Optional groups: `font-weight`, `slide` (canvas dimensions), `typography`,
-`picture_treatment`, `locale`, `chart`, `brief_defaults`, `$image_provider`.
+`picture_treatment`, `locale`, `chart`, `brief_defaults`, `$image_provider`,
+`font-metrics`.
 
 Plain string values (`"accent": "#C9A24A"`) and DTCG objects
 (`"accent": { "$value": "#C9A24A" }`) are both accepted.
+
+### font-metrics
+
+Packs shipping fonts the toolkit doesn't know can declare average-glyph-width
+ratios so the slot-budget / verify-static width predictors stay accurate:
+
+```json
+"font-metrics": { "<Family>": { "normal": 0.48, "bold": 0.53 } }
+```
+
+`$`-prefixed keys are skipped and malformed entries are ignored — metrics are
+a measurement aid, never a build-breaker.
 
 ## Inheritance
 
