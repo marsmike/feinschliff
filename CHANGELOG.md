@@ -4,6 +4,9 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **feinschnitt edit path.** `feinschnitt edit` CLI + `/edit` skill: plan-driven editing of pre-recorded talking-head footage into brand-themed cuts. Pipeline: word-timestamped Whisper transcription with a correction-memory layer → deterministic plan lint (per-kind contracts, density caps, text-placement floors) → speech-anchor alignment (extend-never-shorten, refrain-aware) → brand-themed Remotion engine (`edit-engine/` — `hook_title`, `word_pop`, `stat_punch` templates + `StyleShowcase` golden comp) → preview/final render ladder with stage-keyed caching → voice-track remux verified bit-identical.
+
 ### Removed
 - **`feinblick`** — the codebase-intelligence plugin moved to the `agentic-toolkit` marketplace as `codescan` (an internal static-analysis / audit tool, unrelated to media creation). Its self-audit config (`feinblick.toml` + the `.feinblick/` baseline) is dropped from this repo too.
 - **`feinklang-consumer`** — the throwaway Phase-0 cross-plugin smoke-test plugin (already de-listed from the marketplace).
