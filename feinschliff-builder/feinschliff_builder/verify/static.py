@@ -10,6 +10,9 @@ Two defect classes are detected:
   budget computed from the layout's ``maxwidth``/``maxheight`` nodes.
   Delegates to :func:`feinschliff.content_validator.check_slot_overflow` via the
   same ``textfit.fits()`` helper the autoshrink emitter uses.
+  **Severity is FATAL** — real font metrics make the predictor trustworthy.
+  Escape hatches: autoshrink on the layout, or set
+  ``FEINSCHMIEDE_NO_REAL_METRICS=1`` to fall back to the legacy estimator.
 
 - **EMPTY_PLACEHOLDER** — a slot that the layout interpolates via
   ``{{ slot_name }}`` is either absent from the content dict or is an empty
@@ -245,7 +248,9 @@ def static_verify(
     -------
     list[Defect]
         One :class:`~feinschliff.defects.Defect` per detected problem.  Empty list
-        means clean.  All defects are :attr:`~feinschliff.defects.Severity.WARN`.
+        means clean.  SLOT_OVERFLOW defects carry
+        :attr:`~feinschliff.defects.Severity.FATAL`; EMPTY_PLACEHOLDER defects
+        carry :attr:`~feinschliff.defects.Severity.WARN`.
     """
     from feinschliff.dsl.parser import parse_file
     from feinschmiede import compounds_dir
@@ -372,7 +377,7 @@ def static_verify(
                     defects.append(Defect(
                         slide_index=slide_index,
                         kind=DefectKind.SLOT_OVERFLOW,
-                        severity=Severity.WARN,
+                        severity=Severity.FATAL,
                         message=cd.message,
                         meta={
                             "slot": cd.slot,
