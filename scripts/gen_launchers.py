@@ -19,11 +19,72 @@ sync with this manifest.
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import stat
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# REGISTRY — single source of truth for every package / plugin in the suite.
+#
+# Flags:
+#   has_cli              — ships a bin/<name> launcher and build-wheels.sh
+#                          (must match PLUGINS keys exactly).
+#   is_workspace_member  — listed under [tool.uv.workspace] members in root
+#                          pyproject.toml.
+#   is_plugin            — listed in .claude-plugin/marketplace.json plugins[]
+#                          and has its own .claude-plugin/plugin.json.
+#
+# feinschmiede: shared engine package — workspace member, NOT a plugin.
+# feinschliff-extra: pure-data plugin — plugin but NOT a workspace member
+#                    (no pyproject.toml) and NOT a CLI plugin (no launcher).
+# ---------------------------------------------------------------------------
+REGISTRY: dict[str, dict] = {
+    "feinschmiede": {
+        "has_cli": False,
+        "is_workspace_member": True,
+        "is_plugin": False,
+    },
+    "feinschliff": {
+        "has_cli": True,
+        "is_workspace_member": True,
+        "is_plugin": True,
+    },
+    "feinschliff-builder": {
+        "has_cli": True,
+        "is_workspace_member": True,
+        "is_plugin": True,
+    },
+    "feinschliff-extra": {
+        "has_cli": False,
+        "is_workspace_member": False,
+        "is_plugin": True,
+    },
+    "feinbild": {
+        "has_cli": True,
+        "is_workspace_member": True,
+        "is_plugin": True,
+    },
+    "feinklang": {
+        "has_cli": True,
+        "is_workspace_member": True,
+        "is_plugin": True,
+    },
+    "feinschnitt": {
+        "has_cli": True,
+        "is_workspace_member": True,
+        "is_plugin": True,
+    },
+}
+
+# Derived projections (used both for generation and for the --check manifests).
+_CLI_NAMES   = {n for n, r in REGISTRY.items() if r["has_cli"]}
+_WS_MEMBERS  = {n for n, r in REGISTRY.items() if r["is_workspace_member"]}
+_PLUGIN_NAMES = {n for n, r in REGISTRY.items() if r["is_plugin"]}
 
 # name -> bootstrap spec.
 #   builds:      workspace dirs to `uv build` (first entry is the plugin itself;
@@ -60,6 +121,11 @@ PLUGINS: dict[str, dict] = {
         "env_tail": "none",
     },
 }
+
+# Verify PLUGINS keys == _CLI_NAMES at import time (programmer error guard).
+assert set(PLUGINS) == _CLI_NAMES, (
+    f"PLUGINS keys {set(PLUGINS)} != registry has_cli set {_CLI_NAMES}"
+)
 
 ENV_TAILS = {
     "none": "",
@@ -299,6 +365,223 @@ def targets() -> list[tuple[Path, str, bool]]:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Manifest drift checks — called from main() when --check is passed.
+# Each function returns a list of error strings (empty = passed).
+# They operate on file CONTENTS passed in, not reading files themselves,
+# which makes them unit-testable with tampered strings.
+# ---------------------------------------------------------------------------
+
+def _fmt_diff(label: str, expected: set[str], actual: set[str]) -> list[str]:
+    errors = []
+    missing = expected - actual
+    extra   = actual - expected
+    if missing:
+        errors.append(f"  {label}: missing {sorted(missing)}")
+    if extra:
+        errors.append(f"  {label}: unexpected {sorted(extra)}")
+    return errors
+
+
+def check_marketplace(marketplace_text: str, plugin_jsons: dict[str, str]) -> list[str]:
+    """Verify marketplace.json plugins[].name ↔ registry is_plugin set.
+
+    Also verifies each listed plugin's source dir contains a plugin.json
+    whose 'name' field matches the marketplace entry.
+
+    Args:
+        marketplace_text: raw text of .claude-plugin/marketplace.json
+        plugin_jsons: mapping of plugin_name -> raw text of its plugin.json
+                      (keyed by the dir name, not the JSON 'name')
+    """
+    errors: list[str] = []
+    try:
+        mkt = json.loads(marketplace_text)
+    except json.JSONDecodeError as exc:
+        return [f"  marketplace.json: JSON parse error: {exc}"]
+
+    mkt_names = {p["name"] for p in mkt.get("plugins", [])}
+    errors.extend(_fmt_diff("marketplace.json plugins vs registry is_plugin", _PLUGIN_NAMES, mkt_names))
+
+    # Each plugin listed in marketplace should have a matching plugin.json
+    for entry in mkt.get("plugins", []):
+        name = entry["name"]
+        source_dir = entry.get("source", f"./{name}").lstrip("./")
+        raw = plugin_jsons.get(source_dir)
+        if raw is None:
+            errors.append(f"  {source_dir}/.claude-plugin/plugin.json: file missing")
+            continue
+        try:
+            pj = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            errors.append(f"  {source_dir}/.claude-plugin/plugin.json: JSON parse error: {exc}")
+            continue
+        if pj.get("name") != name:
+            errors.append(
+                f"  {source_dir}/.claude-plugin/plugin.json: "
+                f"name={pj.get('name')!r} != marketplace entry {name!r}"
+            )
+    return errors
+
+
+def check_pyproject_workspace(pyproject_text: str) -> list[str]:
+    """Verify root pyproject.toml workspace members ↔ registry is_workspace_member."""
+    errors: list[str] = []
+    try:
+        data = tomllib.loads(pyproject_text)
+    except Exception as exc:
+        return [f"  pyproject.toml: TOML parse error: {exc}"]
+    members = set(data.get("tool", {}).get("uv", {}).get("workspace", {}).get("members", []))
+    errors.extend(_fmt_diff("pyproject.toml workspace members vs registry is_workspace_member",
+                            _WS_MEMBERS, members))
+    return errors
+
+
+def _parse_ci_yml(ci_text: str) -> dict[str, set[str]]:
+    """Extract the four name-lists from ci.yml using targeted regex.
+
+    ci.yml uses no YAML library at parse time here (gen_launchers.py is
+    stdlib-only); we extract each list with a pattern matched against the
+    known structural context.
+
+    Returns a dict with keys:
+      'members_heredoc'  — the inline Python list in the "All workspace packages"
+                           step (lines 69-70 in the original file).
+      'cli_regex'        — the alternation in the "Skill docs" grep step.
+      'packages_matrix'  — the strategy.matrix.pkg list in the `packages` job.
+      'wheel_matrix'     — the strategy.matrix.plugin list in the `wheel-install` job.
+    """
+    result: dict[str, set[str]] = {}
+
+    # 1. members heredoc — Python list literal inside the heredoc block.
+    #    Pattern: members = ["...", "...", ...]
+    m = re.search(r'members\s*=\s*\[([^\]]+)\]', ci_text)
+    if m:
+        result["members_heredoc"] = {
+            s.strip().strip('"').strip("'")
+            for s in m.group(1).split(",")
+            if s.strip().strip('"').strip("'")
+        }
+    else:
+        result["members_heredoc"] = set()
+
+    # 2. CLI-name regex alternation — the grep -E pattern for 'uv run <cli>'.
+    #    Pattern: uv run (a|b|c)\b
+    m = re.search(r"uv run \(([^)]+)\)\\b", ci_text)
+    if m:
+        result["cli_regex"] = {s.strip() for s in m.group(1).split("|")}
+    else:
+        result["cli_regex"] = set()
+
+    # 3. packages matrix — pkg: [a, b, c, d]
+    #    We look for the `packages:` job block and find its matrix.pkg list.
+    pkg_block = re.search(r'packages:\s*\n.*?matrix:\s*\n.*?pkg:\s*\[([^\]]+)\]',
+                          ci_text, re.DOTALL)
+    if pkg_block:
+        result["packages_matrix"] = {
+            s.strip() for s in pkg_block.group(1).split(",") if s.strip()
+        }
+    else:
+        result["packages_matrix"] = set()
+
+    # 4. wheel-install matrix — plugin: [a, b, c, ...]
+    whl_block = re.search(r'wheel-install:\s*\n.*?matrix:\s*\n.*?plugin:\s*\[([^\]]+)\]',
+                          ci_text, re.DOTALL)
+    if whl_block:
+        result["wheel_matrix"] = {
+            s.strip() for s in whl_block.group(1).split(",") if s.strip()
+        }
+    else:
+        result["wheel_matrix"] = set()
+
+    return result
+
+
+def check_ci_yml(ci_text: str) -> list[str]:
+    """Verify ci.yml name-lists against registry projections.
+
+    Parsing strategy: stdlib regex against known structural anchors
+    (gen_launchers.py is a stdlib-only script — no pyyaml in its runtime).
+    Each pattern is documented in _parse_ci_yml above.
+
+    Expected projections:
+      members_heredoc  = is_workspace_member
+      cli_regex        = has_cli
+      packages_matrix  = is_workspace_member minus {feinschliff, feinschliff-builder}
+                         (those two have dedicated CI jobs)
+      wheel_matrix     = has_cli
+    """
+    errors: list[str] = []
+    parsed = _parse_ci_yml(ci_text)
+
+    if not parsed["members_heredoc"]:
+        errors.append("  ci.yml: could not parse workspace members heredoc list")
+    else:
+        errors.extend(_fmt_diff(
+            "ci.yml members heredoc vs registry is_workspace_member",
+            _WS_MEMBERS, parsed["members_heredoc"],
+        ))
+
+    if not parsed["cli_regex"]:
+        errors.append("  ci.yml: could not parse CLI-name regex alternation")
+    else:
+        errors.extend(_fmt_diff(
+            "ci.yml CLI-name regex vs registry has_cli",
+            _CLI_NAMES, parsed["cli_regex"],
+        ))
+
+    # packages matrix = workspace members minus the two dedicated jobs
+    _DEDICATED_JOBS = {"feinschliff", "feinschliff-builder"}
+    expected_pkg_matrix = _WS_MEMBERS - _DEDICATED_JOBS
+    if not parsed["packages_matrix"]:
+        errors.append("  ci.yml: could not parse packages matrix")
+    else:
+        errors.extend(_fmt_diff(
+            "ci.yml packages matrix vs registry (is_workspace_member minus dedicated jobs)",
+            expected_pkg_matrix, parsed["packages_matrix"],
+        ))
+
+    if not parsed["wheel_matrix"]:
+        errors.append("  ci.yml: could not parse wheel-install matrix")
+    else:
+        errors.extend(_fmt_diff(
+            "ci.yml wheel-install matrix vs registry has_cli",
+            _CLI_NAMES, parsed["wheel_matrix"],
+        ))
+
+    return errors
+
+
+def run_manifest_checks() -> list[str]:
+    """Load all manifests from disk and run all drift checks.
+
+    Returns a flat list of error strings; empty = all checks passed.
+    """
+    errors: list[str] = []
+
+    marketplace_path = ROOT / ".claude-plugin" / "marketplace.json"
+    ci_path = ROOT / ".github" / "workflows" / "ci.yml"
+    pyproject_path = ROOT / "pyproject.toml"
+
+    # Collect plugin.json files for every plugin listed in marketplace
+    try:
+        mkt = json.loads(marketplace_path.read_text())
+    except Exception as exc:
+        return [f"Cannot read marketplace.json: {exc}"]
+
+    plugin_jsons: dict[str, str] = {}
+    for entry in mkt.get("plugins", []):
+        source_dir = entry.get("source", f"./{entry['name']}").lstrip("./")
+        pj_path = ROOT / source_dir / ".claude-plugin" / "plugin.json"
+        plugin_jsons[source_dir] = pj_path.read_text() if pj_path.exists() else ""
+
+    errors.extend(check_marketplace(marketplace_path.read_text(), plugin_jsons))
+    errors.extend(check_pyproject_workspace(pyproject_path.read_text()))
+    errors.extend(check_ci_yml(ci_path.read_text()))
+
+    return errors
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
@@ -324,6 +607,16 @@ def main() -> int:
         for p in stale:
             print(f"  {p.relative_to(ROOT)}", file=sys.stderr)
         return 1
+
+    if args.check:
+        manifest_errors = run_manifest_checks()
+        if manifest_errors:
+            print("Manifest drift detected:", file=sys.stderr)
+            for e in manifest_errors:
+                print(e, file=sys.stderr)
+            return 1
+        print("manifest checks passed")
+
     return 0
 
 
