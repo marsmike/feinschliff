@@ -470,14 +470,16 @@ Two defect classes are detected at this stage:
 - **slot-overflow** — content exceeds the pixel budget of the DSL slot
   (`maxwidth` × `maxheight`). Prediction uses the same `textfit.fits()`
   helper as the autoshrink emitter, so the prediction matches what the
-  renderer would do.
+  renderer would do. Severity is **FATAL** — `deck build` always aborts before
+  `compile_slide()` is called when an overflow is detected.
 - **empty-placeholder** — a slot interpolated by `{{ slot }}` in the layout
   is absent from the plan's `content` dict or is an empty/whitespace string.
   Severity is WARN — the orchestrator decides whether to abort.
 
-Both defects are WARN (not fatal). The `deck build --strict-static` flag
-enforces them as build-blockers: when set and defects exist, the build aborts
-before `compile_slide()` is called.
+slot-overflow is always fatal; `deck build` runs this gate by default. The
+`--strict-static` flag promotes WARN-severity defects (e.g. empty-placeholder)
+to build-blockers as well. `--skip-content-lint` no longer bypasses geometry
+checks.
 
 **When to use:** always for large decks (≥ 5 slides) where an overflow costs
 one full iteration to fix. Skip only when you're iterating on DSL changes
