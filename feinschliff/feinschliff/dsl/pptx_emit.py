@@ -377,6 +377,14 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         BOTH the rendered text-frame margins (tf.margin_*) AND the fit budgets
         (autoshrink width/height clamp); omitting it uses PowerPoint's
         built-in defaults (~19 px left/right, ~9 px top/bottom).
+    `bullet:true` / `bullet:"CHAR"` — add native PPTX bullets (`<a:buChar>`)
+        with a hanging indent to every paragraph in the text frame. `true`
+        uses the standard “•” bullet; any other string is used verbatim as the
+        bullet character (e.g. `bullet:"–"` for an en-dash list). Opt-in only:
+        omitting the kwarg leaves the output byte-identical. When using
+        `bullet:`, the label text MUST NOT start with a literal bullet glyph —
+        the `_leading_hang_offset_px` side-bearing hack is intentionally left
+        alone; since the label won’t start with “•” the hang logic no-ops naturally.
     """
     if not node.pos_args:
         raise ValueError(f"text at line {node.line_no}: expected 'X,Y' positional")
@@ -615,6 +623,35 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         # the visual gap matches CSS line-height applied across all lines.
         p.space_before = Pt(0)
         _style_run(p.add_run(), extra, style, tokens=ctx.tokens)
+
+    # Native bullets (opt-in: only when `bullet:` kwarg is present).
+    # Adds <a:buChar> + hanging indent to every paragraph. Existing
+    # layouts that omit the kwarg are byte-identical (early return).
+    bullet = node.kw_args.get("bullet")
+    if bullet:
+        from pptx.oxml.ns import qn
+        char = "•" if str(bullet).lower() == "true" else str(bullet)
+        # Hanging indent ≈ 1.4em so wrapped lines align under the first
+        # character, not under the bullet. marL/indent are in EMU.
+        mar_l = int(_px_to_pt(style.size_px) * 1.4 * EMU_PER_PT)
+        for p in tf.paragraphs:
+            pPr = p._p.get_or_add_pPr()
+            pPr.set("marL", str(mar_l))
+            pPr.set("indent", str(-mar_l))
+            # CT_TextParagraphProperties child order: lnSpc, spcBef, spcAft,
+            # buClr*, buSz*, buFont, buChar/buNone/buAutoNum, tabLst, defRPr,
+            # extLst. Insert before defRPr/extLst when present, else append.
+            anchor = pPr.find(qn("a:defRPr"))
+            if anchor is None:
+                anchor = pPr.find(qn("a:extLst"))
+            bu_font = pPr.makeelement(qn("a:buFont"), {"typeface": fit_face})
+            bu_char = pPr.makeelement(qn("a:buChar"), {"char": char})
+            if anchor is not None:
+                anchor.addprevious(bu_font)
+                anchor.addprevious(bu_char)
+            else:
+                pPr.append(bu_font)
+                pPr.append(bu_char)
 
 
 def _is_numeric_run(text: str) -> bool:
