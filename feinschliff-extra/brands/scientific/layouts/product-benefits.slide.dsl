@@ -1,0 +1,11 @@
+# auto-derived from PPTX+SVG hybrid — review before use
+# layout: product-benefits
+canvas 1920x1080
+theme scientific
+
+rect 0,0 562x1080 fill:theme-accent4
+picture 204,288 504x504 path:"{{ image | default(\"decompile/product-benefits/image.png\") }}" cover:true
+line 841,130 906,131 stroke:theme-accent1 stroke-width:14
+
+text 841,173 style:sub color:black size:32pt valign:top padding:1 maxwidth:1069 maxheight:357 "{{ text_1 | default(\"PRODUCT BENEFITS\") }}"
+text 841,540 style:body color:black size:24pt autoshrink:true padding:1 maxwidth:1069 maxheight:530 "{{ text_2 | default(\"INCREASED PRODUCTIVITY\nSEAMLESS INTEGRATION\nENHANCED USER EXPERIENCE\nSCALABILITY FOR FUTURE GROWTH\nUSER-FRIENDLY LEARNING\") }}"

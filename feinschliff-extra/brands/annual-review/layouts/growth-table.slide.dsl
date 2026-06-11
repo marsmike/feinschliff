@@ -1,50 +1,13 @@
-# layout: growth-table — warm-yellow section panel, heavy black title, native data table. Source slide 6.
+# auto-derived from PPTX+SVG hybrid — review before use
+# layout: growth-table
 canvas 1920x1080
 theme annual-review
 
-# Signature warm-yellow panel — inset, leaving a white footer band at the bottom (matches cover).
-rect 0,0 1757x918 fill:panel-yellow
+rect 0,1 1757x917 fill:chart-series-4
+native graphic1 xml_file:"native/b072dc5e0a45.xml" parts:"W3sidGFibGVfc3R5bGUiOiAiUEdFNmRHSnNVM1I1YkdVZ2VHMXNibk02WVQwaWFIUjBjRG92TDNOamFHVnRZWE11YjNCbGJuaHRiR1p2Y20xaGRITXViM0puTDJSeVlYZHBibWR0YkM4eU1EQTJMMjFoYVc0aUlITjBlV3hsU1dROUluc3lSRFZCUWtJeU5pMHdOVGczTFRSRE16QXRPRGs1T1MwNU1rWTRNVVpFTURNd04wTjlJaUJ6ZEhsc1pVNWhiV1U5SWs1dklGTjBlV3hsTENCT2J5QkhjbWxrSWo0OFlUcDNhRzlzWlZSaWJENDhZVHAwWTFSNFUzUjViR1UrUEdFNlptOXVkRkpsWmlCcFpIZzlJbTFwYm05eUlqNDhZVHB6WTNKbllrTnNjaUJ5UFNJd0lpQm5QU0l3SWlCaVBTSXdJaTgrUEM5aE9tWnZiblJTWldZK1BHRTZjM0puWWtOc2NpQjJZV3c5SWtaR1JrWkdSaUl2UGp3dllUcDBZMVI0VTNSNWJHVStQR0U2ZEdOVGRIbHNaVDQ4WVRwMFkwSmtjajQ4WVRwc1pXWjBQanhoT214dVBqeGhPbTV2Um1sc2JDOCtQQzloT214dVBqd3ZZVHBzWldaMFBqeGhPbkpwWjJoMFBqeGhPbXh1UGp4aE9tNXZSbWxzYkM4K1BDOWhPbXh1UGp3dllUcHlhV2RvZEQ0OFlUcDBiM0ErUEdFNmJHNCtQR0U2Ym05R2FXeHNMejQ4TDJFNmJHNCtQQzloT25SdmNENDhZVHBpYjNSMGIyMCtQR0U2Ykc0K1BHRTZibTlHYVd4c0x6NDhMMkU2Ykc0K1BDOWhPbUp2ZEhSdmJUNDhZVHBwYm5OcFpHVklQanhoT214dVBqeGhPbTV2Um1sc2JDOCtQQzloT214dVBqd3ZZVHBwYm5OcFpHVklQanhoT21sdWMybGtaVlkrUEdFNmJHNCtQR0U2Ym05R2FXeHNMejQ4TDJFNmJHNCtQQzloT21sdWMybGtaVlkrUEM5aE9uUmpRbVJ5UGp4aE9tWnBiR3crUEdFNmJtOUdhV3hzTHo0OEwyRTZabWxzYkQ0OEwyRTZkR05UZEhsc1pUNDhMMkU2ZDJodmJHVlVZbXcrUEM5aE9uUmliRk4wZVd4bFBnPT0ifV0="
+line 163,295 1758,296 stroke:fog stroke-width:12
 
-# Heavy black display title + thick black rule beneath it.
-text 147,134 style:title-l weight:bold color:ink size:52pt maxwidth:1590 maxheight:130 "Growth by sector table"
-line 163,295 1757,295 stroke:black stroke-width:12
-
-# Table grid — thin white vertical separators between value columns (y 381..732). Source draws these white, not fog.
-line 447,381 447,732 stroke:white stroke-width:2
-line 732,381 732,732 stroke:white stroke-width:2
-line 1018,381 1018,732 stroke:white stroke-width:2
-line 1303,381 1303,732 stroke:white stroke-width:2
-line 1589,381 1589,732 stroke:white stroke-width:2
-
-# Black horizontal rules under the header row and each data row.
-line 162,468 1590,468 stroke:black stroke-width:2
-line 162,556 1590,556 stroke:black stroke-width:2
-line 162,644 1590,644 stroke:black stroke-width:2
-
-# Header row — empty corner, then Q1..Q4 (bold, centered).
-text 462,403 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Q1"
-text 747,403 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Q2"
-text 1033,403 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Q3"
-text 1319,403 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Q4"
-
-# Data rows — bold row-label on the left, regular centered values.
-text 176,491 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Series 1"
-text 462,491 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "4.3"
-text 747,491 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "2.5"
-text 1033,491 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "3.5"
-text 1319,491 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "4.5"
-text 176,579 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Series 2"
-text 462,579 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "2.4"
-text 747,579 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "4.4"
-text 1033,579 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "1.8"
-text 1319,579 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "2.8"
-text 176,667 style:body weight:bold color:ink size:18pt align:center maxwidth:257 maxheight:60 "Series 3"
-text 462,667 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "2"
-text 747,667 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "2"
-text 1033,667 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "3"
-text 1319,667 style:body color:ink size:18pt align:center maxwidth:257 maxheight:60 "5"
-
-# Footer — three runs across the white band.
-text 1307,983 style:body-sm color:ink size:12pt padding:14,7,14,7 maxwidth:230 maxheight:29 "Annual Review"
-text 1548,983 style:body-sm color:ink size:12pt padding:1 maxwidth:240 maxheight:29 "September 3, 20XX"
-text 1810,983 style:body-sm color:ink size:12pt padding:14,7,14,7 maxwidth:80 maxheight:29 "6"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:1748 maxheight:102 "{{ text_1 | default(\"Growth by sector table\") }}"
+text 1307,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:231 maxheight:29 "{{ text_2 | default(\"Annual Review\") }}"
+text 1548,991 style:body-sm color:black size:12pt padding:1 maxwidth:252 maxheight:79 "{{ text_3 | default(\"September 3, 20XX\") }}"
+text 1810,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:100 maxheight:29 "{{ text_4 | default(\"6\") }}"
