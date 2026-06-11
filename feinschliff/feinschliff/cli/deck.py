@@ -199,6 +199,13 @@ def register(parser: argparse.ArgumentParser) -> None:
              "abort via the default static gate.  The fixed plan is "
              "written back to disk before compile.",
     )
+    p_build.add_argument(
+        "--embed-fonts",
+        action="store_true",
+        help="Embed brand display/body font files into the .pptx so "
+             "recipients without the fonts render faithfully (opt-in; "
+             "enlarges the file).",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -825,6 +832,14 @@ def cmd_build(args) -> int:
                 file=sys.stderr,
             )
             return 1
+        if getattr(args, "embed_fonts", False) and slides_payload:
+            from feinschliff.dsl.font_embed import embed_brand_fonts
+
+            # Per-slide `brand:` overrides exist, but font embedding is
+            # deck-wide — the first slide's brand tokens win.
+            embedded = embed_brand_fonts(prs, slides_payload[0][1])
+            if embedded:
+                print(f"embedded fonts: {', '.join(embedded)}", file=sys.stderr)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
         print(f"wrote {out_path} ({len(prs.slides)} slides)")
