@@ -15,7 +15,7 @@ builder package is a hard dependency of the suite.
 from __future__ import annotations
 
 import argparse
-import builtins
+import sys
 from pathlib import Path
 
 import yaml
@@ -33,15 +33,17 @@ _OVERFLOW_TITLE = (
 
 
 def _hide_builder(monkeypatch):
-    """Make every `feinschliff_builder*` import raise ImportError."""
-    real_import = builtins.__import__
+    """Make every `feinschliff_builder*` import raise ImportError.
 
-    def fake_import(name, *args, **kwargs):
-        if name == "feinschliff_builder" or name.startswith("feinschliff_builder."):
-            raise ImportError("no feinschliff_builder in office venv")
-        return real_import(name, *args, **kwargs)
-
-    monkeypatch.setattr(builtins, "__import__", fake_import)
+    Setting sys.modules entries to None causes the import machinery to raise
+    ImportError deterministically without patching builtins.__import__.
+    """
+    for mod in (
+        "feinschliff_builder",
+        "feinschliff_builder.verify",
+        "feinschliff_builder.verify.static",
+    ):
+        monkeypatch.setitem(sys.modules, mod, None)
 
 
 def _build_args(plan_path: Path, out_path: Path, **overrides) -> argparse.Namespace:
