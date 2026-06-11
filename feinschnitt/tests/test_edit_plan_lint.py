@@ -127,6 +127,20 @@ def test_lint_null_reason_is_error():
     assert any("reason" in e for e in errors)
 
 
+def test_lint_vertical_ceiling_is_error():
+    beats = [{"kind": "word_pop", "start_sec": 2.0, "end_sec": 5.0, "vertical": 0.95,
+              "reason": "emphasis", "items": [{"text": "X", "appear_sec": 2.2}]}]
+    errors, _ = lintmod.lint_beats(beats, duration=20.0)
+    assert any("vertical" in e for e in errors)
+
+
+def test_lint_appear_sec_outside_window_is_error():
+    beats = [{"kind": "word_pop", "start_sec": 2.0, "end_sec": 5.0,
+              "reason": "emphasis", "items": [{"text": "X", "appear_sec": 9.0}]}]
+    errors, _ = lintmod.lint_beats(beats, duration=20.0)
+    assert any("appear_sec" in e for e in errors)
+
+
 def test_lint_malformed_items_is_error_not_crash():
     beats = [{"kind": "word_pop", "start_sec": 2.0, "end_sec": 5.0,
               "reason": "emphasis", "items": [2.2]},

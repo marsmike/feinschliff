@@ -24,6 +24,7 @@ SEQUENCE_KINDS = {"word_pop"}
 
 FIRST_TAKEOVER_FLOOR = 1.5   # the viewer needs speaker face-time first
 TEXT_VERTICAL_FLOOR = 0.58   # text never over the face
+TEXT_VERTICAL_CEILING = 0.9  # text never off the bottom edge
 DENSITY_WINDOW, DENSITY_CAP = 12.0, 4   # max beats per rolling window
 HOOK_DEADLINE = 0.6          # hook visible inside the scroll-decision window
 
@@ -75,6 +76,14 @@ def lint_beats(beats: list[dict], duration: float) -> tuple[list[str], list[str]
                     elif "text" not in item or "appear_sec" not in item:
                         errors.append(f"{tag}: items[{j}] needs 'text' + 'appear_sec' "
                                       "(absolute source-video seconds)")
+                    else:
+                        # start/end are valid here (invalid beats `continue` above).
+                        appear = _num(item, "appear_sec")
+                        if appear is not None and not (start <= appear < end):
+                            errors.append(
+                                f"{tag}: items[{j}] appear_sec {appear:g} outside the "
+                                f"beat window [{start:g}, {end:g}) — the item would "
+                                "never show (or shadow the whole beat)")
         if kind in OVERLAY_KINDS:
             if "vertical" in b:
                 vertical = _num(b, "vertical")
@@ -85,6 +94,9 @@ def lint_beats(beats: list[dict], duration: float) -> tuple[list[str], list[str]
             if vertical is not None and vertical < TEXT_VERTICAL_FLOOR:
                 errors.append(f"{tag}: vertical {vertical} < {TEXT_VERTICAL_FLOOR} "
                               "— text must never overlay the speaker's face")
+            if vertical is not None and vertical > TEXT_VERTICAL_CEILING:
+                errors.append(f"{tag}: vertical {vertical} > {TEXT_VERTICAL_CEILING} "
+                              "— text would run off the bottom edge")
 
     timed = sorted((b for b in beats if b.get("kind") in KNOWN_KINDS
                     and _num(b, "start_sec") is not None

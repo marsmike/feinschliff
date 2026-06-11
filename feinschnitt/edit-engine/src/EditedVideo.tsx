@@ -4,10 +4,17 @@ import {
   interpolate, staticFile, useCurrentFrame, useVideoConfig,
 } from 'remotion';
 import {Beat, EditedVideoProps, Theme, ZoomWindow} from './theme';
+import {HookTitle} from './templates/HookTitle';
+import {StatPunch} from './templates/StatPunch';
+import {WordPop} from './templates/WordPop';
 
-// Template registry — Task 9 fills this with HookTitle/WordPop/StatPunch.
+// Template registry — beat.kind → component.
 // Unknown kinds render nothing (the lint stage refuses them upstream).
-const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {};
+const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {
+  hook_title: HookTitle,
+  word_pop: WordPop,
+  stat_punch: StatPunch,
+};
 
 const HOOK_SETTLE_SEC = 1.6; // open punched-in, ease out — never a static cold frame
 const EASE = Easing.bezier(0.4, 0, 0.2, 1);
