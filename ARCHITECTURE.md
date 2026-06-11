@@ -106,6 +106,13 @@ belongs in the shared engine, not in any one plugin. Token resolution is
 semantic-only (a fixed vocabulary of names like `accent`, `ink`, `chart-series-1`
 resolved through brand tokens) with luminance-based contrast.
 
+**`feinschmiede.text.measure`** provides actual glyph-width measurements via
+fontconfig (`fc-match`) + PIL: when the brand font resolves on the host, textfit
+and slot-budget predictions use real per-character widths rather than a
+font-family char-ratio heuristic. When the font is absent, the heuristic path
+runs unchanged. Set `FEINSCHMIEDE_NO_REAL_METRICS=1` to force the heuristic path
+for reproducibility in CI environments that do not install brand fonts.
+
 The render dispatcher tries the pure-Python **rough + cairosvg** path first
 (~150 ms, no browser) and falls back to a real headless-Chromium Excalidraw
 render only for documents it can't model (freedraw / image / frame). A missing
