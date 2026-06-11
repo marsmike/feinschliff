@@ -1787,12 +1787,28 @@ _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 # Custom attribute the emitter writes on a <p:sp> when its source DSL used
 # `effect:allow` to opt out of sanitation.
-_EFFECT_ALLOW_ATTR = "effect-allow"
+# Namespaced form (Clark notation for lxml) — the sanctioned OOXML extension
+# mechanism. Writers always use this; readers also accept the legacy bare form.
+_FS_NS = "urn:feinschliff:emit"
+_EFFECT_ALLOW_ATTR = f"{{{_FS_NS}}}effect-allow"   # Clark notation for lxml
+_EFFECT_ALLOW_LEGACY = "effect-allow"              # accepted on read (old files)
 
 # Outline clamp: hairline at 0.5pt = 6350 EMU; anything above 1pt (12700 EMU)
 # is clamped down to hairline.
 _OUTLINE_CLAMP_THRESHOLD_EMU = 12700
 _OUTLINE_CLAMP_TARGET_EMU = 6350
+
+
+def _effect_allowed(sp) -> bool:
+    """Return True if a <p:sp> element carries the effect opt-in marker.
+
+    Accepts both the current namespaced form and the legacy bare attribute
+    so that old decks keep their opt-in after upgrading.
+    """
+    return (
+        sp.get(_EFFECT_ALLOW_ATTR) == "1"
+        or sp.get(_EFFECT_ALLOW_LEGACY) == "1"
+    )
 
 
 def sanitize_chrome(slide_xml) -> None:
@@ -1814,7 +1830,7 @@ def sanitize_chrome(slide_xml) -> None:
         parent = effect_lst.getparent()
         while parent is not None and not parent.tag.endswith("}sp"):
             parent = parent.getparent()
-        if parent is not None and parent.get(_EFFECT_ALLOW_ATTR) == "1":
+        if parent is not None and _effect_allowed(parent):
             continue
         effect_lst.getparent().remove(effect_lst)
 
@@ -1827,7 +1843,7 @@ def sanitize_chrome(slide_xml) -> None:
         sp_anc = grad.getparent()
         while sp_anc is not None and not sp_anc.tag.endswith("}sp"):
             sp_anc = sp_anc.getparent()
-        if sp_anc is not None and sp_anc.get(_EFFECT_ALLOW_ATTR) == "1":
+        if sp_anc is not None and _effect_allowed(sp_anc):
             continue
         grad_parent = grad.getparent()
         first_clr = grad.find(".//a:gs[1]/a:srgbClr", ns)
