@@ -1843,6 +1843,38 @@ def _strip_theme_style(shape) -> None:
         shape._element.remove(el)
 
 
+def _merge_table_style(slide, style_b64: str, node: DSLNode) -> None:
+    """Merge a carried `<a:tblStyle>` into the deck's tableStyles part.
+
+    No-op when the deck already has a style with that styleId (dedupes the
+    same style carried by several table slides) or ships no tableStyles part.
+    """
+    import base64
+
+    from lxml import etree as _etree
+
+    try:
+        el = _etree.fromstring(base64.b64decode(style_b64))
+    except Exception as exc:
+        raise DSLError(
+            f"native table (line {node.line_no}): unparseable carried table style — {exc}"
+        )
+    style_id = el.get("styleId")
+    if not style_id:
+        return
+    for part in slide.part.package.iter_parts():
+        if str(part.partname) != "/ppt/tableStyles.xml":
+            continue
+        root = _etree.fromstring(part.blob)
+        if any(ch.get("styleId") == style_id for ch in root):
+            return
+        root.append(el)
+        part._blob = _etree.tostring(
+            root, xml_declaration=True, encoding="UTF-8", standalone=True
+        )
+        return
+
+
 def _splice_native_parts(slide, frame_el, parts_b64: str, node: DSLNode) -> None:
     """Re-create a native-carried CHART or DIAGRAM external part-graph in this deck.
 
@@ -1888,6 +1920,14 @@ def _splice_native_parts(slide, frame_el, parts_b64: str, node: DSLNode) -> None
         raise DSLError(
             f"native chart (line {node.line_no}): unparseable carried parts — {exc}"
         )
+    # A native TABLE carries its referenced <a:tblStyle> (the tableStyleId in
+    # the spliced <a:tbl> is dead in this deck's tableStyles.xml otherwise —
+    # the renderer would fall back to a default style with the wrong header
+    # fill / band colours / borders).
+    style_entries = [e for e in entries if "table_style" in e]
+    entries = [e for e in entries if "table_style" not in e]
+    for e in style_entries:
+        _merge_table_style(slide, e["table_style"], node)
     if not entries:
         return
 

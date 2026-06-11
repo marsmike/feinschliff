@@ -625,22 +625,15 @@ def _layout_placeholder_default_sz(slide, ph_type: str | None, ph_idx: str | Non
     master = getattr(layout, "slide_master", None) if layout is not None else None
     parents = [p for p in (layout, master) if p is not None]
     for parent in parents:
-        root = parent.element
-        for sp in root.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (
-                ph_idx and ph.get("idx") == ph_idx
-            ):
-                lvl1 = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr", NS)
-                if lvl1 is not None:
-                    d = lvl1.find("a:defRPr", NS)
-                    if d is not None and d.get("sz"):
-                        try:
-                            return int(d.get("sz"))
-                        except (TypeError, ValueError):
-                            pass
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            lvl1 = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr", NS)
+            if lvl1 is not None:
+                d = lvl1.find("a:defRPr", NS)
+                if d is not None and d.get("sz"):
+                    try:
+                        return int(d.get("sz"))
+                    except (TypeError, ValueError):
+                        pass
     style_for_type = {"title": "titleStyle", "ctrTitle": "titleStyle"}
     style_name = style_for_type.get(ph_type or "", "bodyStyle")
     if master is not None:
@@ -678,17 +671,14 @@ def _layout_placeholder_caps_bold(slide, ph_type: str | None, ph_idx: str | None
                 bold = d.get("b") == "1"
     # The layout's own placeholder defRPr overrides the master.
     if layout is not None:
-        for sp in layout.element.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
-                d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
-                if d is not None:
-                    if d.get("cap") is not None:
-                        caps = d.get("cap") == "all"
-                    if d.get("b") is not None:
-                        bold = d.get("b") == "1"
+        for sp in _matching_placeholders(layout, ph_type, ph_idx):
+            d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
+            if d is not None:
+                if d.get("cap") is not None:
+                    caps = d.get("cap") == "all"
+                if d.get("b") is not None:
+                    bold = d.get("b") == "1"
+                break
     return caps, bold
 
 
@@ -702,15 +692,11 @@ def _layout_placeholder_anchor(slide, ph_type: str | None, ph_idx: str | None) -
     layout = getattr(slide, "slide_layout", None)
     master = getattr(layout, "slide_master", None) if layout is not None else None
     for parent in (p for p in (layout, master) if p is not None):
-        for sp in parent.element.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
-                bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
-                anc = bodyPr.get("anchor") if bodyPr is not None else None
-                if anc:
-                    return {"ctr": "middle", "b": "bottom", "t": "top"}.get(anc)
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
+            anc = bodyPr.get("anchor") if bodyPr is not None else None
+            if anc:
+                return {"ctr": "middle", "b": "bottom", "t": "top"}.get(anc)
     return None
 
 
@@ -733,21 +719,18 @@ def _layout_placeholder_insets(
     out: list[int | None] = [None, None, None, None]
     # Master first (base), then layout (override) — later writes win per-side.
     for parent in (p for p in (master, layout) if p is not None):
-        for sp in parent.element.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
+            if bodyPr is None:
                 continue
-            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
-                bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
-                if bodyPr is None:
-                    continue
-                for i, attr in enumerate(("lIns", "tIns", "rIns", "bIns")):
-                    v = bodyPr.get(attr)
-                    if v is not None:
-                        try:
-                            out[i] = int(v)
-                        except (TypeError, ValueError):
-                            pass
+            for i, attr in enumerate(("lIns", "tIns", "rIns", "bIns")):
+                v = bodyPr.get(attr)
+                if v is not None:
+                    try:
+                        out[i] = int(v)
+                    except (TypeError, ValueError):
+                        pass
+            break
     return tuple(out)  # type: ignore[return-value]
 
 
@@ -761,13 +744,9 @@ def _layout_placeholder_autofit(slide, ph_type: str | None, ph_idx: str | None) 
     layout = getattr(slide, "slide_layout", None)
     master = getattr(layout, "slide_master", None) if layout is not None else None
     for parent in (p for p in (layout, master) if p is not None):
-        for sp in parent.element.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
-                if sp.find(".//p:txBody/a:bodyPr/a:normAutofit", NS) is not None:
-                    return True
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            if sp.find(".//p:txBody/a:bodyPr/a:normAutofit", NS) is not None:
+                return True
     return False
 
 
@@ -784,17 +763,13 @@ def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
     layout = getattr(slide, "slide_layout", None)
     master = getattr(layout, "slide_master", None) if layout is not None else None
     for parent in (p for p in (layout, master) if p is not None):
-        for sp in parent.element.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
-                d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
-                sf = d.find("a:solidFill", NS) if d is not None else None
-                if sf is not None:
-                    c = _resolve_solid(sf, theme, palette)
-                    if c:
-                        return c
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            d = sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:defRPr", NS)
+            sf = d.find("a:solidFill", NS) if d is not None else None
+            if sf is not None:
+                c = _resolve_solid(sf, theme, palette)
+                if c:
+                    return c
     style_name = {"title": "titleStyle", "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
     if master is not None:
         d = master.element.find(f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:defRPr", NS)
@@ -804,6 +779,33 @@ def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
             if c:
                 return c
     return None
+
+
+def _matching_placeholders(parent, ph_type: str | None, ph_idx: str | None) -> list:
+    """Layout/master placeholder elements matching a slide placeholder,
+    BEST match first.
+
+    OOXML pairs a slide placeholder with its layout counterpart by `idx`;
+    `type` alone only identifies singletons (title/ctrTitle). Matching
+    type-first collapsed every same-type placeholder onto the layout's FIRST
+    one — a team slide's 4 `pic` + 8 `body` placeholders all inherited one
+    bbox/size/colour and overprinted at a single position. Order returned:
+    exact-idx hits, then same-type hits (legacy fallback for decks whose
+    layout lacks the idx). Covers `<p:sp>` AND `<p:pic>` placeholders.
+    """
+    idx_hits: list = []
+    type_hits: list = []
+    root = parent.element
+    for tag in ("sp", "pic"):
+        for sp in root.iter("{%s}%s" % (NS["p"], tag)):
+            ph = sp.find(".//p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if ph_idx and ph.get("idx") == ph_idx:
+                idx_hits.append(sp)
+            elif ph_type and ph.get("type") == ph_type:
+                type_hits.append(sp)
+    return idx_hits + type_hits
 
 
 def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> tuple[int, int, int, int] | None:
@@ -818,17 +820,10 @@ def _layout_placeholder_xfrm(slide, ph_type: str | None, ph_idx: str | None) -> 
     master = getattr(layout, "slide_master", None) if layout is not None else None
     parents = [p for p in (layout, master) if p is not None]
     for parent in parents:
-        root = parent.element
-        for sp in root.iter("{%s}sp" % NS["p"]):
-            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
-            if ph is None:
-                continue
-            if (ph_type and ph.get("type") == ph_type) or (
-                ph_idx and ph.get("idx") == ph_idx
-            ):
-                xfrm = _get_xfrm(sp.find("p:spPr", NS))
-                if xfrm:
-                    return xfrm
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            xfrm = _get_xfrm(sp.find("p:spPr", NS))
+            if xfrm:
+                return xfrm
     return None
 
 
@@ -2255,6 +2250,28 @@ def _try_carry_group(ch, offset, shapes, slide, cmap, theme) -> bool:
         return False
 
 
+def _source_table_style(slide, style_id: str, theme: dict[str, str]):
+    """The source deck's `<a:tblStyle styleId=…>` element, schemeClr-baked.
+
+    Returns a deep copy safe to serialise into the DSL, or None when the
+    package has no tableStyles part / no style with that id.
+    """
+    try:
+        import copy as _copy
+        for part in slide.part.package.iter_parts():
+            if not str(part.partname).endswith("tableStyles.xml"):
+                continue
+            root = etree.fromstring(part.blob)
+            for st in root:
+                if st.get("styleId") == style_id:
+                    el = _copy.deepcopy(st)
+                    _bake_scheme_colors(el, theme)
+                    return el
+    except Exception:
+        pass
+    return None
+
+
 def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
     """Tables and charts both arrive as <p:graphicFrame>. Dispatch by inner kind."""
     xfrm = ch.find("p:xfrm", NS)
@@ -2278,6 +2295,7 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
         # collapse + overflow). Top-level only (offset is a pure translation).
         if len(offset) == 2:
             try:
+                import base64 as _b64
                 import copy as _copy
                 frame = _copy.deepcopy(ch)
                 _bake_scheme_colors(frame, theme)
@@ -2285,10 +2303,23 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
                 if _foff is not None and (offset[0] or offset[1]):
                     _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
                     _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+                # The tbl's <a:tableStyleId> points into the SOURCE deck's
+                # tableStyles.xml; the output deck doesn't have that style, so
+                # the renderer falls back to its default (wrong header fill /
+                # band colours / borders). Carry the referenced <a:tblStyle>
+                # (schemeClr-baked) so the emitter can merge it in.
+                parts: list[dict] | None = None
+                sid = tbl.find("a:tblPr/a:tableStyleId", NS)
+                if sid is not None and sid.text:
+                    style_el = _source_table_style(slide, sid.text.strip(), theme)
+                    if style_el is not None:
+                        parts = [{"table_style": _b64.b64encode(
+                            etree.tostring(style_el)).decode("ascii")}]
                 shapes.append(Shape(
                     kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
                     w=cmap.w(fw), h=cmap.h(fh),
                     native_xml=etree.tostring(frame).decode("utf-8"),
+                    native_parts=parts,
                 ))
                 return
             except Exception:
