@@ -695,3 +695,123 @@ def test_content_flexible_array_slot_does_not_fire():
         f"Content-flexible 'items[]' array must NOT fire EMPTY_PLACEHOLDER; "
         f"got: {items_ep}"
     )
+
+
+# ---------------------------------------------------------------------------
+# deck build default static gate — fatal static defects block EVERY build
+# ---------------------------------------------------------------------------
+#
+# Task 9: SLOT_OVERFLOW is FATAL (real font metrics made the predictor
+# trustworthy), so an overflowing deck must NOT build by default — no
+# --strict-static required. WARN-only results (empty-placeholder) must
+# NOT abort a default build; promoting those stays --strict-static's job.
+
+_OVERFLOW_TITLE = (
+    "We must urgently restructure our go-to-market approach because "
+    "enterprise revenue has declined for three consecutive quarters"
+)
+
+
+def _overflow_plan(out_pptx: Path) -> dict:
+    """executive-summary plan whose action_title exceeds its 84-char budget."""
+    assert len(_OVERFLOW_TITLE) > 84, "test precondition: title must exceed budget"
+    plan = _make_plan(
+        "executive-summary.slide.dsl",
+        {
+            "action_title": _OVERFLOW_TITLE,
+            "footer_left": "Corp",
+            "footer_right": "2026",
+        },
+    )
+    plan["out"] = str(out_pptx)
+    return plan
+
+
+def _run_deck_build(plan: dict, plan_file: Path, *extra_args: str) -> "subprocess.CompletedProcess":
+    import yaml
+
+    plan_file.write_text(yaml.safe_dump(plan, sort_keys=False), encoding="utf-8")
+    return subprocess.run(
+        [
+            sys.executable, "-m", "feinschliff.cli",
+            "deck", "build", str(plan_file),
+            *extra_args,
+        ],
+        cwd=str(REPO_ROOT),
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_deck_build_default_aborts_on_slot_overflow(tmp_path):
+    """Default `deck build` (no flags) refuses to build an overflowing deck."""
+    out_pptx = tmp_path / "out.pptx"
+    result = _run_deck_build(
+        _overflow_plan(out_pptx), tmp_path / "plan.yaml", "-o", str(out_pptx),
+    )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit for default build of an overflowing deck; "
+        f"got {result.returncode}\nstdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "slot-overflow" in (result.stderr + result.stdout), (
+        f"slot-overflow defect must be reported.\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert not out_pptx.exists(), (
+        "deck.pptx must NOT be written when the overflow gate aborts"
+    )
+
+
+def test_deck_build_default_gate_not_bypassed_by_skip_content_lint(tmp_path):
+    """--skip-content-lint skips content lints, NOT the fatal geometry gate.
+
+    Regression guard for the pre-Task-9 hole: --skip-content-lint used to
+    disable the only default-path overflow check, letting overflowing decks
+    ship. The static gate is independent of the content lint.
+    """
+    out_pptx = tmp_path / "out.pptx"
+    result = _run_deck_build(
+        _overflow_plan(out_pptx), tmp_path / "plan.yaml",
+        "-o", str(out_pptx), "--skip-content-lint",
+    )
+    assert result.returncode != 0, (
+        f"Expected non-zero exit: the static overflow gate must run even with "
+        f"--skip-content-lint; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert "slot-overflow" in (result.stderr + result.stdout)
+    assert not out_pptx.exists()
+
+
+def test_deck_build_default_shortened_text_builds_fine(tmp_path):
+    """The same deck with the offending text shortened builds clean (exit 0)."""
+    out_pptx = tmp_path / "out.pptx"
+    plan = _overflow_plan(out_pptx)
+    plan["slides"][0]["content"]["action_title"] = "Enterprise revenue declined three quarters"
+    result = _run_deck_build(plan, tmp_path / "plan.yaml", "-o", str(out_pptx))
+    assert result.returncode == 0, (
+        f"Expected exit 0 for the shortened deck; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert out_pptx.exists(), "deck.pptx must be written for a clean plan"
+
+
+def test_deck_build_default_warn_only_static_defects_do_not_block(tmp_path):
+    """WARN-only static results (empty-placeholder) do NOT abort default builds.
+
+    Same plan that test_deck_build_strict_static_exits_nonzero_on_bad_plan
+    uses to prove --strict-static aborts — without the flag it must build.
+    """
+    out_pptx = tmp_path / "out.pptx"
+    plan = _make_plan(
+        "end.slide.dsl",
+        {"title": "", "footer_left": "Corp", "footer_right": "2026"},
+    )
+    plan["out"] = str(out_pptx)
+    result = _run_deck_build(plan, tmp_path / "plan.yaml", "-o", str(out_pptx))
+    assert result.returncode == 0, (
+        f"Expected exit 0: empty-placeholder is WARN and must not block a "
+        f"default build; got {result.returncode}\n"
+        f"stdout: {result.stdout}\nstderr: {result.stderr}"
+    )
+    assert out_pptx.exists()
