@@ -14,7 +14,9 @@ storyboard images via `feinbild imagine`, voiceover via `feinklang tts`.
 
 The Remotion video path (`/video`) requires **Node >= 18** on PATH. The CLI
 recording path (`/record`) requires `tmux`, `asciinema` >= 3.0, and optionally
-`agg`/`ffmpeg` for rendering.
+`agg`/`ffmpeg` for rendering. The edit path (`/edit`) requires **ffmpeg** and
+**Node >= 18**; install `pip install 'feinschnitt[edit]'` for faster-whisper
+(hardware-accelerated transcription).
 
 ## CLI
 
@@ -30,11 +32,16 @@ self-contained venv on first run):
 - `feinschnitt analyze <video> [out.storyboard.md] [--no-frames] [--model M]`
   — reverse-engineer an existing video into a `.storyboard.md` with Gemini.
   Needs `GEMINI_API_KEY` and `ffmpeg`.
+- `feinschnitt edit` — plan-driven editing of pre-recorded talking-head footage
+  into brand-themed cuts: transcript-aligned overlays, zoom punch-ins,
+  preview→final ladder; voice track is untouched. Subcommands:
+  `workdir` · `transcribe` · `lint` · `align` · `render` · `verify`.
 
 ## Skills
 
 - `remotion` (`/video`) — storyboard → build → verify video pipeline.
 - `cli-recorder` (`/record`) — author a `recipe.toml` for `feinschnitt record`.
+- `edit` (`/edit`) — edit plan → brand-themed cut of talking-head footage.
 
 ## License
 
