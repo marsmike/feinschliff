@@ -33,12 +33,11 @@ import shutil
 import sys
 from pathlib import Path
 
-import yaml
-
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
 from feinschliff_builder.decompile.pptx_svg_decompile import derive
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 
 def main() -> int:
@@ -66,9 +65,12 @@ def main() -> int:
     brand_pack: Path = args.brand_pack.resolve()
     if not brand_pack.is_dir():
         sys.exit(f"brand pack not found: {brand_pack}")
-    verify_map = brand_pack / "verify-map.yaml"
-    if not verify_map.is_file():
+    try:
+        _vm = load_verify_map(brand_pack)
+    except FileNotFoundError:
         sys.exit(f"missing verify-map.yaml in {brand_pack}")
+    except ValueError as exc:
+        sys.exit(str(exc))
     source_pptx: Path = args.source_pptx.resolve()
     if not source_pptx.is_file():
         sys.exit(f"source pptx not found: {source_pptx}")
@@ -77,7 +79,7 @@ def main() -> int:
     brand_name = brand_pack.name
     canvas_w, canvas_h = (int(x) for x in args.canvas.split("x"))
 
-    mapping = yaml.safe_load(verify_map.read_text(encoding="utf-8"))["layouts"]
+    mapping = dict(_vm.layouts)
     requested = set(args.only) if args.only else None
 
     # Capture the source PPTX's physical slide size and record it in the
