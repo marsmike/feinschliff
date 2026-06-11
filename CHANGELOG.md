@@ -4,6 +4,19 @@ All notable changes to this project will be documented here. Format follows [Kee
 
 ## [Unreleased]
 
+### Added
+- **Four MS-gallery brand packs** in `feinschliff-extra` — `annual-review`, `shapes`, `geometric`, `scientific`: Microsoft template-gallery ports with 13 slotified layouts each, machine-decompiled with the upgraded decompiler and measured against the source renders. Native chrome sidecars (`assets/native/`) and background artwork ship with the packs; MS content photos stay local, so picture slots fall back to the placeholder / image provider. `feinschliff-extra` now ships 14 packs.
+- **feinschmiede umbrella mark.** Gem-cluster mark (`assets/feinschmiede-mark.svg` + dark variant) and a GitHub social-preview card; the brand gallery header now carries the mark and title.
+- **Release zips.** CI builds an installable marketplace zip on every tag push.
+
+### Changed
+- **Decompiler fidelity (#51–#56).** Complex shapes, template images, graphicFrames, and groups carry natively instead of as rasterised pictures; text slots extend into available clearance for `/deck` overflow; per-master theme resolution with palette/background capture; inherited text colour (on-shape + placeholder), z-order, caps/bold, and vertical-alignment inheritance; clrMap resolution, placeholder-idx pairing, table-style + bg-image carry, `showMasterSp`; repair-error ids, sidecar payloads, slotify / hidden-shape / slot-blanking fixes; the brand theme font is carried into the generated pack.
+- **Discovery: working tree beats installed plugin (#59).** Brand/layout/provider discovery precedence is now `bundled > env > cwd-dev > plugin > user`, and cwd-dev also detects sibling `feinschliff-*` plugin dirs (`brands/`, `layouts/`, `feinschliff_providers/`) in a checkout — `feinschliff-extra` and private packs are visible without `FEINSCHLIFF_BRAND_PATH`, and a stale marketplace copy of a same-named brand no longer shadows the working tree. The office launcher likewise registers brands + layouts from sibling `feinschliff-*` plugins by glob instead of a hardcoded list.
+
+### Fixed
+- `--brand` on the CLI now overrides a deck's `@brand` directive (the brand-not-found diagnostic is kept).
+- The blank base template is excluded from the brand gallery.
+
 ### Removed
 - **`feinblick`** — the codebase-intelligence plugin moved to the `agentic-toolkit` marketplace as `codescan` (an internal static-analysis / audit tool, unrelated to media creation). Its self-audit config (`feinblick.toml` + the `.feinblick/` baseline) is dropped from this repo too.
 - **`feinklang-consumer`** — the throwaway Phase-0 cross-plugin smoke-test plugin (already de-listed from the marketplace).

@@ -114,7 +114,7 @@ toolkit), so run them from there:
 
 1. `cd feinschliff-builder && uv run python scripts/render_brand_atlas.py --force --workers 8`
    — renders `docs/brand-previews/<brand>/<NN>-<id>.png` for all brand packs
-   (3 in feinschliff + 10 in feinschliff-extra).
+   (3 in feinschliff + 14 in feinschliff-extra).
 2. `uv run python scripts/build_brand_atlas_overview.py` — composes the
    per-brand `_atlas.png` grid overview.
 3. `uv run python scripts/upload_brand_previews_to_r2.py --workers 8` —
