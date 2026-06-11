@@ -24,6 +24,19 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 BRANDS_DIR = REPO_ROOT / "brands"
 
 
+@pytest.fixture()
+def heuristic_metrics(monkeypatch):
+    """Force the heuristic (non-real-metrics) code path for the duration of the
+    test, regardless of which fonts happen to be installed on this machine.
+    Clears resolution caches before yielding and again on teardown so no
+    warm-cache state leaks between tests.
+    """
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    _measure.clear_caches()
+    yield
+    _measure.clear_caches()
+
+
 def _fresh_slide(canvas_w: float = 1920.0, canvas_h: float = 1080.0):
     """Build a fresh single-slide Presentation and return (slide, ctx)."""
     tokens = load_tokens(BRANDS_DIR / "feinschliff", brands_dir=BRANDS_DIR)
@@ -46,7 +59,7 @@ def _only_textbox(slide):
 # 1. No opt-in flags → unchanged output
 # ---------------------------------------------------------------------------
 
-def test_text_without_optins_is_unchanged():
+def test_text_without_optins_is_unchanged(heuristic_metrics):
     """A plain `text` node (no autoshrink, no lang) emits the same shape as
     before: original text intact, font size = style.size_px → pt."""
     slide, ctx = _fresh_slide()
@@ -75,7 +88,7 @@ def test_text_without_optins_is_unchanged():
 # 2. autoshrink:true on overflow → font shrinks below requested size
 # ---------------------------------------------------------------------------
 
-def test_autoshrink_shrinks_font_when_text_overflows():
+def test_autoshrink_shrinks_font_when_text_overflows(heuristic_metrics):
     """A deliberately oversized title in a thin/short box should shrink. The
     emitted run's pt size must drop below the input size_px → pt."""
     slide, ctx = _fresh_slide()
@@ -114,7 +127,7 @@ def test_autoshrink_shrinks_font_when_text_overflows():
 # 3. lang:de_DE inserts U+00AD soft hyphens into long German compounds
 # ---------------------------------------------------------------------------
 
-def test_lang_de_inserts_soft_hyphens():
+def test_lang_de_inserts_soft_hyphens(heuristic_metrics):
     """`lang:de_DE` should produce a hyphenated string containing U+00AD."""
     slide, ctx = _fresh_slide()
     node = DSLNode(
@@ -143,7 +156,7 @@ def test_lang_de_inserts_soft_hyphens():
 # 4. prevent_orphan: NBSP retry to keep the last two words on one line
 # ---------------------------------------------------------------------------
 
-def test_prevent_orphan_replaces_space_with_nbsp():
+def test_prevent_orphan_replaces_space_with_nbsp(heuristic_metrics):
     """Given text that would wrap to a final line containing one word, the
     space between the last two words is replaced with U+00A0 (NBSP) so the
     pair wraps together."""
@@ -165,7 +178,7 @@ def test_prevent_orphan_replaces_space_with_nbsp():
     assert "orphan word" not in result
 
 
-def test_prevent_orphan_returns_original_when_no_orphan():
+def test_prevent_orphan_returns_original_when_no_orphan(heuristic_metrics):
     from feinschliff import textfit
     short = "Two words"
     width_emu = 20_000_000
@@ -175,7 +188,7 @@ def test_prevent_orphan_returns_original_when_no_orphan():
     assert out == short
 
 
-def test_prevent_orphan_idempotent():
+def test_prevent_orphan_idempotent(heuristic_metrics):
     """Re-applying produces the same string (already-NBSP'd text doesn't re-loop)."""
     from feinschliff import textfit
     text = "This is a sentence that ends with one orphan word"
