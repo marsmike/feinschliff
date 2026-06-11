@@ -220,3 +220,61 @@ def test_env_path_beats_same_named_plugin_brand(tmp_path, monkeypatch):
     assert omega.root == env_root / "omega", (
         f"plugin copy shadowed the env override: {omega.root}"
     )
+
+
+def _fake_checkout(tmp_path, monkeypatch):
+    """A minimal feinschmiede-like checkout: core brands + a sibling plugin
+    dir + a gitignored corporate fixture, with $CWD inside it."""
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    _write_brand(repo / "feinschliff" / "brands", "feinschliff")
+    _write_brand(repo / "feinschliff-extra" / "brands", "shapes")
+    _write_brand(repo / "feinschliff-corp" / "brands", "corp")
+    monkeypatch.chdir(repo)
+    monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", "")
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: tmp_path / "no-bundled")
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    return repo
+
+
+def test_cwd_dev_discovers_sibling_plugin_brands(tmp_path, monkeypatch):
+    """feinschliff-extra/ + gitignored feinschliff-<corp>/ packs in the
+    working checkout must be detected without FEINSCHLIFF_BRAND_PATH."""
+    _fake_checkout(tmp_path, monkeypatch)
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    names = {b.name for b in discover_brands()}
+    assert {"feinschliff", "shapes", "corp"} <= names
+
+
+def test_cwd_dev_beats_same_named_plugin_brand(tmp_path, monkeypatch):
+    """The checkout the user is standing in outranks a stale installed
+    marketplace copy of the same brand."""
+    repo = _fake_checkout(tmp_path, monkeypatch)
+    plugin_root = tmp_path / "marketplace" / "feinschliff-extra" / "brands"
+    _write_brand(plugin_root, "shapes")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [plugin_root])
+    shapes = find_brand("shapes")
+    assert shapes.root == repo / "feinschliff-extra" / "brands" / "shapes", (
+        f"stale plugin copy shadowed the working checkout: {shapes.root}"
+    )
+
+
+def test_extends_resolves_parent_across_sibling_roots(tmp_path, monkeypatch):
+    """A corporate pack (feinschliff-corp/brands/corp) extending `feinschliff`
+    must find the parent in the checkout's core brands dir — the BSH shape."""
+    import json as _json
+
+    from feinschmiede.dsl.tokens import load_raw_tokens
+
+    repo = _fake_checkout(tmp_path, monkeypatch)
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [])
+    parent = repo / "feinschliff" / "brands" / "feinschliff"
+    (parent / "tokens.json").write_text(_json.dumps(
+        {"color": {"ink": {"$value": "#101010"}}}))
+    child = repo / "feinschliff-corp" / "brands" / "corp"
+    (child / "DESIGN.md").write_text("---\nextends: feinschliff\n---\n")
+    (child / "tokens.json").write_text(_json.dumps(
+        {"color": {"accent": {"$value": "#FF0000"}}}))
+    merged = load_raw_tokens(child)
+    assert merged["color"]["ink"]["$value"] == "#101010", "parent keys must merge"
+    assert merged["color"]["accent"]["$value"] == "#FF0000"

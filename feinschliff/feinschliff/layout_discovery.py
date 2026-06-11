@@ -88,6 +88,10 @@ def _cwd_dev_layouts_roots() -> list[Path]:
         candidate = ancestor / "feinschliff" / "layouts"
         if candidate.is_dir():
             out.append(candidate)
+        # Sibling plugin dirs in the same checkout may ship layouts too.
+        for plugin_layouts in sorted(ancestor.glob("feinschliff-*/layouts")):
+            if plugin_layouts.is_dir():
+                out.append(plugin_layouts)
         # Also handle a checkout where the cwd is already inside `feinschliff/`.
         sibling = ancestor / "layouts"
         if (ancestor / "pyproject.toml").is_file() and sibling.is_dir():
@@ -100,14 +104,15 @@ def _cwd_dev_layouts_roots() -> list[Path]:
 def _discovery_sources() -> list[tuple[str, Path]]:
     """Source-tagged list used by both discovery and the not-found error.
 
-    `env` outranks `plugin`: FEINSCHLIFF_LAYOUT_PATH is an explicit operator
-    override, so it must not be shadowed by a same-named layout in a stale
-    installed plugin.
+    `env` and `cwd-dev` outrank `plugin`: an explicit FEINSCHLIFF_LAYOUT_PATH
+    override and the working checkout are both more intentional than an
+    ambient installed plugin — a stale marketplace copy of a same-named
+    layout must not shadow either.
     """
     items: list[tuple[str, Path]] = [("bundled", _bundled_layouts_root())]
     items.extend(("env", p) for p in _env_layouts_roots())
-    items.extend(("plugin", p) for p in _plugin_layouts_roots())
     items.extend(("cwd-dev", p) for p in _cwd_dev_layouts_roots())
+    items.extend(("plugin", p) for p in _plugin_layouts_roots())
     items.append(("user", _user_layouts_root()))
     return items
 
