@@ -38,7 +38,7 @@ That edge points builder → office (acyclic) and is declared in
 | **feinklang** | plugin | Audio — ElevenLabs voiceover. |
 | **feinschnitt** | plugin | Video — Remotion videos + CLI session recordings; composes feinbild + feinklang. |
 | **feinschliff-builder** | plugin | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). The office sub-family; imports feinschliff. |
-| **feinschliff-extra** | plugin (data) | 10 extra brand packs. No Python. |
+| **feinschliff-extra** | plugin (data) | 14 extra brand packs. No Python. |
 
 ### Dependency directions
 
@@ -89,7 +89,8 @@ third-party closure to the CI-tested lock via the committed `constraints.txt`.
 feinschmiede/
   brand/            BrandPack — a cross-media "look" (a brand styles decks,
                     diagrams, AND video consistently)
-  brand_discovery   discovery across bundled / plugin / env / cwd / user sources
+  brand_discovery   discovery across bundled / env / cwd-dev / plugin / user
+                    sources (priority order — working tree beats installed plugin)
   dsl/{ast,tokens}  DSL data model + DTCG-flavoured token loader (extends:
                     inheritance via DESIGN.md frontmatter, schema-validated)
   diagnostics       Defect / DiagnosticBag taxonomy
@@ -139,8 +140,11 @@ A brand pack is discovered data: `tokens.json` (+ optional `DESIGN.md`,
 `layouts/`, `assets/`). `feinschmiede.brand_discovery` scans every installed
 plugin's `brands/` dir plus env/home overrides (`FEINSCHLIFF_BRAND_PATH`,
 `~/.feinschliff/brands`) and the bundled packs, so co-installed packs unify
-across plugin boundaries. The discovery error lists every searched source with
-found/missing markers and the env-var fix.
+across plugin boundaries. Inside a checkout, cwd-dev discovery also picks up
+sibling `feinschliff-*` plugin dirs and outranks installed plugins — a stale
+marketplace copy of a same-named brand never shadows the working tree. The
+discovery error lists every searched source with found/missing markers and
+the env-var fix.
 
 The public gallery at <https://marsmike.github.io/feinschmiede/brands/> renders
 every pack against every layout; see

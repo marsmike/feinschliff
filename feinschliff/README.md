@@ -54,8 +54,8 @@ feinschliff build layouts/quote.slide.dsl \
 
 Additional brands are available as separate plugins:
 
-- **[feinschliff-extra](https://github.com/marsmike/feinschmiede)** — 10 more brand packs
-  (terminal palettes, light/dark themes, bold corporate looks).
+- **[feinschliff-extra](https://github.com/marsmike/feinschmiede)** — 14 more brand packs
+  (terminal palettes, light/dark themes, bold corporate looks, MS-gallery ports).
 - **[feinschliff-builder](https://github.com/marsmike/feinschmiede)** — authoring toolkit
   to compile HTML to DSL, decompile existing PPTX files, and verify brand quality.
 - **[feinbild](https://github.com/marsmike/feinschmiede)** — image & 2D: AI images
