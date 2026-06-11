@@ -467,6 +467,18 @@ def expand_diagram_blocks(
     rendered PNGs. Carries diagram metadata so wireframe can render the
     internal bbox layer alongside the slide-level wireframe.
 
+    Renders are content-hash-cached: artifacts are named
+    ``s{slide_index}-{id}-{hash}.{svg,excalidraw,png}`` where the hash covers
+    every input the renderer depends on (see the cache-key comment below).
+    When BOTH the expanded artifact text (.svg/.excalidraw) and its .png
+    already exist for the current hash, the expand + write + render steps are
+    skipped and the existing PNG is reused; wireframe primitives and
+    ``_diagram_meta`` are still rebuilt for every node so downstream
+    validators see exactly what they would on a fresh render. Artifacts whose
+    name is NOT in the current hash set are deleted up front, so the
+    structural-lint globs (``s{slide_index}-*.{excalidraw,svg}`` in
+    pipeline.py) never lint a stale file as current.
+
     Parameters
     ----------
     nodes:
@@ -485,7 +497,9 @@ def expand_diagram_blocks(
     import json as _json
 
     from feinschmiede.diagrams import svg_expand, excalidraw_expand
-    from feinschmiede.diagrams.render import render
+    # Module-level access (not `from … import render`) so tests can
+    # monkeypatch feinschmiede.diagrams.render.render and observe cache hits.
+    from feinschmiede.diagrams import render as _render_mod
     from feinschmiede.diagrams.diagram_wireframe import (
         primitives_from_svg_dsl,
         primitives_from_excalidraw_dsl,
@@ -514,21 +528,27 @@ def expand_diagram_blocks(
         )
     _layout_dir_name = layout_dir.name if layout_dir is not None else ""
 
-    # Clear THIS slide's prior diagram artifacts before writing fresh ones.
-    # Artifacts are content-hash-named (`s{slide_index}-{id}-{hash}.{svg,
-    # excalidraw,png}`) and out_dir is persistent on the `feinschliff build`
-    # path, so a changed diagram leaves the old hash file behind. The
-    # structural-lint loops glob `s{slide_index}-*`, so a stale artifact would
-    # be linted as if current. The `s{idx}-` prefix is glob-safe (`s5-*` does
-    # not match `s50-*`). Only runs when this slide actually has diagrams.
-    if out_dir.exists() and any(n.kind in ("svg", "excalidraw") for n in nodes):
-        for stale in out_dir.glob(f"s{slide_index}-*"):
-            stale.unlink(missing_ok=True)
-
-    out: list[DSLNode] = []
+    # ---- Pass 1: compute each diagram's cache identity -------------------
+    # Everything the hash needs is available WITHOUT expanding: body text
+    # (the `from:` file read happens here, before hashing, exactly as it did
+    # when hashing lived in the render loop), kind, geometry, virtual dims,
+    # brand name, tokens hash, from_path, layout dir name. Geometry errors
+    # for malformed blocks fire here — before any hashing or cleanup.
+    #
+    # Cache key must include every input the renderer actually depends
+    # on. Hashing only `body` collides whenever two slides share the same
+    # diagram id + body but differ on brand, region size, or kind — the
+    # later render then overwrites the earlier PNG (Review #0.1).
+    # Virtual canvas dimensions also participate so identical bodies
+    # rendered at different scales don't collide. `_tokens_hash` (merged
+    # extends chain) and `_layout_dir_name` are computed once above.
+    # from_path and layout_dir prevent collisions across layouts that
+    # embed the same external DSL file.
+    infos: list[dict | None] = []
+    expected_names: set[str] = set()
     for n in nodes:
         if n.kind not in ("svg", "excalidraw"):
-            out.append(n)
+            infos.append(None)
             continue
 
         # All diagram geometry lives in kw_args (set by _parse_diagram_block,
@@ -548,8 +568,6 @@ def expand_diagram_blocks(
                 f"Single-line `{{ … }}` body and a missing/multi-token <id> are "
                 f"not supported here."
             )
-        x: int = n.kw_args["x"]  # type: ignore[assignment]
-        y: int = n.kw_args["y"]  # type: ignore[assignment]
         w: int = n.kw_args["w"]  # type: ignore[assignment]
         h: int = n.kw_args["h"]  # type: ignore[assignment]
         dsl_id: str = n.kw_args["id"]  # type: ignore[assignment]
@@ -576,28 +594,6 @@ def expand_diagram_blocks(
                 if not line.strip().startswith("canvas ")
             )
 
-        if n.kind == "svg":
-            expanded_text = svg_expand.expand(
-                body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
-            )
-            ext = ".svg"
-            prims = primitives_from_svg_dsl(body, brand_dir, canvas_w=virtual_w)
-        else:
-            expanded_text = excalidraw_expand.expand(
-                body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
-            )
-            ext = ".excalidraw"
-            prims = primitives_from_excalidraw_dsl(body, brand_dir, canvas_w=virtual_w)
-
-        # Cache key must include every input the renderer actually depends
-        # on. Hashing only `body` collides whenever two slides share the same
-        # diagram id + body but differ on brand, region size, or kind — the
-        # later render then overwrites the earlier PNG (Review #0.1).
-        # Virtual canvas dimensions also participate so identical bodies
-        # rendered at different scales don't collide. `_tokens_hash` (merged
-        # extends chain) and `_layout_dir_name` are computed once above.
-        # from_path and layout_dir prevent collisions across layouts that
-        # embed the same external DSL file.
         key_blob = "|".join((
             str(slide_index),
             n.kind,
@@ -610,11 +606,72 @@ def expand_diagram_blocks(
             body,
         ))
         body_hash = hashlib.sha1(key_blob.encode()).hexdigest()[:10]
+        ext = ".svg" if n.kind == "svg" else ".excalidraw"
         artifact = out_dir / f"s{slide_index}-{dsl_id}-{body_hash}{ext}"
-        artifact.write_text(expanded_text)
-
         png = artifact.with_suffix(".png")
-        render(artifact, png)
+        infos.append({
+            "body": body,
+            "virtual_w": virtual_w,
+            "virtual_h": virtual_h,
+            "artifact": artifact,
+            "png": png,
+        })
+        expected_names.add(artifact.name)
+        expected_names.add(png.name)
+
+    # ---- Stale cleanup: keep current-hash artifacts, drop the rest -------
+    # Artifacts are content-hash-named and out_dir is persistent on the
+    # `feinschliff build` path, so a changed diagram leaves the old hash file
+    # behind. The structural-lint loops glob `s{slide_index}-*`, so a stale
+    # artifact would be linted as if current. Only files NOT in the current
+    # hash set are deleted — matching ones survive and feed the cache below.
+    # The `s{idx}-` prefix is glob-safe (`s5-*` does not match `s50-*`). Only
+    # runs when this slide actually has diagrams.
+    if out_dir.exists() and expected_names:
+        for stale in out_dir.glob(f"s{slide_index}-*"):
+            if stale.name not in expected_names:
+                stale.unlink(missing_ok=True)
+
+    # ---- Pass 2: render (cache-aware) and build picture nodes -------------
+    out: list[DSLNode] = []
+    for n, info in zip(nodes, infos):
+        if info is None:
+            out.append(n)
+            continue
+
+        x: int = n.kw_args["x"]  # type: ignore[assignment]
+        y: int = n.kw_args["y"]  # type: ignore[assignment]
+        w = n.kw_args["w"]  # type: ignore[assignment]
+        h = n.kw_args["h"]  # type: ignore[assignment]
+        dsl_id = n.kw_args["id"]  # type: ignore[assignment]
+        body = info["body"]
+        virtual_w = info["virtual_w"]
+        virtual_h = info["virtual_h"]
+        artifact: Path = info["artifact"]
+        png: Path = info["png"]
+
+        # Wireframe primitives are rebuilt on every call — cache hit or miss —
+        # because downstream validators read them out of `_diagram_meta`.
+        # They need only the body DSL, not the expanded artifact.
+        if n.kind == "svg":
+            prims = primitives_from_svg_dsl(body, brand_dir, canvas_w=virtual_w)
+        else:
+            prims = primitives_from_excalidraw_dsl(body, brand_dir, canvas_w=virtual_w)
+
+        # Cache hit requires BOTH the expanded artifact text and the PNG: the
+        # lint loops read the artifact, pptx emit reads the PNG. Anything
+        # less re-expands and re-renders from scratch.
+        if not (artifact.exists() and png.exists()):
+            if n.kind == "svg":
+                expanded_text = svg_expand.expand(
+                    body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
+                )
+            else:
+                expanded_text = excalidraw_expand.expand(
+                    body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
+                )
+            artifact.write_text(expanded_text)
+            _render_mod.render(artifact, png)
 
         # Build a picture-kind DSLNode.  Geometry goes into kw_args (consistent
         # with how diagram nodes store their own geometry).  Diagram metadata is
