@@ -624,13 +624,21 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         p.space_before = Pt(0)
         _style_run(p.add_run(), extra, style, tokens=ctx.tokens)
 
-    # Native bullets (opt-in: only when `bullet:` kwarg is present).
-    # Adds <a:buChar> + hanging indent to every paragraph. Existing
-    # layouts that omit the kwarg are byte-identical (early return).
-    bullet = node.kw_args.get("bullet")
-    if bullet:
+    # Native bullets (opt-in: only when `bullet:` kwarg is present and not
+    # explicitly disabled). Adds <a:buChar> + hanging indent to every
+    # paragraph. Existing layouts that omit the kwarg are byte-identical
+    # (early return). `bullet:false` (case-insensitive) and empty string are
+    # treated as "no bullet" — mirrors the autoshrink idiom so that
+    # `bullet:false` in DSL source doesn't yield a literal "false" glyph.
+    bullet_raw = node.kw_args.get("bullet")
+    if bullet_raw and str(bullet_raw).lower() not in ("false", ""):
         from pptx.oxml.ns import qn
-        char = "•" if str(bullet).lower() == "true" else str(bullet)
+        char = "•" if str(bullet_raw).lower() == "true" else str(bullet_raw)
+        if len(char) != 1:
+            raise DSLError(
+                f"text at line {node.line_no}: bullet: value must be a single "
+                f"Unicode character, got {char!r}"
+            )
         # Hanging indent ≈ 1.4em so wrapped lines align under the first
         # character, not under the bullet. marL/indent are in EMU.
         mar_l = int(_px_to_pt(style.size_px) * 1.4 * EMU_PER_PT)
