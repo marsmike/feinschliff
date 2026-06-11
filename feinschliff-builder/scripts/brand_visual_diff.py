@@ -51,8 +51,11 @@ import time
 from pathlib import Path
 
 import numpy as np
-import yaml
 from PIL import Image, ImageDraw, ImageFont
+
+_REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(_REPO))
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 DESIGN_W, DESIGN_H = 1920, 1080
 DIFF_THRESHOLD = 30
@@ -393,12 +396,15 @@ def main() -> int:
                         "hotspot. Filters out single-pixel AA noise. Default: 500.")
     args = p.parse_args()
 
-    map_path = args.brand_pack / "verify-map.yaml"
-    if not map_path.is_file():
-        print(f"missing {map_path} — required for batch verification", flush=True)
+    try:
+        _vm = load_verify_map(args.brand_pack)
+    except FileNotFoundError as exc:
+        print(f"{exc} — required for batch verification", flush=True)
         return 1
-    verify_map = yaml.safe_load(map_path.read_text())
-    layouts_map = verify_map.get("layouts", {})
+    except ValueError as exc:
+        print(str(exc), flush=True)
+        return 1
+    layouts_map = dict(_vm.layouts)
     if args.only:
         wanted = set(args.only)
         layouts_map = {k: v for k, v in layouts_map.items() if k in wanted}

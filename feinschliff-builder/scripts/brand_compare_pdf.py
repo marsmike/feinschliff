@@ -24,12 +24,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import sys
 import tempfile
 from pathlib import Path
 
 import img2pdf
-import yaml
 from PIL import Image, ImageDraw, ImageFont
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 
 # A4 landscape at 150 dpi.
@@ -121,11 +124,15 @@ def main() -> int:
                    help="Where to write compare.pdf + per-page PNGs")
     args = p.parse_args()
 
-    map_path = args.brand_pack / "verify-map.yaml"
-    if not map_path.is_file():
-        print(f"missing {map_path}")
+    try:
+        _vm = load_verify_map(args.brand_pack)
+    except FileNotFoundError as exc:
+        print(str(exc))
         return 1
-    layouts_map = yaml.safe_load(map_path.read_text()).get("layouts", {})
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    layouts_map = dict(_vm.layouts)
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     out_pdf = args.output_dir / "compare.pdf"
