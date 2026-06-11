@@ -118,6 +118,154 @@ def test_emit_native_pic_reembeds_template_image(tmp_path):
     assert "rId88" not in slide, "stale svgBlip rId still present in output"
 
 
+def _native_sp(shape_id: int, name: str) -> str:
+    """Minimal verbatim <p:sp> fragment claiming a specific source cNvPr id."""
+    return (
+        '<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        f'<p:nvSpPr><p:cNvPr id="{shape_id}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="500000" cy="500000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
+        '<a:solidFill><a:srgbClr val="112233"/></a:solidFill></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>'
+    )
+
+
+def _slide_shape_ids(slide_xml: str) -> list[tuple[str, str]]:
+    import re
+    return re.findall(r'<p:cNvPr id="(\d+)" name="([^"]*)"', slide_xml)
+
+
+def test_emit_native_remaps_colliding_shape_ids(tmp_path):
+    """Native fragments keep their SOURCE cNvPr ids. Two fragments from
+    different sources (slide chrome vs layout template image) — or a fragment
+    vs a python-pptx-generated shape — can claim the same id. Slide-wide
+    duplicate ids make PowerPoint open the deck with the repair dialog, so
+    colliding ids must be remapped to fresh slide-unique ones at splice time."""
+    import base64
+    a = base64.b64encode(_native_sp(2, "NativeA").encode()).decode()
+    b = base64.b64encode(_native_sp(2, "NativeB").encode()).decode()
+    out = tmp_path / "out.pptx"
+    # the rect emits first and gets a generated id (2); both natives also claim 2
+    doc = parse_document(
+        "canvas 1920x1080\n"
+        "rect 0,0 1920x1080 fill:#000000\n"
+        f'native shapeA b64:"{a}"\n'
+        f'native shapeB b64:"{b}"\n'
+    )
+    pack = _make_pack(tmp_path)
+    emit_pptx_from_document(doc, pack, out)
+    with zipfile.ZipFile(out) as z:
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    pairs = _slide_shape_ids(slide)
+    names = {n for _i, n in pairs}
+    assert {"NativeA", "NativeB"} <= names, "carried fragments missing from slide"
+    ids = [i for i, _n in pairs]
+    assert len(ids) == len(set(ids)), f"duplicate cNvPr ids in slide: {sorted(ids)}"
+
+
+def test_emit_native_rewrites_connector_refs_on_remap(tmp_path):
+    """When a carried group's member ids are remapped, in-fragment connector
+    references (<a:stCxn id>/<a:endCxn id>) must follow the remap — otherwise
+    the connector points at whatever shape now owns the old id."""
+    import base64
+    import re
+    grp = (
+        '<p:grpSp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        '<p:nvGrpSpPr><p:cNvPr id="2" name="NativeGrp"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+        '<p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="1000000" cy="1000000"/>'
+        '<a:chOff x="0" y="0"/><a:chExt cx="1000000" cy="1000000"/></a:xfrm></p:grpSpPr>'
+        '<p:sp><p:nvSpPr><p:cNvPr id="3" name="GrpA"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100000" cy="100000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>'
+        '<p:sp><p:nvSpPr><p:cNvPr id="4" name="GrpB"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>'
+        '<p:spPr><a:xfrm><a:off x="500000" y="500000"/><a:ext cx="100000" cy="100000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>'
+        '<p:txBody><a:bodyPr/><a:p/></p:txBody></p:sp>'
+        '<p:cxnSp><p:nvCxnSpPr><p:cNvPr id="5" name="GrpConn"/>'
+        '<p:cNvCxnSpPr><a:stCxn id="3" idx="3"/><a:endCxn id="4" idx="1"/></p:cNvCxnSpPr>'
+        '<p:nvPr/></p:nvCxnSpPr>'
+        '<p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="400000" cy="400000"/></a:xfrm>'
+        '<a:prstGeom prst="line"><a:avLst/></a:prstGeom></p:spPr></p:cxnSp>'
+        '</p:grpSp>'
+    )
+    xb = base64.b64encode(grp.encode()).decode()
+    out = tmp_path / "out.pptx"
+    # three rects first so generated ids occupy 2,3,4 — forcing a remap of the
+    # group's 2/3/4 member ids
+    doc = parse_document(
+        "canvas 1920x1080\n"
+        "rect 0,0 100x100 fill:#000000\n"
+        "rect 0,0 100x100 fill:#000000\n"
+        "rect 0,0 100x100 fill:#000000\n"
+        f'native grp1 b64:"{xb}"\n'
+    )
+    pack = _make_pack(tmp_path)
+    emit_pptx_from_document(doc, pack, out)
+    with zipfile.ZipFile(out) as z:
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    pairs = _slide_shape_ids(slide)
+    ids = [i for i, _n in pairs]
+    assert len(ids) == len(set(ids)), f"duplicate cNvPr ids in slide: {sorted(ids)}"
+    by_name = {n: i for i, n in pairs}
+    st = re.search(r'<a:stCxn id="(\d+)"', slide)
+    en = re.search(r'<a:endCxn id="(\d+)"', slide)
+    assert st and en, "connector lost its stCxn/endCxn"
+    assert st.group(1) == by_name["GrpA"], (
+        f"stCxn still points at old id {st.group(1)}, GrpA is now {by_name['GrpA']}")
+    assert en.group(1) == by_name["GrpB"], (
+        f"endCxn still points at old id {en.group(1)}, GrpB is now {by_name['GrpB']}")
+
+
+def test_emit_native_reads_sidecar_files(tmp_path):
+    """Huge native payloads ride as brand-pack sidecar files instead of inline
+    base64 (a 33 MB carried group made a 44 MB .slide.dsl). The emitter must
+    accept `xml_file:` / `media_file:` refs resolved against the asset root."""
+    import base64
+    from feinschmiede.dsl.tokens import load_tokens
+    from feinschliff.dsl.parser import parse_lines
+    from feinschliff.dsl.pptx_emit import build_presentation
+
+    asset_root = tmp_path / "assets"
+    (asset_root / "native").mkdir(parents=True)
+    (asset_root / "native" / "frag.xml").write_text(
+        _native_sp(99, "SidecarShape"), encoding="utf-8")
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGNg"
+        "YGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC")  # 1x1 PNG
+    (asset_root / "native" / "img.png").write_bytes(png)
+    pic_xml = (
+        '<p:pic xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"'
+        ' xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
+        '<p:nvPicPr><p:cNvPr id="98" name="SidecarPic"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>'
+        '<p:blipFill><a:blip r:embed="rId77"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+        '<p:spPr><a:xfrm><a:off x="100000" y="100000"/><a:ext cx="500000" cy="500000"/></a:xfrm>'
+        '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>'
+    )
+    (asset_root / "native" / "pic.xml").write_text(pic_xml, encoding="utf-8")
+
+    real_brand = Path(__file__).resolve().parents[1] / "brands" / "feinschliff"
+    tokens = load_tokens(real_brand)
+    nodes, _compounds = parse_lines(
+        "canvas 1920x1080\n"
+        'native shape1 xml_file:"native/frag.xml"\n'
+        'native pic1 xml_file:"native/pic.xml" media_file:"native/img.png"\n'
+    )
+    prs = build_presentation(nodes, tokens, asset_root=asset_root)
+    out = tmp_path / "out.pptx"
+    prs.save(str(out))
+    with zipfile.ZipFile(out) as z:
+        names = z.namelist()
+        slide = z.read("ppt/slides/slide1.xml").decode()
+    assert "SidecarShape" in slide, "xml_file fragment missing from output slide"
+    assert "SidecarPic" in slide, "xml_file pic missing from output slide"
+    assert any(n.startswith("ppt/media/") for n in names), "media_file not re-embedded"
+    assert "rId77" not in slide, "blip still points at the dead source rId"
+
+
 def test_emit_pptx_from_document_raises_on_empty(tmp_path):
     """A document with no slides must raise ValueError."""
     doc = Document(slides=[])

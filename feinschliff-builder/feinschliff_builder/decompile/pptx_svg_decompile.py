@@ -76,6 +76,41 @@ PLACEHOLDER_REL = "assets/illustrations/placeholder.jpg"
 # are changeable topical content and stay fillable picture slots.
 _TEMPLATE_IMG_MAX_AREA = 0.12
 
+# Native-carry payloads at most this many RAW bytes ride inline as base64 in
+# the DSL line; anything bigger goes to a sha-named sidecar file under the
+# brand pack's assets dir (`xml_file:` / `media_file:` / `parts_file:` refs).
+# Inlining a 33 MB carried vector group produced a 44 MB .slide.dsl — the DSL
+# must stay a readable text file, not a binary container.
+NATIVE_INLINE_MAX = 16 * 1024
+
+
+def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
+                        native_rel: str | None) -> str | None:
+    """Write `payload` as a sha-named sidecar under `native_dir` and return the
+    asset-root-relative ref for the DSL, or None when the payload should stay
+    inline (no sidecar dir configured, or small enough). Content-hash naming
+    dedupes across slides: the same template logo carried on 99 layouts lands
+    on disk exactly once."""
+    if native_dir is None or len(payload) <= NATIVE_INLINE_MAX:
+        return None
+    import hashlib
+    name = f"{hashlib.sha1(payload).hexdigest()[:12]}.{ext}"
+    native_dir.mkdir(parents=True, exist_ok=True)
+    target = native_dir / name
+    if not target.exists():
+        target.write_bytes(payload)
+    return f"{(native_rel or 'native').rstrip('/')}/{name}"
+
+
+def _media_ext(blob: bytes) -> str:
+    if blob.startswith(b"\x89PNG"):
+        return "png"
+    if blob.startswith(b"\xff\xd8"):
+        return "jpeg"
+    if blob.startswith((b"GIF87a", b"GIF89a")):
+        return "gif"
+    return "bin"
+
 
 # ---------------------------------------------------------------------------
 # Data
@@ -1452,6 +1487,15 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
     ox, oy = offset[:2]
     for ch in node:
         tag = etree.QName(ch).localname
+        # Shapes flagged hidden="1" on their cNvPr are never rendered by
+        # PowerPoint/LibreOffice but ARE walked here — template add-ins hide
+        # machinery shapes on the master (e.g. a classification/date plate),
+        # which otherwise lands as a phantom filled rect on every decompiled
+        # layout. Applies to sp/pic/cxnSp/graphicFrame/grpSp alike;
+        # `*/p:cNvPr` is the element's OWN nv*Pr block, not a group child's.
+        cnvpr = ch.find("*/p:cNvPr", NS)
+        if cnvpr is not None and cnvpr.get("hidden") in ("1", "true"):
+            continue
         if tag == "sp":
             _emit_sp(ch, offset, shapes, slide, cmap, theme, palette)
         elif tag == "pic":
@@ -3516,7 +3560,9 @@ def _strip_placeholder_paragraphs(text_runs: list["TextRun"]) -> list["TextRun"]
 def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
              placeholder_rel: str = PLACEHOLDER_REL,
-             bg_fill: str | None = None) -> str:
+             bg_fill: str | None = None,
+             native_dir: Path | None = None,
+             native_rel: str | None = None) -> str:
     out: list[str] = [
         "# auto-derived from PPTX+SVG hybrid — review before use",
         f"# layout: {layout_name}",
@@ -3633,11 +3679,17 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for i, s in enumerate(custs, 1):
         if s.native_xml:
             # Native vector chrome carried verbatim from the source (editable,
-            # pixel-exact). base64 so the whole <p:sp> rides inside one DSL line
-            # and the brand pack stays self-contained — no source pptx at build.
+            # pixel-exact). Small fragments ride inline as base64 so the DSL
+            # line is self-contained; big ones (33 MB vectorised groups exist)
+            # go to a sidecar file under the pack's assets dir.
             import base64 as _b64
-            _enc = _b64.b64encode(s.native_xml.encode("utf-8")).decode("ascii")
-            out.append(f'native shape{i} b64:"{_enc}"')
+            _xb = s.native_xml.encode("utf-8")
+            _ref = _native_sidecar_ref(_xb, "xml", native_dir, native_rel)
+            if _ref:
+                out.append(f'native shape{i} xml_file:"{_ref}"')
+            else:
+                _enc = _b64.b64encode(_xb).decode("ascii")
+                out.append(f'native shape{i} b64:"{_enc}"')
         elif s.svg_path_d:
             # `none` is not in the SVG DSL's 17-name semantic colour
             # vocabulary, so we omit `fill:` entirely when the source has
@@ -3668,14 +3720,20 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for i, s in enumerate(graphics, 1):
         if s.native_xml:
             import base64 as _b64
-            _enc = _b64.b64encode(s.native_xml.encode("utf-8")).decode("ascii")
-            if s.native_parts:
-                _pj = _b64.b64encode(
-                    json.dumps(s.native_parts).encode("utf-8")
-                ).decode("ascii")
-                out.append(f'native graphic{i} b64:"{_enc}" parts:"{_pj}"')
+            _xb = s.native_xml.encode("utf-8")
+            _ref = _native_sidecar_ref(_xb, "xml", native_dir, native_rel)
+            if _ref:
+                line = f'native graphic{i} xml_file:"{_ref}"'
             else:
-                out.append(f'native graphic{i} b64:"{_enc}"')
+                line = f'native graphic{i} b64:"{_b64.b64encode(_xb).decode("ascii")}"'
+            if s.native_parts:
+                _pb = json.dumps(s.native_parts).encode("utf-8")
+                _pref = _native_sidecar_ref(_pb, "json", native_dir, native_rel)
+                if _pref:
+                    line += f' parts_file:"{_pref}"'
+                else:
+                    line += f' parts:"{_b64.b64encode(_pb).decode("ascii")}"'
+            out.append(line)
 
     # Ovals (circles, decorative dots). Stroke-only ovals (callout
     # circles, annotation marks) emit as stroke without fill; fill-only
@@ -3705,10 +3763,22 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     for i, p in enumerate(pics, 1):
         if p.native_xml and p.native_media:
             # Template image carried natively (fixed corporate-design chrome):
-            # the <p:pic> + its media ride inline; the emitter re-embeds + splices.
+            # the emitter re-embeds the media + splices the <p:pic>. Big media
+            # goes to a sidecar file (raw bytes, sha-named) instead of inline.
             import base64 as _b64
-            _x = _b64.b64encode(p.native_xml.encode("utf-8")).decode("ascii")
-            out.append(f'native pic{i} b64:"{_x}" media:"{p.native_media}"')
+            _xb = p.native_xml.encode("utf-8")
+            _ref = _native_sidecar_ref(_xb, "xml", native_dir, native_rel)
+            if _ref:
+                line = f'native pic{i} xml_file:"{_ref}"'
+            else:
+                line = f'native pic{i} b64:"{_b64.b64encode(_xb).decode("ascii")}"'
+            _mb = _b64.b64decode(p.native_media)
+            _mref = _native_sidecar_ref(_mb, _media_ext(_mb), native_dir, native_rel)
+            if _mref:
+                line += f' media_file:"{_mref}"'
+            else:
+                line += f' media:"{p.native_media}"'
+            out.append(line)
             continue
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
@@ -3949,6 +4019,8 @@ def derive(
     pdf_path: Path | None = None,
     image_extract_dir: Path | None = None,
     image_extract_rel: str | None = None,
+    native_extract_dir: Path | None = None,
+    native_extract_rel: str | None = None,
 ) -> str:
     """Decompile one slide of `pptx_path` (1-indexed) into a Feinschliff DSL
     string. Brand-agnostic: pass `theme_name` and `tokens_path` to point at
@@ -3971,6 +4043,13 @@ def derive(
     decompile fidelity* against the source, carry the images over so
     the visual diff measures real shape/text mismatch instead of
     picture-region noise.
+
+    `native_extract_dir` + `native_extract_rel` route native-carry payloads
+    bigger than `NATIVE_INLINE_MAX` raw bytes into sha-named sidecar files
+    (`xml_file:` / `media_file:` / `parts_file:` DSL refs, resolved against
+    the brand pack's asset root at build time) instead of inline base64 —
+    without them a 33 MB carried vector group inlines into a 44 MB
+    .slide.dsl. Pass `<pack>/assets/native` + `"native"` for brand packs.
     """
     # python-pptx rejects template content-types (.potx / .pptm-template)
     # with a cryptic "is not a PowerPoint file, content type is
@@ -4033,7 +4112,9 @@ def derive(
     return emit_dsl(shapes, cmap, layout_name,
                     theme_name=theme_name,
                     placeholder_rel=placeholder_rel,
-                    bg_fill=bg_fill)
+                    bg_fill=bg_fill,
+                    native_dir=native_extract_dir,
+                    native_rel=native_extract_rel)
 
 
 def main() -> int:

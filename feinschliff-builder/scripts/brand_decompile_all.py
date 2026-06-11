@@ -211,6 +211,11 @@ def main() -> int:
             theme_name=brand_name,
             image_extract_dir=image_extract_dir,
             image_extract_rel=image_extract_rel,
+            # Big native-carry payloads (33 MB vector groups exist in the wild)
+            # land as sha-named sidecars instead of inline base64 — keeps
+            # .slide.dsl a readable text file and dedupes repeated chrome.
+            native_extract_dir=brand_pack / "assets" / "native",
+            native_extract_rel="native",
         )
         target.write_text(dsl, encoding="utf-8")
         size = target.stat().st_size

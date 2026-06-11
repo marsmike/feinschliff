@@ -2024,40 +2024,125 @@ def _splice_native_parts(slide, frame_el, parts_b64: str, node: DSLNode) -> None
                                         encoding="UTF-8", standalone=True)
 
 
+def _native_sidecar_bytes(ref: str, ctx: EmitContext, node: DSLNode,
+                          what: str) -> bytes:
+    """Resolve a `*_file:` native-payload reference against the brand pack's
+    asset root (then the plugin fallback root), mirroring picture-path
+    resolution. Sidecar files keep multi-MB carried fragments out of the DSL
+    text (a 33 MB carried group made a 44 MB .slide.dsl when inlined)."""
+    p = Path(ref)
+    if not p.is_absolute():
+        for root in (ctx.asset_root, ctx.asset_root_fallback):
+            if root is not None and (root / p).is_file():
+                p = root / p
+                break
+    if not p.is_file():
+        raise DSLError(
+            f"native {what} (line {node.line_no}): sidecar file not found — {ref!r}"
+            + (f" (searched under {ctx.asset_root})" if ctx.asset_root else "")
+        )
+    return p.read_bytes()
+
+
+def _remap_colliding_shape_ids(slide, el) -> None:
+    """Native fragments keep their SOURCE `p:cNvPr` ids. Two fragments carried
+    from different sources (slide chrome vs layout template image) — or a
+    fragment vs a python-pptx-generated shape — can claim the same id, and
+    slide-wide duplicate shape ids make PowerPoint open the deck with the
+    "needs repair" dialog. Remap every id in `el` that is already used in this
+    slide to a fresh unique one, and rewrite in-fragment connector references
+    (`a:stCxn`/`a:endCxn id=`) that pointed at a remapped shape. Scope is
+    per-fragment on purpose: a connector's target id only means anything
+    within the id space of the source the fragment came from."""
+    def _cnvprs(root):
+        for e in root.iter():
+            if isinstance(e.tag, str) and e.tag.endswith("}cNvPr"):
+                yield e
+
+    used: set[int] = set()
+    for cnv in _cnvprs(slide.shapes._spTree):
+        try:
+            used.add(int(cnv.get("id")))
+        except (TypeError, ValueError):
+            pass
+    frag = [(cnv, int(cnv.get("id"))) for cnv in _cnvprs(el)
+            if (cnv.get("id") or "").isdigit()]
+    # Fresh ids start past everything in the slide AND the fragment, so a
+    # remapped id can never collide with a fragment id we keep.
+    next_id = max(used | {i for _c, i in frag}, default=0) + 1
+    remap: dict[int, int] = {}
+    for cnv, old in frag:
+        if old in used:
+            remap[old] = next_id
+            cnv.set("id", str(next_id))
+            used.add(next_id)
+            next_id += 1
+        else:
+            used.add(old)
+    if not remap:
+        return
+    for e in el.iter():
+        if isinstance(e.tag, str) and (e.tag.endswith("}stCxn")
+                                       or e.tag.endswith("}endCxn")):
+            try:
+                old = int(e.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if old in remap:
+                e.set("id", str(remap[old]))
+
+
 def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
     """native <id> b64:"<base64 element>" [media:"<base64 image>"] [parts:"<b64 json>"]
+                   xml_file:"<rel path>"  [media_file:"<rel path>"] [parts_file:"<rel path>"]
 
-    Splice a native PPTX element carried verbatim from the source deck (base64 in
-    the DSL, so the brand pack is self-contained). Used for fixed corporate-design
+    Splice a native PPTX element carried verbatim from the source deck. Small
+    payloads ride inline as base64 in the DSL; large ones live as sidecar files
+    under the brand pack's assets dir (`*_file:` refs, resolved like picture
+    paths) so .slide.dsl files stay readable. Used for fixed corporate-design
     chrome: complex custGeom shapes (`<p:sp>`), template images (`<p:pic>`,
-    `media:` carries the embedded bytes), and charts (`<p:graphicFrame>` with
-    `parts:` carrying the external chart part-graph). The element stays real +
-    EDITABLE in the output — no rasterisation, no picture "cheat" — preserving
-    geometry + colour.
+    `media:`/`media_file:` carries the embedded bytes), and charts
+    (`<p:graphicFrame>` with `parts:`/`parts_file:` carrying the external chart
+    part-graph). The element stays real + EDITABLE in the output — no
+    rasterisation, no picture "cheat" — preserving geometry + colour.
     """
-    blob = node.kw_args.get("b64")
-    if not blob:
-        return
     import base64
     from pptx.oxml import parse_xml
+    blob = node.kw_args.get("b64")
+    if blob:
+        xml_bytes = base64.b64decode(blob)
+    else:
+        ref = node.kw_args.get("xml_file")
+        if not ref:
+            return
+        xml_bytes = _native_sidecar_bytes(ref, ctx, node, "shape")
     try:
-        el = parse_xml(base64.b64decode(blob).decode("utf-8"))
+        el = parse_xml(xml_bytes.decode("utf-8"))
     except Exception as exc:
         raise DSLError(
             f"native shape (line {node.line_no}): unparseable embedded element — {exc}"
         )
     parts_b64 = node.kw_args.get("parts")
+    if not parts_b64 and node.kw_args.get("parts_file"):
+        parts_b64 = base64.b64encode(
+            _native_sidecar_bytes(node.kw_args["parts_file"], ctx, node, "parts")
+        ).decode("ascii")
     if parts_b64:
         _splice_native_parts(slide, el, parts_b64, node)
     media_b64 = node.kw_args.get("media")
     if media_b64:
+        media_bytes = base64.b64decode(media_b64)
+    elif node.kw_args.get("media_file"):
+        media_bytes = _native_sidecar_bytes(node.kw_args["media_file"], ctx, node,
+                                            "media")
+    else:
+        media_bytes = None
+    if media_bytes is not None:
         # Carried <p:pic>: the source rId is meaningless in this deck, so re-embed
         # the image here and re-point every <a:blip> to the fresh relationship.
         import io
         from pptx.oxml.ns import qn
-        _part, rid = slide.part.get_or_add_image_part(
-            io.BytesIO(base64.b64decode(media_b64))
-        )
+        _part, rid = slide.part.get_or_add_image_part(io.BytesIO(media_bytes))
         # Drop the Microsoft svgBlip sidecar: we carry only the raster media, so
         # its stale rId would dangle / collide with another shape's relationship
         # (some renderers prefer the svgBlip and then show the WRONG image). The
@@ -2070,6 +2155,7 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
         for blip in el.iter(qn("a:blip")):
             if blip.get(qn("r:embed")) is not None:
                 blip.set(qn("r:embed"), rid)
+    _remap_colliding_shape_ids(slide, el)
     slide.shapes._spTree.append(el)
 
 
