@@ -509,6 +509,34 @@ def test_sanitize_chrome_legacy_bare_attr_honored():
     )
 
 
+def test_sanitize_chrome_legacy_bare_attr_honored_grad_fill():
+    """Old decks with bare effect-allow='1' must survive sanitize_chrome
+    with their gradFill intact (backward-compat read path)."""
+    from lxml import etree
+    from feinschliff.dsl.pptx_emit import sanitize_chrome
+
+    xml = b"""<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+      <p:cSld><p:spTree>
+        <p:sp effect-allow="1">
+          <p:spPr>
+            <a:gradFill>
+              <a:gsLst>
+                <a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>
+                <a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs>
+              </a:gsLst>
+            </a:gradFill>
+          </p:spPr>
+        </p:sp>
+      </p:spTree></p:cSld>
+    </p:sld>"""
+    root = etree.fromstring(xml)
+    sanitize_chrome(root)
+    assert root.find(".//a:gradFill", _NS) is not None, (
+        "legacy bare effect-allow='1' must preserve gradFill (backward compat)"
+    )
+
+
 def test_sanitize_chrome_replaces_grad_fill_with_solid():
     from lxml import etree
     from feinschliff.dsl.pptx_emit import sanitize_chrome

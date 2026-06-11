@@ -1802,8 +1802,11 @@ _OUTLINE_CLAMP_TARGET_EMU = 6350
 def _effect_allowed(sp) -> bool:
     """Return True if a <p:sp> element carries the effect opt-in marker.
 
-    Accepts both the current namespaced form and the legacy bare attribute
-    so that old decks keep their opt-in after upgrading.
+    The caller is responsible for passing the ``<p:sp>`` element itself —
+    no ancestor walk is performed inside this helper.  Accepts both the
+    current namespaced form (``{urn:feinschliff:emit}effect-allow``) and
+    the legacy bare attribute so that old decks keep their opt-in after
+    upgrading.
     """
     return (
         sp.get(_EFFECT_ALLOW_ATTR) == "1"
@@ -1835,9 +1838,10 @@ def sanitize_chrome(slide_xml) -> None:
         effect_lst.getparent().remove(effect_lst)
 
     # 2. gradFill → solidFill (with the first stop's color), unless the
-    #    parent <p:sp> opts in via _EFFECT_ALLOW_ATTR (same gate as the
-    #    effectLst case above — used by decompile-derived shapes that
-    #    deliberately carry a source-faithful gradient).
+    #    parent <p:sp> opts in via _effect_allowed() (same gate as the
+    #    effectLst case above; accepts both namespaced and legacy bare
+    #    forms — used by decompile-derived shapes that deliberately carry
+    #    a source-faithful gradient).
     ns = {"a": _NS_A}
     for grad in list(sptree.iter(f"{{{_NS_A}}}gradFill")):
         sp_anc = grad.getparent()
