@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://feinschmiede.local/edit-plan.schema.json",
+  "title": "feinschnitt edit plan",
+  "type": "object",
+  "required": ["beats"],
+  "properties": {
+    "video": {"type": "string"},
+    "beats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "start_sec", "end_sec", "reason"],
+        "properties": {
+          "kind": {"enum": ["hook_title", "word_pop", "stat_punch"]},
+          "start_sec": {"type": "number", "minimum": 0},
+          "end_sec": {"type": "number", "exclusiveMinimum": 0},
+          "reason": {"type": "string", "minLength": 8},
+          "speech_anchor": {"type": "string"},
+          "vertical": {"type": "number", "minimum": 0, "maximum": 1}
+        },
+        "allOf": [
+          {"if": {"properties": {"kind": {"const": "hook_title"}}},
+           "then": {"required": ["title"]}},
+          {"if": {"properties": {"kind": {"const": "word_pop"}}},
+           "then": {"required": ["items"],
+                    "properties": {"items": {"type": "array", "minItems": 1,
+                      "items": {"type": "object", "required": ["text", "appear_sec"]}}}}},
+          {"if": {"properties": {"kind": {"const": "stat_punch"}}},
+           "then": {"required": ["value", "caption"]}}
+        ]
+      }
+    }
+  }
+}
