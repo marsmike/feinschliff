@@ -628,8 +628,14 @@ def _style_run(run, text: str, style, *, tokens: Tokens | None = None) -> None:
     color = style.color_hex
     if style.opacity < 1.0:
         # python-pptx has no native alpha on text runs; approximate by
-        # blending toward white. Canonical .pgmeta opacity 0.7 on ink → ~#4A586F.
-        color = _blend_to_white(color, 1.0 - style.opacity)
+        # pre-blending toward the brand paper color. Canonical .pgmeta
+        # opacity 0.7 on ink over white paper → ~#4A586F; over dark paper
+        # the blend recedes toward the background (not toward white).
+        try:
+            paper = tokens.color("paper") if tokens is not None else "#FFFFFF"
+        except KeyError:
+            paper = "#FFFFFF"
+        color = _blend_toward(color, paper, 1.0 - style.opacity)
     f.color.rgb = _hex_to_rgb(color)
     # Tracking: per-style letter_spacing wins; if the style declares none,
     # fall back to the brand-level display_tracking_curve (step function).
@@ -669,14 +675,16 @@ def _resolve_face(family: str, weight: int) -> tuple[str, bool]:
     return family, False
 
 
-def _blend_to_white(hex_color: str, t: float) -> str:
-    """Linearly blend `hex_color` toward white by fraction `t` (0..1)."""
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    r = round(r + (255 - r) * t)
-    g = round(g + (255 - g) * t)
-    b = round(b + (255 - b) * t)
-    return f"#{r:02X}{g:02X}{b:02X}"
+def _blend_toward(hex_color: str, target_hex: str, t: float) -> str:
+    """Linearly blend `hex_color` toward `target_hex` by fraction `t` (0..1).
+    Approximates run alpha over a solid background — python-pptx has no
+    native alpha on text runs, so we pre-blend toward the slide paper."""
+    h = hex_color.lstrip("#"); g = target_hex.lstrip("#")
+    out = []
+    for i in (0, 2, 4):
+        c = int(h[i:i+2], 16); tg = int(g[i:i+2], 16)
+        out.append(round(c + (tg - c) * t))
+    return "#{:02X}{:02X}{:02X}".format(*out)
 
 
 def _px_to_pt(px: float) -> float:
