@@ -1,3 +1,16 @@
+---
+role: closer
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+family: closing
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 13
+slots:
+  text_1: {role: title, chars: 270, default: Thank you}
+  text_2: {role: body, chars: 833, default: Brita Tamm\n502-555-0152\nbrita@firstupconsultants.com\nwww.firstupconsultant…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: thank-you
 canvas 1920x1080

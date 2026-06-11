@@ -1,3 +1,17 @@
+---
+role: chapter-opener
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
+family: framing
+fixed_chrome: true
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 6
+slots:
+  text_1: {role: title, chars: 132, default: Selecting\nvisual aids}
+  text_2: {role: body, chars: 539, default: Enhancing your\npresentation}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: visual-aids
 canvas 1920x1080

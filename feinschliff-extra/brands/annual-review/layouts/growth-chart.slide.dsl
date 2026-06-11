@@ -1,3 +1,17 @@
+---
+role: data-comparison
+ideal_count: [1, 1]
+data_band: chart
+comparison: true
+family: comparison
+chrome_note: 'carries native source chrome verbatim: 1 chart'
+slide_index: 5
+slots:
+  text_1: {role: title, chars: 54, default: Growth by sector chart}
+  text_2: {role: footer, chars: 26, default: Annual Review}
+  text_3: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_4: {role: page-number, chars: 11, default: '5'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: growth-chart
 canvas 1920x1080

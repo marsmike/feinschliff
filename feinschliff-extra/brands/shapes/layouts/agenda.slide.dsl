@@ -1,3 +1,16 @@
+---
+role: agenda
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+slide_index: 2
+slots:
+  text_1: {role: body, chars: 1008, default: Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal
+      …}
+  text_2: {role: title, chars: 200, default: Agenda}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: agenda
 canvas 1920x1080

@@ -15,6 +15,8 @@ Primitives implemented:
   line X,Y X2,Y2 stroke:role stroke-width:N
   picture X,Y WxH path:PATH cover:true
   picture X,Y WxH query:"…" — resolve at build time via image_provider
+  picture X,Y WxH path:PATH query:"…" — layered: file if path resolves,
+                               else provider search with the explicit query
 """
 from __future__ import annotations
 
@@ -1472,9 +1474,12 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     `path` is the resolved image location — either a literal in the layout
     or interpolated from a `{{ slot }}` placeholder by the expander. If
     `path` is missing, the node is skipped silently. If `path` does not
-    resolve to a local file but an image provider is active, the value is
-    treated as a provider search query (e.g. Unsplash) so plan authors can
-    write ``image: "regensburg medieval bridge"`` without changing layouts.
+    resolve to a local file but an image provider is active, the node falls
+    back to a provider search: an explicit ``query:`` kwarg takes
+    precedence, otherwise the unresolved path value itself is used as the
+    query (e.g. Unsplash) so plan authors can write
+    ``image: "regensburg medieval bridge"`` without changing layouts. A
+    ``query:`` is ignored whenever the path resolves to a real file.
     `cover:true` center-crops the source image to the box aspect ratio
     (default behaviour is contain).
 
@@ -1502,17 +1507,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         _pos_xy = node.pos_args[0]
         _pos_wh = node.pos_args[1]
 
-    # `query:` and `path:` are mutually exclusive — a brand author who
-    # set both has either copy-pasted half a migration or doesn't know
-    # which mode they meant. Fail loud at emit time so the mistake
-    # surfaces before the deck ships.
-    if query and path:
-        raise DSLError(
-            f"picture at line {node.line_no}: `query:` and `path:` are "
-            f"mutually exclusive (got query={query!r}, path={path!r})"
-        )
-
-    if query:
+    # `query:` alongside `path:` is a layered fallback: the file wins when
+    # `path` resolves; the explicit `query:` is consulted only when the
+    # path misses (see the provider branch below), taking precedence over
+    # the synthesized use-the-path-as-query fallback. A bare `query:`
+    # (no path) resolves through the provider directly — and fails loud
+    # below when no provider is wired, because that combination can never
+    # produce an image.
+    if query and not path:
         if not ctx.image_provider:
             # The brand author wrote `query:` in a layout but forgot to
             # wire `$image_provider` in tokens.json. Silent-fallback to a
@@ -1564,14 +1566,17 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         else:
             p = primary
     if not p.is_file():
-        # When an image provider is active, treat the unresolved path value as
-        # a search query instead of failing. This lets plan authors write
-        # image: "regensburg aerial" and have it resolve through e.g. Unsplash
-        # without requiring query: in every layout DSL file.
+        # When an image provider is active, fall back to a provider search
+        # instead of failing. An explicit `query:` kwarg takes precedence;
+        # otherwise the unresolved path value itself is treated as the
+        # search query. This lets plan authors write
+        # image: "regensburg aerial" and have it resolve through e.g.
+        # Unsplash without requiring query: in every layout DSL file.
         if ctx.image_provider:
-            slot_id = node.label or _slot_id_from_query(path)
+            provider_query = query or path
+            slot_id = node.label or _slot_id_from_query(provider_query)
             materialised = _resolve_provider_image(
-                ctx, path, slot_id,
+                ctx, provider_query, slot_id,
                 slide=slide, node=node, pos_xy=_pos_xy, pos_wh=_pos_wh,
             )
             if materialised is None:

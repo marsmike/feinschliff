@@ -1,3 +1,18 @@
+---
+role: chapter-opener
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
+family: framing
+fixed_chrome: true
+chrome_note: 'carries native source chrome verbatim: 5 illustration'
+slide_index: 5
+slots:
+  text_1: {role: page-number, chars: 46, default: '5'}
+  text_2: {role: title, chars: 102, default: ENGAGING THE AUDIENCE}
+  text_3: {role: body, chars: 1957, default: Make eye contact with your audience to create a sense of intimacy and involve…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: audience
 canvas 1920x1080

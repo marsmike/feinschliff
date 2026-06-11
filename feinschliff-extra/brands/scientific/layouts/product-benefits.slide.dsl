@@ -1,3 +1,15 @@
+---
+role: content-columns
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 5
+slots:
+  text_1: {role: title, chars: 225, default: PRODUCT BENEFITS}
+  text_2: {role: body, chars: 660, default: INCREASED PRODUCTIVITY\nSEAMLESS INTEGRATION\nENHANCED USER EXPERIENCE\nSCALA…}
+image_queries: {image: product benefits}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: product-benefits
 canvas 1920x1080

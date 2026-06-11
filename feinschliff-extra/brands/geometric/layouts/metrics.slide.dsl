@@ -1,3 +1,15 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+chrome_note: 'carries native source chrome verbatim: 1 table'
+slide_index: 12
+slots:
+  text_1: {role: page-number, chars: 46, default: '12'}
+  text_2: {role: title, chars: 132, default: SPEAKING ENGAGEMENT METRICS}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: metrics
 canvas 1920x1080

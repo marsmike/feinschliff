@@ -1,3 +1,15 @@
+---
+role: concept-diagram
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: process
+chrome_note: 'carries native source chrome verbatim: 1 smartart'
+slide_index: 9
+slots:
+  text_1: {role: title, chars: 144, default: GROWTH STRATEGY}
+  text_2: {role: body, chars: 504, default: Expand market reach through strategic partnerships\nEnhance product features …}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: growth-strategy
 canvas 1920x1080

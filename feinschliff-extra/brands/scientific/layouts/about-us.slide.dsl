@@ -1,3 +1,15 @@
+---
+role: content-columns
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 3
+slots:
+  text_1: {role: title, chars: 132, default: ABOUT US}
+  text_2: {role: body, chars: 202, default: Aiming to revolutionize industries through our forward-thinking solutions}
+image_queries: {image: about us}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: about-us
 canvas 1920x1080

@@ -1,3 +1,17 @@
+---
+role: agenda
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+chrome_note: 'carries native source chrome verbatim: 3 illustration'
+slide_index: 2
+slots:
+  text_1: {role: page-number, chars: 46, default: '2'}
+  text_2: {role: title, chars: 198, default: AGENDA}
+  text_3: {role: body, chars: 767, default: Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal …}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: agenda
 canvas 1920x1080

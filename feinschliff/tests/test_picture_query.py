@@ -2,7 +2,9 @@
 
 Covers the 6 cases enumerated in the image-provider-framework plan:
 
-  1. ``query:`` + ``path:`` together → ``DSLError``.
+  1. ``query:`` + ``path:`` together → layered fallback (path wins when it
+     resolves; query drives the provider search when it misses). Detailed
+     coverage lives in ``test_picture_path_query_fallback.py``.
   2. ``query:`` with no provider wired → loud error.
   3. Happy path: a fake provider returns one hit; the slide gets a
      picture shape and ``asset_lock.json`` is written.
@@ -66,18 +68,24 @@ def _build(dsl: str, *, deck_dir: Path, provider: ImageProvider | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Case 1 — mutex: query: and path: cannot coexist
+# Case 1 — query: + path: coexist as a layered fallback (no longer a mutex)
 # ---------------------------------------------------------------------------
 
-def test_picture_query_and_path_together_raises_dsl_error(tmp_path):
+def test_picture_query_and_path_together_no_longer_raises(tmp_path):
+    """``path:`` + ``query:`` used to be mutually exclusive; they now form
+    a layered fallback (path → query → placeholder). With no provider
+    wired and a missing path, the build must complete with the gem
+    placeholder rather than raise. Full layered-behaviour coverage lives
+    in ``test_picture_path_query_fallback.py``."""
     dsl = (
         'canvas 1920x1080\n'
         'theme test\n'
-        'picture 100,100 200x200 query:"kitchen" path:"/tmp/x.png"'
+        'picture 100,100 200x200 query:"kitchen" path:"/tmp/does-not-exist-x.png"'
     )
-    with pytest.raises(DSLError) as exc:
-        _build(dsl, deck_dir=tmp_path)
-    assert "mutually exclusive" in str(exc.value).lower()
+    prs = _build(dsl, deck_dir=tmp_path)  # must not raise
+    assert any(
+        e.get("kind") == "missing-file" for e in prs.missing_assets
+    ), f"expected a missing-file entry, got {prs.missing_assets!r}"
 
 
 # ---------------------------------------------------------------------------

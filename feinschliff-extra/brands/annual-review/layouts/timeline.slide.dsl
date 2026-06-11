@@ -1,3 +1,24 @@
+---
+role: content-columns
+ideal_count: [8, 8]
+data_band: none
+comparison: false
+family: organizational
+slide_index: 9
+slots:
+  text_1: {role: title, chars: 54, default: Timeline}
+  text_2: {role: body, chars: 120, default: Q1.\nJul - Sep}
+  text_3: {role: body, chars: 120, default: Q1.\nOct - Dec}
+  text_4: {role: body, chars: 120, default: Q3.\nJan - Mar}
+  text_5: {role: body, chars: 156, default: Q4.\nApr - Jun}
+  text_6: {role: body, chars: 722, default: 'Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy ni…'}
+  text_7: {role: body, chars: 741, default: 'Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy ni…'}
+  text_8: {role: body, chars: 624, default: 'Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy ni…'}
+  text_9: {role: body, chars: 800, default: 'Lorem ipsum dolor sit amet, consectetuer adipiscing elit, sed diam nonummy ni…'}
+  text_10: {role: footer, chars: 26, default: Annual Review}
+  text_11: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_12: {role: page-number, chars: 11, default: '9'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: timeline
 canvas 1920x1080
