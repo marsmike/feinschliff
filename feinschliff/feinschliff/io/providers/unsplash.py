@@ -234,7 +234,7 @@ def _parse_results(payload: dict[str, Any]) -> list[ImageHit]:
                 # ``image/jpeg`` is a best-effort hint — the ``urls.regular``
                 # endpoint carries ``?fm=jpg`` so jpeg is the typical body,
                 # but Unsplash may content-negotiate to webp / avif. The
-                # ``_materialise`` step in ``lib/dsl/pptx_emit`` re-types
+                # ``_materialise`` step in ``lib/io/image_materialise`` re-types
                 # the cache file from the response's ``Content-Type`` at
                 # download time, so this hint is non-authoritative.
                 mime="image/jpeg",
