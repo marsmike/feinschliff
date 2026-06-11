@@ -272,19 +272,73 @@ def test_multi_slide_slide_index_is_correct():
 # Severity
 # ---------------------------------------------------------------------------
 
-def test_defects_are_warn_severity():
-    """Static verify defects must be WARN, not FATAL."""
-    from feinschliff.defects import Severity
+def test_empty_placeholder_defects_are_warn_severity():
+    """EMPTY_PLACEHOLDER defects must be WARN, not FATAL."""
+    from feinschliff.defects import DefectKind, Severity
 
     plan = _make_plan(
         "end.slide.dsl",
         {"title": "", "footer_left": "Corp", "footer_right": "2026"},
     )
     defects = static_verify(plan, BRAND_DIR)
-    assert defects, "Expected at least one defect to check severity"
-    for d in defects:
+    ep = [d for d in defects if d.kind == DefectKind.EMPTY_PLACEHOLDER]
+    assert ep, "Expected at least one EMPTY_PLACEHOLDER defect to check severity"
+    for d in ep:
         assert d.severity == Severity.WARN, (
-            f"Expected WARN, got {d.severity} for {d}"
+            f"Expected WARN for EMPTY_PLACEHOLDER, got {d.severity} for {d}"
+        )
+
+
+def test_slot_overflow_defects_are_fatal_severity():
+    """SLOT_OVERFLOW defects must be FATAL now that real font metrics are in use."""
+    from feinschliff.defects import DefectKind, Severity
+
+    long_title = (
+        "We must urgently restructure our go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters"
+    )
+    assert len(long_title) > 84, "test precondition: title must exceed char budget"
+
+    plan = _make_plan(
+        "executive-summary.slide.dsl",
+        {
+            "action_title": long_title,
+            "footer_left": "Corp",
+            "footer_right": "2026",
+        },
+    )
+    defects = static_verify(plan, BRAND_DIR)
+    overflow = [d for d in defects if d.kind == DefectKind.SLOT_OVERFLOW]
+    assert overflow, "Expected at least one SLOT_OVERFLOW defect to check severity"
+    for d in overflow:
+        assert d.severity == Severity.FATAL, (
+            f"Expected FATAL for SLOT_OVERFLOW, got {d.severity} for {d}"
+        )
+
+
+def test_validate_slot_overflow_maps_to_error():
+    """validate() must map SLOT_OVERFLOW (FATAL legacy) → ERROR in the DiagnosticBag."""
+    from feinschmiede.diagnostics import Severity as NewSev
+    from feinschliff.defects import DefectKind
+
+    long_title = (
+        "We must urgently restructure our go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters"
+    )
+    plan = _make_plan(
+        "executive-summary.slide.dsl",
+        {
+            "action_title": long_title,
+            "footer_left": "Corp",
+            "footer_right": "2026",
+        },
+    )
+    bag = validate(plan, BRAND_PACK, plan_dir=REPO_ROOT)
+    overflow = [d for d in bag if d.kind.value == DefectKind.SLOT_OVERFLOW.value]
+    assert overflow, "Expected at least one SLOT_OVERFLOW defect in DiagnosticBag"
+    for d in overflow:
+        assert d.severity == NewSev.ERROR, (
+            f"Expected ERROR severity in DiagnosticBag for SLOT_OVERFLOW; got {d.severity}"
         )
 
 

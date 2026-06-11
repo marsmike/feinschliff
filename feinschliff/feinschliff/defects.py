@@ -81,6 +81,10 @@ _FATAL: frozenset[str] = frozenset({
     DefectKind.TEXT_OVERLAP.value,
     DefectKind.OUT_OF_BOUNDS.value,
     DefectKind.UNKNOWN_COMPOUND.value,
+    # SLOT_OVERFLOW became fatal once textfit gained real font metrics —
+    # the predictor is no longer guesswork. FEINSCHMIEDE_NO_REAL_METRICS=1
+    # plus layout-level autoshrink remain the escape hatches.
+    DefectKind.SLOT_OVERFLOW.value,
     DefectKind.DIAGRAM_OVERFLOW.value,
     DefectKind.DIAGRAM_TEXT_TOO_SMALL.value,
     DefectKind.DIAGRAM_SHAPE_OVERLAP.value,
