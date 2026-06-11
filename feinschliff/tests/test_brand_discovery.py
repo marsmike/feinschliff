@@ -261,7 +261,7 @@ def test_cwd_dev_beats_same_named_plugin_brand(tmp_path, monkeypatch):
 
 def test_extends_resolves_parent_across_sibling_roots(tmp_path, monkeypatch):
     """A corporate pack (feinschliff-corp/brands/corp) extending `feinschliff`
-    must find the parent in the checkout's core brands dir — the BSH shape."""
+    must find the parent in the checkout's core brands dir — the corporate-fixture shape."""
     import json as _json
 
     from feinschmiede.dsl.tokens import load_raw_tokens
