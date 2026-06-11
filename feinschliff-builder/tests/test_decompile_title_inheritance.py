@@ -3,7 +3,7 @@ inheritance chain (layout ph -> master ph -> master txStyles) instead of
 falling back to a hardcoded default when the run has no explicit size.
 
 This is the root cause of decompiled titles coming out at the wrong size
-(BSH titles inherited 20pt from the master titleStyle, but the run carried no
+(corporate-template titles inherited 20pt from the master titleStyle, but the run carried no
 explicit size, so the decompiler used its 16pt fallback).
 """
 from pptx import Presentation

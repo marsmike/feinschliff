@@ -85,7 +85,7 @@ For each issue above, provide a **concrete code-level fix instruction** that ano
 Example:
 - "In BeatOldWay, change the timer fontSize from 80 to 96 and add `letterSpacing: 2` for better mobile readability"
 - "In BeatBarChart, the green bar label '30 sec' at fontSize 36 needs to be bumped to 44 — it's lost next to the red bar"
-- "In BeatHook, add a subtle gradient background (linear-gradient from theme.bg to theme.boschBlue + '08') to break up the flat white"
+- "In BeatHook, add a subtle gradient background (linear-gradient from theme.bg to theme.brandBlue + '08') to break up the flat white"
 
 ```json
 {

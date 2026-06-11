@@ -104,11 +104,12 @@ feinschliff/examples/**/thumbnails/
 feinschliff/docs/images/launch-*
 feinschliff/docs/images/teaser-*
 
-# Internal corporate brand packs — BSH and Bosch. Kept locally for
-# testing / layout work against our feinschliff version, never committed
-# (proprietary brand marks + source assets, large image dumps).
-feinschliff-bsh/
-feinschliff-bosch/
+# Local-only corporate fixture packs (proprietary brand marks + source
+# assets, large image dumps) — any feinschliff-<fixture>/ dir at the repo
+# root stays local; the shipped plugin dirs are re-included below.
+/feinschliff-*/
+!/feinschliff-builder/
+!/feinschliff-extra/
 
 # Repo-root scratch — ad-hoc renders, source decks, verify-loop output.
 # Mirrors the feinschliff/.debug/ convention at the worktree root.

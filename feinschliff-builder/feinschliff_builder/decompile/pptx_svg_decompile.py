@@ -309,7 +309,7 @@ def nearest_token(rgb: tuple[int, int, int], palette: dict[str, tuple[int, int, 
     # (3 * 25^2 = 1875). When the closest brand token is further than this,
     # the source colour isn't really represented in the palette — emit the
     # raw hex literal instead of approximating to a token that renders as
-    # a visibly different colour (e.g. the Sartorius source's #FFED00
+    # a visibly different colour (e.g. a corporate source's #FFED00
     # yellow shouldn't squash to the feinschliff parent's gold #C9A24A
     # accent token just because it's the closest of 30 mostly-cool tokens).
     if best is not None and best_d <= _NEAREST_TOKEN_THRESHOLD_SQ:
