@@ -98,10 +98,15 @@ def _cwd_dev_layouts_roots() -> list[Path]:
 
 
 def _discovery_sources() -> list[tuple[str, Path]]:
-    """Source-tagged list used by both discovery and the not-found error."""
+    """Source-tagged list used by both discovery and the not-found error.
+
+    `env` outranks `plugin`: FEINSCHLIFF_LAYOUT_PATH is an explicit operator
+    override, so it must not be shadowed by a same-named layout in a stale
+    installed plugin.
+    """
     items: list[tuple[str, Path]] = [("bundled", _bundled_layouts_root())]
-    items.extend(("plugin", p) for p in _plugin_layouts_roots())
     items.extend(("env", p) for p in _env_layouts_roots())
+    items.extend(("plugin", p) for p in _plugin_layouts_roots())
     items.extend(("cwd-dev", p) for p in _cwd_dev_layouts_roots())
     items.append(("user", _user_layouts_root()))
     return items
@@ -112,8 +117,8 @@ def discover_layouts() -> list[LayoutSource]:
 
     Sources scanned, in priority order:
       1. bundled — `layouts/` next to the installed `lib/`
-      2. plugin — `~/.claude/plugins/.../layouts/` (feinschliff plugins only)
-      3. env — directories listed in `FEINSCHLIFF_LAYOUT_PATH` (colon-separated)
+      2. env — directories listed in `FEINSCHLIFF_LAYOUT_PATH` (colon-separated)
+      3. plugin — `~/.claude/plugins/.../layouts/` (feinschliff plugins only)
       4. cwd-dev — `feinschliff/layouts/` reachable by walking up from $CWD
       5. user — `~/.feinschliff/layouts/`
     """

@@ -200,3 +200,23 @@ def test_discover_brands_warns_on_broken_image_provider(tmp_path, monkeypatch):
         "kind": "unsplash",
         "config": {"rate_limit": 50},
     }
+
+
+def test_env_path_beats_same_named_plugin_brand(tmp_path, monkeypatch):
+    """FEINSCHLIFF_BRAND_PATH is an explicit operator override — a same-named
+    brand in an installed plugin must not shadow it (the verify-loop's
+    --brand-pack contract depends on this)."""
+    env_root = tmp_path / "env" / "brands"
+    plugin_root = tmp_path / "plugin" / "brands"
+    _write_brand(env_root, "omega")
+    _write_brand(plugin_root, "omega")
+    monkeypatch.setenv("FEINSCHLIFF_BRAND_PATH", str(env_root))
+    monkeypatch.setattr("feinschmiede.brand_discovery._bundled_brands_root", lambda: tmp_path / "no-bundled")
+    monkeypatch.setattr("feinschmiede.brand_discovery._user_brands_root", lambda: tmp_path / "no-user")
+    monkeypatch.setattr("feinschmiede.brand_discovery._plugin_brands_roots", lambda: [plugin_root])
+    monkeypatch.setattr("feinschmiede.brand_discovery._cwd_dev_brands_roots", lambda: [])
+
+    omega = find_brand("omega")
+    assert omega.root == env_root / "omega", (
+        f"plugin copy shadowed the env override: {omega.root}"
+    )

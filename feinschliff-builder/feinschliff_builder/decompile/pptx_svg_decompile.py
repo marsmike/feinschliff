@@ -376,13 +376,23 @@ def load_theme_scheme(pres: Presentation) -> dict[str, str]:
                 out[key] = "#" + srgb.get("val").upper()
             elif sys_ is not None:
                 out[key] = "#" + (sys_.get("lastClr") or "000000").upper()
-        # PowerPoint default clrMap aliases — these slots are always present
-        # and resolve to the matching scheme entry. Without them, a shape fill
-        # of `schemeClr val="bg2"` (used widely in corporate templates that put
-        # the slide bg in a layout rect rather than `<p:bg>`) falls through
-        # unmapped.
-        for alias, real in (("bg1", "lt1"), ("bg2", "lt2"),
-                            ("tx1", "dk1"), ("tx2", "dk2")):
+        # clrMap slot aliases — `schemeClr val="bg1|tx1|bg2|tx2"` resolves
+        # through the MASTER's `<p:clrMap>`, not directly against the scheme.
+        # Dark-master templates invert the defaults (bg1="dk1" tx1="lt1");
+        # assuming the default mapping renders such decks colour-inverted
+        # (black cover, white-on-yellow titles). Default mapping is the
+        # fallback when no master / no clrMap is reachable.
+        slot_map = {"bg1": "lt1", "bg2": "lt2", "tx1": "dk1", "tx2": "dk2"}
+        try:
+            clrmap_el = pres.slide_masters[0].element.find(f"{{{NS['p']}}}clrMap")
+        except Exception:
+            clrmap_el = None
+        if clrmap_el is not None:
+            for slot in slot_map:
+                real = clrmap_el.get(slot)
+                if real:
+                    slot_map[slot] = real
+        for alias, real in slot_map.items():
             if alias not in out and real in out:
                 out[alias] = out[real]
         if out:
@@ -874,7 +884,17 @@ def _text_runs(node: etree._Element, theme: dict[str, str], palette: dict[str, t
                 para_align = "right"
             elif algn == "just":
                 para_align = "justify"
-        for r in para.findall("a:r", NS):
+        for r in para:
+            tag = etree.QName(r).localname
+            # <a:br/> is a soft line break BETWEEN runs — PowerPoint renders
+            # the surrounding runs on separate lines. Dropping it would fuse
+            # them ("The power" + "of communication" → "The powerof…").
+            if tag == "br":
+                if para_runs:
+                    para_runs.append(TextRun(text="\n", pt=default_sz / 100))
+                continue
+            if tag != "r":
+                continue
             rPr = r.find("a:rPr", NS)
             t = r.find("a:t", NS)
             if t is None or t.text is None:
@@ -1350,14 +1370,22 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
     # will provide the actual content.
     shapes = [s for s in shapes if not (s.ph_idx and not _has_content(s))]
     inherited: list[Shape] = []
+    show_master = _show_master_sp(slide)
     layout_master_chain = _layout_master_chain(slide)
     for src in layout_master_chain:
+        is_master = etree.QName(src.element).localname == "sldMaster"
         chain_spTree = src.element.find(".//p:cSld/p:spTree", NS)
         if chain_spTree is None:
             continue
         chain_shapes: list[Shape] = []
         _walk(chain_spTree, (0, 0), chain_shapes, src, cmap, theme, palette)
         for s in chain_shapes:
+            # `showMasterSp="0"` (slide, else layout) hides the master's
+            # plain shapes — PowerPoint never renders them on such slides.
+            # Placeholders are exempt: the flag governs decorative master
+            # shapes only, placeholder inheritance still flows.
+            if is_master and not show_master and not (s.ph_idx or s.ph_type):
+                continue
             # Skip placeholder shapes the slide already owns with content.
             if s.ph_idx and s.ph_idx in slide_ph_idxs:
                 continue
@@ -1404,6 +1432,24 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
                 slide_ph_idxs.add(s.ph_idx)
     # Inherited chrome draws behind slide content.
     return inherited + shapes
+
+
+def _show_master_sp(slide) -> bool:
+    """Whether master shapes render on this slide (`showMasterSp`).
+
+    The slide's own flag wins when explicitly set; otherwise the layout's
+    flag decides; absent both, PowerPoint's default is to show them.
+    """
+    el = getattr(slide, "element", None)
+    v = el.get("showMasterSp") if el is not None else None
+    if v is not None:
+        return v not in ("0", "false")
+    layout = getattr(slide, "slide_layout", None)
+    lel = getattr(layout, "element", None)
+    lv = lel.get("showMasterSp") if lel is not None else None
+    if lv is not None:
+        return lv not in ("0", "false")
+    return True
 
 
 def _layout_master_chain(slide) -> list:
@@ -1659,7 +1705,11 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     padding_emu: tuple[int, int, int, int] | None = None
     autoshrink = False
     font_scale = 1.0
-    txBody = ch.find(".//p:txBody", NS) or ch.find(".//a:txBody", NS)
+    # NOT `find(...) or find(...)` — lxml element truthiness is based on
+    # child count, so a childless <p:txBody/> would falsily fall through.
+    txBody = ch.find(".//p:txBody", NS)
+    if txBody is None:
+        txBody = ch.find(".//a:txBody", NS)
     if txBody is not None:
         bodyPr = txBody.find("a:bodyPr", NS)
         if bodyPr is not None:

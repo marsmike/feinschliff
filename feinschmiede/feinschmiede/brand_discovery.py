@@ -91,10 +91,15 @@ def _cwd_dev_brands_roots() -> list[Path]:
 
 
 def _discovery_sources() -> list[tuple[str, Path]]:
-    """Source-tagged list used by both discovery and the not-found error."""
+    """Source-tagged list used by both discovery and the not-found error.
+
+    `env` outranks `plugin`: FEINSCHLIFF_BRAND_PATH is an explicit operator
+    override (a dev checkout, a verify-loop --brand-pack), so it must not be
+    shadowed by a same-named brand in a stale installed plugin.
+    """
     items: list[tuple[str, Path]] = [("bundled", _bundled_brands_root())]
-    items.extend(("plugin", p) for p in _plugin_brands_roots())
     items.extend(("env", p) for p in _env_brands_roots())
+    items.extend(("plugin", p) for p in _plugin_brands_roots())
     items.extend(("cwd-dev", p) for p in _cwd_dev_brands_roots())
     items.append(("user", _user_brands_root()))
     return items
@@ -109,8 +114,8 @@ def discover_brands() -> list[BrandPack]:
 
     Sources scanned, in priority order:
       1. bundled — `brands/` next to the installed `lib/`
-      2. plugin — `~/.claude/plugins/.../brands/`
-      3. env — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
+      2. env — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
+      3. plugin — `~/.claude/plugins/.../brands/`
       4. cwd-dev — `feinschliff/brands/` reachable by walking up from $CWD
       5. user — `~/.feinschliff/brands/`
     """
