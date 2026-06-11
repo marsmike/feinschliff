@@ -52,6 +52,8 @@ jobs:
           enable-cache: true
       - name: Launchers + build-wheels in sync with the generator
         run: python3 scripts/gen_launchers.py --check
+      - name: Manifest-check unit tests
+        run: uv run --no-project --with pytest pytest scripts/test_gen_launchers.py -q
       - name: constraints.txt matches the locked closure
         run: |
           set -euo pipefail
