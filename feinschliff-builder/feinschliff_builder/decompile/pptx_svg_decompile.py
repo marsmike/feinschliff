@@ -93,6 +93,9 @@ class Shape:
     stroke: str | None = None
     text_runs: list["TextRun"] = field(default_factory=list)
     is_picture: bool = False      # True for <p:pic> or ph type="pic"
+    # True when this shape was inherited from the layout/master (not authored on the
+    # slide). Slide-authored text is real content; only inherited text is prompt copy.
+    from_chain: bool = False
     ph_type: str | None = None    # 'title','body','subTitle','pic','ftr','sldNum',...
     ph_idx: str | None = None
     # Border width in design-px. Captured from `<a:ln w="...">` (EMU); when
@@ -122,6 +125,11 @@ class Shape:
     # always emits top-anchored text, so source content that's vertically
     # centered in its frame renders shifted up by half the frame height.
     valign: str | None = None
+    # normAutofit (PowerPoint "shrink text on overflow"): `autoshrink` arms the
+    # emitter's fit; `font_scale` (0..1) reproduces the source's pre-shrink so a
+    # placeholder's text fits its box instead of overflowing the final render.
+    autoshrink: bool = False
+    font_scale: float = 1.0
     # Text-frame internal insets as (l, t, r, b) in design-px. Source carries
     # these on `<a:bodyPr lIns="..." tIns="..." rIns="..." bIns="...">` in EMU.
     # When absent on source, defaults to PowerPoint's published 91440 / 45720
@@ -156,6 +164,14 @@ class Shape:
     # For a carried <p:pic> (template image): base64 of the embedded media bytes,
     # re-embedded into the output deck by the emitter (the source rId is dead here).
     native_media: str | None = None
+    # For a native-carried CHART <p:graphicFrame>: the external part-graph the
+    # frame's `<c:chart r:id>` reaches (the chart part + its chartStyle /
+    # chartColorStyle / embedded-xlsx children). A list of dicts, each
+    # {partname, content_type, blob (base64), reltype, parent ('slide' | a
+    # chart-partname str)}. Tables need NO external parts (inline <a:tbl>) so
+    # they leave this None; charts carry it so the emitter can re-create the
+    # parts + rewire rIds in the output deck. None = no external parts.
+    native_parts: list[dict] | None = None
 
 
 @dataclass
@@ -374,32 +390,60 @@ class CanvasMap:
 
 
 def _split_runs_by_color(runs: list["TextRun"]) -> list[list["TextRun"]]:
-    """Group runs into consecutive same-color blocks (paragraphs).
+    """Group runs into consecutive blocks of the same SIZE (and colour).
 
-    Newline markers (`text="\\n"`) act as paragraph separators — they don't
-    own a colour, so they're attached to the *preceding* block. Returns a
-    single-element list when all content shares one colour (the caller can
-    cheap-check len(blocks) and skip splitting in the common case).
+    A shape often stacks a large header over smaller body text ("Placeholder" 16pt
+    over "This text demonstrates…" 12pt) or a coloured headline over body bullets.
+    Collapsing to one primitive emits the whole shape at the MAX size / first
+    colour, so the small body renders too big and OVERFLOWS. Split so each block
+    keeps its own size + colour at its own y-offset (the caller positions them).
+
+    A **size change always starts a new block** (a size jump is a distinct
+    visual block regardless of layout). A **colour change splits only across a
+    paragraph boundary** — i.e. when a `\\n` marker separates the two
+    differently-coloured runs. Two explicitly-coloured runs on the SAME line
+    (no intervening `\\n`) stay in one block, because stacking them at separate
+    y-offsets would push the second run onto its own line. This is the
+    footer's "Internal C-SC1" (bold red) + " | C/CGB-CD | …" (ink) case: one
+    source line that previously split into two stacked statements. A colourless
+    run inherits and attaches to the current block. `\\n` markers attach to the
+    preceding block. Single-(size,colour) shapes return one block (the caller
+    skips splitting).
     """
     blocks: list[list[TextRun]] = []
     current: list[TextRun] = []
-    current_color: str | None = None
+    cur_color: str | None = None
+    cur_size: int | None = None
+    saw_break = False  # a paragraph `\n` marker seen since the last content run
     for r in runs:
-        rc = r.color if (r.text and r.text != "\n") else None
-        if rc is None:
-            # Newline marker or coloured-less run — append to current block.
+        if not (r.text and r.text != "\n"):
+            # Newline marker / empty run — attach to the current block and arm
+            # the colour-split (a colour change is only meaningful as a stacked
+            # block when it follows a real line break).
             if current:
                 current.append(r)
+            if r.text == "\n":
+                saw_break = True
             continue
-        if current_color is None:
-            current_color = rc
-            current.append(r)
-        elif rc == current_color:
-            current.append(r)
-        else:
+        sz = round(r.pt)
+        if not current:
+            current = [r]
+            cur_color, cur_size = r.color, sz
+            saw_break = False
+            continue
+        color_changed = (
+            saw_break
+            and r.color is not None and cur_color is not None and r.color != cur_color
+        )
+        if sz != cur_size or color_changed:
             blocks.append(current)
             current = [r]
-            current_color = rc
+            cur_color, cur_size = r.color, sz
+        else:
+            current.append(r)
+            if cur_color is None:
+                cur_color = r.color
+        saw_break = False
     if current:
         blocks.append(current)
     return blocks
@@ -623,6 +667,63 @@ def _layout_placeholder_anchor(slide, ph_type: str | None, ph_idx: str | None) -
                 if anc:
                     return {"ctr": "middle", "b": "bottom", "t": "top"}.get(anc)
     return None
+
+
+def _layout_placeholder_insets(
+    slide, ph_type: str | None, ph_idx: str | None
+) -> tuple[int | None, int | None, int | None, int | None]:
+    """Walk slide layout + master for a placeholder's inherited text-frame insets.
+
+    Like `_layout_placeholder_anchor` but for `<a:bodyPr lIns/tIns/rIns/bIns>`. A
+    title whose own bodyPr omits insets still renders at the layout/master
+    placeholder's insets — the master title placeholder sets all four to
+    `0`, so the slide's "Headline"/"Subheadline" must hug the box left edge, not
+    inherit PowerPoint's published 91440/45720 EMU default (which shoved them ~16
+    px right / 8 px down and was a top contributor to the heading ghost in the
+    redline). Returns (l, t, r, b) in EMU; each element is None when no ancestor
+    placeholder specifies that side (caller falls back to the PowerPoint default).
+    The MASTER is the cascade base; the LAYOUT placeholder overrides per-side."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    out: list[int | None] = [None, None, None, None]
+    # Master first (base), then layout (override) — later writes win per-side.
+    for parent in (p for p in (master, layout) if p is not None):
+        for sp in parent.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                bodyPr = sp.find(".//p:txBody/a:bodyPr", NS)
+                if bodyPr is None:
+                    continue
+                for i, attr in enumerate(("lIns", "tIns", "rIns", "bIns")):
+                    v = bodyPr.get(attr)
+                    if v is not None:
+                        try:
+                            out[i] = int(v)
+                        except (TypeError, ValueError):
+                            pass
+    return tuple(out)  # type: ignore[return-value]
+
+
+def _layout_placeholder_autofit(slide, ph_type: str | None, ph_idx: str | None) -> bool:
+    """Whether a placeholder INHERITS normAutofit ("shrink text on overflow") from
+    its layout/master. Some corporate templates set it on the LAYOUT (on the layout, not on
+    the slides), so without this the decompiled placeholder text renders full-size and
+    overflows the final render. We don't apply the layout's own fontScale (a template
+    default) — emitting `autoshrink` lets the renderer compute the per-slide fit,
+    matching PowerPoint."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in parent.element.iter("{%s}sp" % NS["p"]):
+            ph = sp.find(".//p:nvSpPr/p:nvPr/p:ph", NS)
+            if ph is None:
+                continue
+            if (ph_type and ph.get("type") == ph_type) or (ph_idx and ph.get("idx") == ph_idx):
+                if sp.find(".//p:txBody/a:bodyPr/a:normAutofit", NS) is not None:
+                    return True
+    return False
 
 
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
@@ -1262,6 +1363,7 @@ def walk_slide(slide, cmap: CanvasMap, theme: dict[str, str], palette: dict[str,
                 s.text_runs = []
                 if not _has_content(s):
                     continue
+            s.from_chain = True
             inherited.append(s)
             if s.ph_idx:
                 slide_ph_idxs.add(s.ph_idx)
@@ -1359,6 +1461,14 @@ def _walk(node, offset, shapes, slide, cmap, theme, palette):
         elif tag == "graphicFrame":
             _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette)
         elif tag == "grpSp":
+            # Whole-group native-carry: a top-level group of pure decorative
+            # chrome (custGeom / graphicFrame, NO content placeholder) is frozen
+            # verbatim — PowerPoint applies its own off/ext/chOff/chExt affine, so
+            # even a SCALED group of vectors (world maps, decorative clusters) that
+            # the per-shape re-synth mangles renders pixel-exact. Returns True when
+            # carried (don't recurse); False → recurse exactly as before.
+            if _try_carry_group(ch, offset, shapes, slide, cmap, theme):
+                continue
             # Walk children with the group's offset added. Scaled groups
             # (ext != chExt — typical for master-level logo bundles
             # dropped into smaller slots) are skipped because the walker
@@ -1503,6 +1613,8 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # pattern: source content at frame center, render content at frame top.
     valign: str | None = None
     padding_emu: tuple[int, int, int, int] | None = None
+    autoshrink = False
+    font_scale = 1.0
     txBody = ch.find(".//p:txBody", NS) or ch.find(".//a:txBody", NS)
     if txBody is not None:
         bodyPr = txBody.find("a:bodyPr", NS)
@@ -1512,14 +1624,46 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                 valign = "middle"
             elif anc == "b":
                 valign = "bottom"
-            # Insets — l/t/r/b. Source omits = PowerPoint defaults
-            # (91440 / 45720 EMU). Capture whatever's there so decompile
-            # preserves exact text position, including the default insets.
-            left = int(bodyPr.get("lIns") or 91440)
-            top = int(bodyPr.get("tIns") or 45720)
-            right = int(bodyPr.get("rIns") or 91440)
-            bottom = int(bodyPr.get("bIns") or 45720)
+            # Insets — l/t/r/b. The slide's own bodyPr wins per-side; for any
+            # side it omits, the placeholder INHERITS the layout/master
+            # placeholder's inset (the master title sets all four to 0, so
+            # the heading must hug the box edge); only when no ancestor specifies
+            # a side does PowerPoint's published default (91440 / 45720 EMU)
+            # apply. Without the inheritance step every empty-bodyPr title
+            # decompiled with the +16/+8 px default offset and ghosted in the
+            # redline.
+            inh = (
+                _layout_placeholder_insets(slide, ph_type, ph_idx)
+                if (ph_type or ph_idx)
+                else (None, None, None, None)
+            )
+
+            def _ins(attr: str, inherited: int | None, default: int) -> int:
+                v = bodyPr.get(attr)
+                if v is not None:
+                    try:
+                        return int(v)
+                    except (TypeError, ValueError):
+                        pass
+                return inherited if inherited is not None else default
+
+            left = _ins("lIns", inh[0], 91440)
+            top = _ins("tIns", inh[1], 45720)
+            right = _ins("rIns", inh[2], 91440)
+            bottom = _ins("bIns", inh[3], 45720)
             padding_emu = (left, top, right, bottom)
+            # normAutofit = PowerPoint "Shrink text on overflow": the source pre-
+            # shrinks the text by `fontScale` to fit the box (the run `sz` stays at
+            # the authored size). Capture it so the emitter reproduces the fit
+            # instead of rendering full-size and overflowing (inherited placeholders).
+            na = bodyPr.find("a:normAutofit", NS)
+            if na is not None:
+                autoshrink = True
+                if na.get("fontScale"):
+                    try:
+                        font_scale = int(na.get("fontScale")) / 100000.0
+                    except (TypeError, ValueError):
+                        pass
     # Vertical anchor also inherits: a slide title with no own bodyPr anchor still
     # renders bottom/centre-anchored when the layout/master placeholder bodyPr sets
     # it (MS Geometric: master title placeholder anchor="b" → titles sit at the box
@@ -1527,6 +1671,11 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # extension correctly skips bottom/middle text, so it won't fight this.
     if valign is None and (ph_type or ph_idx):
         valign = _layout_placeholder_anchor(slide, ph_type, ph_idx)
+    # normAutofit also inherits: some templates set "shrink text on overflow" on the
+    # LAYOUT placeholder, not the slide, so a placeholder whose own bodyPr lacks it
+    # still shrinks-to-fit — capture that (autoshrink) or the text overflows.
+    if not autoshrink and (ph_type or ph_idx):
+        autoshrink = _layout_placeholder_autofit(slide, ph_type, ph_idx)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
@@ -1642,6 +1791,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         shapes.append(Shape(
             kind="text", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
             text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, valign=valign,
+            autoshrink=autoshrink, font_scale=font_scale,
             padding=padding_px,
         ))
         return
@@ -1758,9 +1908,18 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
     if xfrm is None:
         return
     x, y, w, h = xfrm
-    ox, oy = offset
-    x += ox
-    y += oy
+    # Offset is a 2-tuple (translation-only ancestor groups) or an 8-tuple
+    # (scaled-group affine). Apply it exactly like _shape_bbox so a connector
+    # inside a SCALED group doesn't crash (`ox, oy = offset` blew up on the
+    # 8-tuple) and still lands at the right place.
+    if len(offset) == 2:
+        ox, oy = offset
+        x, y = x + ox, y + oy
+    else:
+        ox, oy, ax, ay, chox, choy, sx, sy = offset
+        x = ax + (x - chox) * sx + ox
+        y = ay + (y - choy) * sy + oy
+        w, h = w * sx, h * sy
     # Stroke color + width + dash from <a:ln w="..."><a:solidFill .../><a:prstDash .../></a:ln>.
     ln = spPr.find("a:ln", NS)
     stroke = None
@@ -1789,6 +1948,217 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
 
 CHART_NS = "http://schemas.openxmlformats.org/drawingml/2006/chart"
 RELS_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+# Relationship TYPE the slide part uses to reach a chart part. Stored as the
+# chart-part's `reltype` in the carried part-graph so the emitter re-creates
+# the slide→chart relationship with the correct type (the value is otherwise
+# unused for the leaf style/colors/xlsx parts, whose own reltypes are carried
+# verbatim from the source rels).
+RELS_NS_CHART = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/chart"
+
+# SmartArt / diagram graphicFrame. The `<dgm:relIds>` inside graphicData carries
+# four slide-rels (data / layout / quickStyle / colors); a 5th part — the
+# pre-rendered drawing — is reached via the dataN.xml extLst's
+# `<dsp:dataModelExt relId>` (also a slide rel). All five (+ any media sub-rel of
+# the data / drawing part) are native-carried so the diagram renders pixel-exact,
+# vs `_emit_smartart`'s lossy flatten (parses the cached drawing into bbox rects,
+# dropping connectors / geometry / per-node styling).
+DGM_NS = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+DSP_DATAMODEL_NS = "http://schemas.microsoft.com/office/drawing/2008/diagram"
+# Reltype for the diagramDrawing part (the dataN extLst relId points at it). This
+# is a Microsoft-extension reltype with no RELATIONSHIP_TYPE constant.
+RELS_NS_DGM_DRAWING = "http://schemas.microsoft.com/office/2007/relationships/diagramDrawing"
+# The four `<dgm:relIds>` attributes → their slide-rel reltypes, so the emitter
+# re-creates each slide→diagram relationship with the right type.
+_DGM_RELID_ATTRS = (
+    ("dm", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramData"),
+    ("lo", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramLayout"),
+    ("qs", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramQuickStyle"),
+    ("cs", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/diagramColors"),
+)
+# Relationship type a slide/part uses to reach an embedded raster image. Carried
+# as the reltype of a grouped <p:pic>'s media part so the emitter re-creates the
+# slide→image relationship with the right type when splicing a native group.
+RELS_NS_IMAGE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image"
+
+
+def _capture_group_parts(grp, slide, theme) -> list[dict] | None:
+    """Collect the external part-graph a native-carried `<p:grpSp>` reaches, so a
+    grouped chart / SmartArt / image renders pixel-exact after splicing.
+
+    Mirrors `_emit_graphic_frame`'s Stage B/C part-capture, but rooted at a WHOLE
+    group rather than a single graphicFrame, and additionally carries grouped
+    `<p:pic>` media (the existing single-`<p:pic>` `media:` path can't cover a
+    group with several pics). Returns a list of {partname, content_type, blob,
+    reltype, parent, src_rid} dicts (+ optional `ref` shared-part entries), or
+    None when the group reaches no external parts (pure inline custGeom — the
+    common decorative-vector case). Raises on a resolve failure so the caller's
+    try/except falls back to recursion.
+
+    Every captured XML blob gets schemeClr→srgbClr baked against the SOURCE theme
+    so the carried content keeps its exact source palette under the output deck's
+    theme — identical to the chart/diagram branches.
+    """
+    import base64 as _b64
+    parts: list[dict] = []
+    seen: set[str] = set()
+    shared: dict[str, dict[str, tuple[str, str]]] = {}
+
+    def _capture(part, parent_key: str, reltype: str, src_rid: str) -> None:
+        pn = str(part.partname)
+        if pn in seen:
+            # A part shared by two parents is materialised once, but record this
+            # parent's src_rid→part mapping so its own ref gets rewritten too.
+            if src_rid:
+                shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+            return
+        seen.add(pn)
+        if src_rid:
+            shared.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+        raw = part.blob
+        ct = part.content_type
+        if ct.endswith("+xml") or ct.endswith("/xml"):
+            try:
+                _proot = etree.fromstring(raw)
+                _bake_scheme_colors(_proot, theme)
+                raw = etree.tostring(_proot, xml_declaration=True,
+                                     encoding="UTF-8", standalone=True)
+            except Exception:
+                raw = part.blob
+        parts.append({
+            "partname": pn, "content_type": ct,
+            "blob": _b64.b64encode(raw).decode("ascii"),
+            "reltype": reltype, "parent": parent_key, "src_rid": src_rid,
+        })
+        try:
+            child_rels = list(part.rels.values())
+        except Exception:
+            child_rels = []
+        for r in child_rels:
+            if r.is_external:
+                continue
+            try:
+                tgt = r.target_part
+            except Exception:
+                continue
+            _capture(tgt, pn, r.reltype, r.rId)
+
+    # Grouped chart <c:chart r:id> — the chart part + its style/colors/xlsx graph.
+    for cref in grp.iter(f"{{{CHART_NS}}}chart"):
+        rid = cref.get(f"{{{RELS_NS}}}id")
+        if rid:
+            _capture(slide.part.related_part(rid), "slide", RELS_NS_CHART, rid)
+    # Grouped SmartArt <dgm:relIds> — the four dgm parts + pre-rendered drawing.
+    for relids in grp.findall(f".//{{{DGM_NS}}}relIds"):
+        data_part = None
+        for attr, reltype in _DGM_RELID_ATTRS:
+            rid = relids.get(f"{{{RELS_NS}}}{attr}")
+            if not rid:
+                continue
+            p = slide.part.related_part(rid)
+            if attr == "dm":
+                data_part = p
+            _capture(p, "slide", reltype, rid)
+        if data_part is not None:
+            try:
+                droot = etree.fromstring(data_part.blob)
+                dmext = droot.find(f".//{{{DSP_DATAMODEL_NS}}}dataModelExt")
+            except Exception:
+                dmext = None
+            draw_rid = dmext.get("relId") if dmext is not None else None
+            if draw_rid:
+                _capture(slide.part.related_part(draw_rid), "slide",
+                         RELS_NS_DGM_DRAWING, draw_rid)
+    # Grouped <p:pic> media — every <a:blip r:embed> resolves to an image part on
+    # the slide; carry it so the spliced blip can be re-pointed at a fresh rId.
+    for blip in grp.findall(".//a:blip", NS):
+        rid = blip.get(f"{{{RELS_NS}}}embed")
+        if not rid:
+            continue
+        try:
+            mp = slide.part.related_part(rid)
+        except Exception:
+            continue
+        _capture(mp, "slide", RELS_NS_IMAGE, rid)
+
+    if not parts:
+        return None
+    # Fold shared-child mappings into ref entries so the emitter wires the second
+    # parent's relationship + rewrites its ref without re-materialising the part.
+    for parent_key, m in shared.items():
+        for src_rid, (old_pn, reltype) in m.items():
+            if any(e.get("parent") == parent_key and e.get("src_rid") == src_rid
+                   for e in parts):
+                continue
+            parts.append({"ref": old_pn, "parent": parent_key,
+                          "src_rid": src_rid, "reltype": reltype})
+    return parts
+
+
+def _try_carry_group(ch, offset, shapes, slide, cmap, theme) -> bool:
+    """Native-carry a WHOLE decorative `<p:grpSp>` verbatim when it's pure chrome.
+
+    Extends native-carry from top-level graphicFrames / custGeom shapes to entire
+    groups — the last structural gap. A scaled group of custGeom vectors (world-map
+    illustrations, decorative clusters) re-synthesises lossily today because the
+    walker only carries a pure translation; carried WHOLE, PowerPoint applies the
+    group's own off/ext/chOff/chExt affine and the children render pixel-exact.
+
+    Qualifies (so we freeze it) only when the group:
+      * contains a `custGeom` OR a `<p:graphicFrame>` descendant (complex content
+        the per-shape re-synth botches), AND
+      * contains NO `<p:ph>` descendant — carrying it whole never buries a fillable
+        content slot, so the content/chrome split is preserved.
+
+    Top-level only (`len(offset) == 2`): the group's xfrm is then slide-absolute, so
+    shifting its own `grpSpPr/a:off` by the (pure-translation) offset places it
+    correctly and the internal chOff/chExt handle the child affine untouched. A
+    nested-scaled group (8-tuple offset) recurses as before. Returns True when it
+    carried the group (caller must NOT recurse); False to recurse exactly as today.
+    Any failure returns False → safe fall-back to recursion.
+    """
+    if len(offset) != 2:
+        return False
+    # Qualify gate: complex content present, no content placeholder buried inside.
+    has_complex = (ch.find(".//a:custGeom", NS) is not None
+                   or ch.find(".//p:graphicFrame", NS) is not None)
+    if not has_complex:
+        return False
+    if ch.find(".//p:ph", NS) is not None:
+        return False
+    try:
+        import copy as _copy
+        grp_xfrm = ch.find("p:grpSpPr/a:xfrm", NS)
+        if grp_xfrm is None:
+            return False
+        off = grp_xfrm.find("a:off", NS)
+        ext = grp_xfrm.find("a:ext", NS)
+        if off is None or ext is None:
+            return False
+        ox, oy = int(offset[0]), int(offset[1])
+        gx = int(off.get("x")) + ox
+        gy = int(off.get("y")) + oy
+        gw = int(ext.get("cx"))
+        gh = int(ext.get("cy"))
+        # Carry the external part-graph (grouped chart / SmartArt / pic media)
+        # BEFORE mutating the copy, so blob capture reads the live source rels.
+        parts = _capture_group_parts(ch, slide, theme)
+        grp = _copy.deepcopy(ch)
+        _bake_scheme_colors(grp, theme)
+        # Shift the group's OWN origin by the ancestor translation; leave chOff /
+        # chExt (they define the child coordinate space the group internally maps).
+        _goff = grp.find("p:grpSpPr/a:xfrm/a:off", NS)
+        if _goff is not None and (ox or oy):
+            _goff.set("x", str(int(_goff.get("x") or 0) + ox))
+            _goff.set("y", str(int(_goff.get("y") or 0) + oy))
+        shapes.append(Shape(
+            kind="graphic",
+            x=cmap.x(gx), y=cmap.y(gy), w=cmap.w(gw), h=cmap.h(gh),
+            native_xml=etree.tostring(grp).decode("utf-8"),
+            native_parts=parts,
+        ))
+        return True
+    except Exception:
+        return False
 
 
 def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
@@ -1808,12 +2178,130 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
 
     tbl = ch.find(".//a:tbl", NS)
     if tbl is not None:
+        # Native-carry the whole graphicFrame (inline <a:tbl>, no external parts) for
+        # a pixel-exact table — _emit_table's cell-by-cell re-synthesis drifts (guessed
+        # row heights, only bottom borders, no merged cells, and mixed cell font sizes
+        # collapse + overflow). Top-level only (offset is a pure translation).
+        if len(offset) == 2:
+            try:
+                import copy as _copy
+                frame = _copy.deepcopy(ch)
+                _bake_scheme_colors(frame, theme)
+                _foff = frame.find("p:xfrm/a:off", NS)
+                if _foff is not None and (offset[0] or offset[1]):
+                    _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
+                    _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+                shapes.append(Shape(
+                    kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
+                    w=cmap.w(fw), h=cmap.h(fh),
+                    native_xml=etree.tostring(frame).decode("utf-8"),
+                ))
+                return
+            except Exception:
+                pass
         _emit_table(tbl, x0, y0, shapes, cmap, theme, palette)
         return
 
     # <c:chart r:id="..."/> inside graphicData → resolve chart part via slide rels.
     chart_ref = ch.find(f".//{{{CHART_NS}}}chart")
     if chart_ref is not None:
+        # Native-carry the whole graphicFrame + its external part-graph (the chart
+        # part itself + its chartStyle / chartColorStyle / embedded-xlsx children)
+        # so the chart renders pixel-exact, vs _emit_chart's lossy re-synthesis
+        # (pie/bar only, recoloured to brand, line/area/etc dropped). Top-level
+        # only (offset is a pure translation; a grouped frame's xfrm is
+        # group-relative). Falls back to _emit_chart on ANY failure so a single
+        # awkward chart never crashes the decompile.
+        if len(offset) == 2:
+            try:
+                import copy as _copy
+                import base64 as _b64
+                frame = _copy.deepcopy(ch)
+                _bake_scheme_colors(frame, theme)
+                _foff = frame.find("p:xfrm/a:off", NS)
+                if _foff is not None and (offset[0] or offset[1]):
+                    _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
+                    _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+                # Walk every <c:chart r:id> in the frame and collect the part-graph
+                # rooted at each chart part. Each entry records:
+                #   parent   — 'slide' for the chart part itself (related from
+                #              slide.part), else the OWNING chart-partname str for
+                #              that chart's children, so the emitter rewires
+                #              bottom-up.
+                #   src_rid  — the rId by which this part is referenced FROM its
+                #              parent in the SOURCE deck (the <c:chart r:id> for a
+                #              chart part; the chart-part rel rId for a leaf). The
+                #              emitter maps src_rid→new_rid to rewrite the matching
+                #              r:id / r:embed references (e.g. <c:externalData> →
+                #              the xlsx) so they point at the freshly-created parts.
+                parts: list[dict] = []
+                seen: set[str] = set()
+
+                def _capture_graph(part, parent_key: str, reltype: str, src_rid: str) -> None:
+                    pn = str(part.partname)
+                    if pn in seen:
+                        return
+                    seen.add(pn)
+                    # Bake schemeClr→srgbClr against the SOURCE theme in every
+                    # carried XML part (chart, chartStyle, chartColorStyle) so the
+                    # chart keeps its EXACT source series colours. Chart series are
+                    # nearly always theme accent refs (accent1..6 in both chart.xml
+                    # and colors*.xml); without baking they'd resolve against the
+                    # OUTPUT deck's default theme and render in Office defaults
+                    # (red/green/purple) instead of the brand palette. The
+                    # embedded .xlsx is a binary zip, not XML — leave it verbatim.
+                    raw = part.blob
+                    ct = part.content_type
+                    if ct.endswith("+xml") or ct.endswith("/xml"):
+                        try:
+                            _proot = etree.fromstring(raw)
+                            _bake_scheme_colors(_proot, theme)
+                            raw = etree.tostring(
+                                _proot, xml_declaration=True,
+                                encoding="UTF-8", standalone=True,
+                            )
+                        except Exception:
+                            raw = part.blob
+                    parts.append({
+                        "partname": pn,
+                        "content_type": ct,
+                        "blob": _b64.b64encode(raw).decode("ascii"),
+                        "reltype": reltype,
+                        "parent": parent_key,
+                        "src_rid": src_rid,
+                    })
+                    # Recurse into THIS part's own relationships (chart → style /
+                    # colors / xlsx; those leaves have no further parts we carry).
+                    try:
+                        child_rels = list(part.rels.values())
+                    except Exception:
+                        child_rels = []
+                    for r in child_rels:
+                        if r.is_external:
+                            continue
+                        try:
+                            tgt = r.target_part
+                        except Exception:
+                            continue
+                        _capture_graph(tgt, pn, r.reltype, r.rId)
+
+                for cref in frame.iter(f"{{{CHART_NS}}}chart"):
+                    rid = cref.get(f"{{{RELS_NS}}}id")
+                    if not rid:
+                        continue
+                    cp = slide.part.related_part(rid)
+                    _capture_graph(cp, "slide", RELS_NS_CHART, rid)
+                if not parts:
+                    raise ValueError("no chart parts resolved")
+                shapes.append(Shape(
+                    kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
+                    w=cmap.w(fw), h=cmap.h(fh),
+                    native_xml=etree.tostring(frame).decode("utf-8"),
+                    native_parts=parts,
+                ))
+                return
+            except Exception:
+                pass
         rid = chart_ref.get(f"{{{RELS_NS}}}id")
         if rid:
             try:
@@ -1823,6 +2311,140 @@ def _emit_graphic_frame(ch, offset, shapes, slide, cmap, theme, palette):
             if chart_part is not None:
                 _emit_chart(chart_part, x0, y0, fw, fh, shapes, cmap, theme, palette)
         return
+
+    # SmartArt / diagram: graphicData uri='…/drawingml/2006/diagram' containing
+    # `<dgm:relIds r:dm/r:lo/r:qs/r:cs>`. Native-carry the whole graphicFrame + the
+    # diagram part-graph (data / layout / quickStyle / colors + the pre-rendered
+    # drawing + any media sub-rel) so the diagram renders pixel-exact, vs
+    # `_emit_smartart`'s lossy flatten. Top-level only (offset is a pure
+    # translation; a grouped frame's xfrm is group-relative). Falls back to
+    # `_emit_smartart` on ANY failure so an awkward diagram never crashes decompile.
+    gdata = ch.find(".//a:graphicData", NS)
+    gdata_uri = gdata.get("uri") if gdata is not None else None
+    relids_list = ch.findall(f".//{{{DGM_NS}}}relIds")
+    if gdata_uri and gdata_uri.endswith("/diagram") and relids_list and len(offset) == 2:
+        try:
+            import copy as _copy
+            import base64 as _b64
+            frame = _copy.deepcopy(ch)
+            _bake_scheme_colors(frame, theme)
+            _foff = frame.find("p:xfrm/a:off", NS)
+            if _foff is not None and (offset[0] or offset[1]):
+                _foff.set("x", str(int(_foff.get("x") or 0) + int(offset[0])))
+                _foff.set("y", str(int(_foff.get("y") or 0) + int(offset[1])))
+            # Collect the diagram part-graph. Each entry records the same shape as
+            # the chart branch ({partname, content_type, blob, reltype, parent,
+            # src_rid}). The four dgm parts + the drawing part hang off 'slide';
+            # a media image (data/drawing → ../media/imageN.png) hangs off its
+            # data/drawing part. schemeClr→srgbClr is baked into every XML blob
+            # (colors*.xml + the drawing reference the theme), so the diagram
+            # keeps its EXACT source palette under the output deck's theme.
+            parts: list[dict] = []
+            seen: set[str] = set()
+
+            def _capture_graph(part, parent_key: str, reltype: str, src_rid: str) -> None:
+                pn = str(part.partname)
+                # A part shared by two parents (a data part AND
+                # drawing10 both reference ../media/image131.png) is materialised
+                # ONCE, but we still record THIS parent's src_rid→part mapping so
+                # the SECOND parent's own <…r:embed> gets rewritten too. Without
+                # this the drawing's image ref would dangle at build time.
+                if pn in seen:
+                    if src_rid:
+                        _DGM_SHARED.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+                    return
+                seen.add(pn)
+                if src_rid:
+                    _DGM_SHARED.setdefault(parent_key, {})[src_rid] = (pn, reltype)
+                raw = part.blob
+                ct = part.content_type
+                if ct.endswith("+xml") or ct.endswith("/xml"):
+                    try:
+                        _proot = etree.fromstring(raw)
+                        _bake_scheme_colors(_proot, theme)
+                        raw = etree.tostring(
+                            _proot, xml_declaration=True,
+                            encoding="UTF-8", standalone=True,
+                        )
+                    except Exception:
+                        raw = part.blob
+                parts.append({
+                    "partname": pn,
+                    "content_type": ct,
+                    "blob": _b64.b64encode(raw).decode("ascii"),
+                    "reltype": reltype,
+                    "parent": parent_key,
+                    "src_rid": src_rid,
+                })
+                try:
+                    child_rels = list(part.rels.values())
+                except Exception:
+                    child_rels = []
+                for r in child_rels:
+                    if r.is_external:
+                        continue
+                    try:
+                        tgt = r.target_part
+                    except Exception:
+                        continue
+                    _capture_graph(tgt, pn, r.reltype, r.rId)
+
+            # `_DGM_SHARED` records, per parent-partname, the src_rid→partname of
+            # any ALREADY-captured shared child so the emitter can still wire the
+            # second parent's rel + rewrite its ref. (parent → {src_rid: old_pn})
+            _DGM_SHARED: dict[str, dict[str, str]] = {}
+            for relids in relids_list:
+                # The four core parts, resolved via the slide rels.
+                data_part = None
+                for attr, reltype in _DGM_RELID_ATTRS:
+                    rid = relids.get(f"{{{RELS_NS}}}{attr}")
+                    if not rid:
+                        continue
+                    p = slide.part.related_part(rid)
+                    if attr == "dm":
+                        data_part = p
+                    _capture_graph(p, "slide", reltype, rid)
+                # The pre-rendered drawing: dataN extLst <dsp:dataModelExt relId>
+                # is a SLIDE rel pointing at the drawing part.
+                if data_part is not None:
+                    dme = data_part.blob
+                    try:
+                        droot = etree.fromstring(dme)
+                        dmext = droot.find(
+                            f".//{{{DSP_DATAMODEL_NS}}}dataModelExt"
+                        )
+                    except Exception:
+                        dmext = None
+                    draw_rid = dmext.get("relId") if dmext is not None else None
+                    if draw_rid:
+                        dp = slide.part.related_part(draw_rid)
+                        _capture_graph(dp, "slide", RELS_NS_DGM_DRAWING, draw_rid)
+            if not parts:
+                raise ValueError("no diagram parts resolved")
+            # Fold the shared-child mappings into the parts list so the emitter
+            # can wire them: emit one extra entry per (parent, src_rid) that
+            # points at an EXISTING carried part (blob omitted — the emitter
+            # recognises a "ref"-only entry and reuses the materialised part).
+            for parent_key, m in _DGM_SHARED.items():
+                for src_rid, (old_pn, reltype) in m.items():
+                    if any(
+                        e["parent"] == parent_key and e.get("src_rid") == src_rid
+                        for e in parts
+                    ):
+                        continue
+                    parts.append({
+                        "ref": old_pn, "parent": parent_key,
+                        "src_rid": src_rid, "reltype": reltype,
+                    })
+            shapes.append(Shape(
+                kind="graphic", x=cmap.x(x0), y=cmap.y(y0),
+                w=cmap.w(fw), h=cmap.h(fh),
+                native_xml=etree.tostring(frame).decode("utf-8"),
+                native_parts=parts,
+            ))
+            return
+        except Exception:
+            pass
 
     # SmartArt diagrams: graphicData uri='…/drawingml/2006/diagram'. The slide
     # rels carry both a `diagramData` (the semantic model) and a
@@ -2916,6 +3538,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     custs = [s for s in shapes if s.kind == "shape"]
     pics = [s for s in shapes if s.kind == "pic" or s.is_picture]
     lines = [s for s in shapes if s.kind == "line"]
+    graphics = [s for s in shapes if s.kind == "graphic"]
     texts: list[Shape] = []
     for s in shapes:
         if s.kind == "text" and s.text_runs:
@@ -2925,7 +3548,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             texts.append(Shape(
                 kind="text", x=s.x, y=s.y, w=s.w, h=s.h, text_runs=s.text_runs,
                 ph_type=s.ph_type, ph_idx=s.ph_idx, valign=s.valign,
-                padding=s.padding,
+                padding=s.padding, from_chain=s.from_chain,
             ))
     # Drop demo-placeholder text. Corporate templates ship slides with
     # literal guidance text inside placeholders ("Headline", "Subheadline",
@@ -2943,6 +3566,15 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # the whole shape gets dropped.
     filtered: list[Shape] = []
     for t in texts:
+        # Demo-placeholder suppression applies ONLY to text inherited from the
+        # layout/master (true prompt copy). Slide-AUTHORED text is real content —
+        # corporate templates ship visible example copy ("Presentation
+        # title", "This is a placeholder text") right on the slide, which the renderer
+        # shows; string-matching it as a prompt wrongly deleted it. (MS-gallery prompts
+        # are inherited and already blanked in walk_slide, so this doesn't regress them.)
+        if not t.from_chain:
+            filtered.append(t)
+            continue
         if _is_placeholder_text(t.text_runs):
             continue
         stripped = _strip_placeholder_paragraphs(t.text_runs)
@@ -2954,7 +3586,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         filtered.append(Shape(
             kind=t.kind, x=t.x, y=t.y, w=t.w, h=t.h,
             text_runs=stripped, ph_type=t.ph_type, ph_idx=t.ph_idx,
-            valign=t.valign, padding=t.padding,
+            valign=t.valign, padding=t.padding, from_chain=t.from_chain,
         ))
     texts = filtered
 
@@ -3028,6 +3660,23 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         else:
             out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
 
+    # Native graphic frames carried verbatim — pixel-exact, vs the lossy
+    # re-synthesis. Tables ship inline (<a:tbl>, no external parts → b64 only).
+    # Charts ALSO carry an external part-graph (the chart part + chartStyle /
+    # chartColorStyle / embedded-xlsx) as a base64-of-json `parts:` kwarg so the
+    # emitter can re-create the parts + rewire rIds in the output deck.
+    for i, s in enumerate(graphics, 1):
+        if s.native_xml:
+            import base64 as _b64
+            _enc = _b64.b64encode(s.native_xml.encode("utf-8")).decode("ascii")
+            if s.native_parts:
+                _pj = _b64.b64encode(
+                    json.dumps(s.native_parts).encode("utf-8")
+                ).decode("ascii")
+                out.append(f'native graphic{i} b64:"{_enc}" parts:"{_pj}"')
+            else:
+                out.append(f'native graphic{i} b64:"{_enc}"')
+
     # Ovals (circles, decorative dots). Stroke-only ovals (callout
     # circles, annotation marks) emit as stroke without fill; fill-only
     # ovals emit fill; if neither is present, fall back to a muted neutral
@@ -3096,13 +3745,19 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     if rects or pics or lines or ovals or custs:
         out.append("")
 
-    # Footer collection: shapes whose y is in the bottom 8%.
-    footer_runs: list[tuple[int, int, str]] = []
+    # Footer collection: shapes whose y is in the bottom 8%. Keep the whole
+    # SHAPE (not a per-run flatten) so the footer emit below preserves the
+    # source text box's real width / padding / size / colour — a per-run
+    # flatten dropped all four, hardcoded a 400 px maxwidth, and split a
+    # two-run line ("Internal C-SC1" + " | C/CGB-CD | …") into two stacked
+    # `text` statements. The narrow 400 px box wrapped the long © copyright
+    # line into ~6 lines (the "Textumbruch" / line-break drift the reviewer
+    # flagged), shifting the whole footer block.
+    footer_shapes: list[Shape] = []
     body_texts: list[Shape] = []
     for t in texts:
         if t.y >= footer_y_threshold:
-            for r in t.text_runs:
-                footer_runs.append((t.x, t.y, r.text))
+            footer_shapes.append(t)
         else:
             body_texts.append(t)
 
@@ -3126,6 +3781,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # two 13pt paragraphs share a single shape.
         content_pts = [r.pt for r in t.text_runs if r.text and r.text != "\n"]
         pt = max(content_pts) if content_pts else max((r.pt for r in t.text_runs), default=18)
+        # normAutofit: reproduce the source's pre-shrink so placeholder text fits
+        # its box (the source shrank the displayed size by font_scale; the run sz
+        # stayed at the authored value, which we'd otherwise emit and overflow).
+        pt *= t.font_scale
         style = _style_for(pt, full, is_footer=False)
         text = full.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
         mw = max(80, t.w)
@@ -3175,6 +3834,9 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # shrinks every untagged text. Locking each run to its source pt
         # makes physical font sizes faithful regardless of slide scale.
         size_attr = f" size:{pt:g}pt"
+        # autoshrink: source bodyPr had normAutofit — arm the emitter's fit as a
+        # safety net (no-op when the scaled size already fits the box).
+        autoshrink_attr = " autoshrink:true" if t.autoshrink else ""
         valign_attr = f" valign:{t.valign}" if t.valign else ""
         # Horizontal align — pick the first non-None align from the runs.
         # PPTX stores it per-paragraph; for a single emitted `text` primitive
@@ -3215,29 +3877,55 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         if t.valign in (None, "top"):
             mh = max(mh, _bottom - t.y - _gap)
         out.append(
-            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{valign_attr}{align_attr}{padding_attr} '
+            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{autoshrink_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'
         )
 
-    # Footer-region text. Anything below `footer_y_threshold` (bottom 8%)
-    # is emitted as plain `text` primitives — brand-agnostic. Brands that
-    # ship a dedicated `footer(...)` compound can post-process the
-    # output to collapse the lines into one compound call (typically via a
-    # brand-specific post-pass or plugin emit hook). We deliberately
-    # do NOT try to detect master-inherited chrome here: chrome that the
-    # slide XML doesn't carry won't appear in this decompile, which is
-    # the honest behaviour for a single-slide decompiler. Use the
-    # brand's compound + master template at build-time for chrome.
-    if footer_runs:
-        footer_runs.sort(key=lambda r: (r[1], r[0]))
+    # Footer-region text. Anything below `footer_y_threshold` (bottom 8%) is
+    # emitted as `style:footer` text primitives. Each source text box becomes
+    # ONE statement that keeps its real captured box (x, y, maxwidth from the
+    # box width, maxheight from the box height), its source font size, its
+    # per-run colour (the classification line's leading run is bold red
+    # #D70012), and its text-frame padding. Emitting the real box width is what
+    # makes the long copyright line wrap onto the same line count as the source
+    # (the previous hardcoded 400 px box wrapped it ~6× and pushed the footer
+    # up). Multi-run boxes concatenate verbatim so a two-run line stays one
+    # line instead of splitting into two stacked statements.
+    if footer_shapes:
+        footer_shapes.sort(key=lambda s: (s.y, s.x))
         out.append("")
-        for x, y, raw in footer_runs:
-            text = re.sub(r"\s+", " ", raw).strip()
-            if not text:
+        for t in footer_shapes:
+            raw = "".join(r.text for r in t.text_runs if r.text)
+            full = re.sub(r"[ \t]+", " ", raw).strip()
+            full = re.sub(r" *\n *", "\n", full)
+            if not full:
                 continue
-            escaped = text.replace("\\", "\\\\").replace('"', '\\"')
+            text = full.replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+            content_pts = [r.pt for r in t.text_runs if r.text and r.text != "\n"]
+            pt = max(content_pts) if content_pts else 6.0
+            pt *= t.font_scale
+            mw = max(80, t.w)
+            mh = max(16, t.h)
+            size_attr = f" size:{pt:g}pt"
+            # Footer copyright/classification lines are short and box-bound; the
+            # first run's colour wins (matches the body path's colour pick). The
+            # `footer` bundle's own default colour is suppressed when equal.
+            run_colors = [r.color for r in t.text_runs if r.color]
+            run_color = run_colors[0] if run_colors else None
+            footer_default = STYLE_BUNDLES.get("footer", {}).get("color")
+            color_attr = (
+                f" color:{run_color}" if run_color and run_color != footer_default else ""
+            )
+            padding_attr = ""
+            if t.padding is not None:
+                left, top, right, bottom = t.padding
+                if left == right and top == bottom and left == top:
+                    padding_attr = f" padding:{left:g}"
+                else:
+                    padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
             out.append(
-                f'text {x},{y} style:footer maxwidth:400 maxheight:40 "{escaped}"'
+                f'text {t.x},{t.y} style:footer{color_attr}{size_attr}{padding_attr} '
+                f'maxwidth:{mw} maxheight:{mh} "{text}"'
             )
 
     return "\n".join(out) + "\n"

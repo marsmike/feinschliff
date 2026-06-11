@@ -1843,14 +1843,197 @@ def _strip_theme_style(shape) -> None:
         shape._element.remove(el)
 
 
+def _splice_native_parts(slide, frame_el, parts_b64: str, node: DSLNode) -> None:
+    """Re-create a native-carried CHART or DIAGRAM external part-graph in this deck.
+
+    `parts_b64` is base64 of a JSON list (emitted by the decompiler's
+    `_emit_graphic_frame` chart / diagram branches). Each entry is either a full
+    part {partname, content_type, blob (base64 bytes), reltype, parent, src_rid}
+    or — only for a diagram's media image shared by two parents (data + drawing
+    both point at the same imageN.png) — a ref entry {ref (old partname of an
+    already-materialised part), parent, src_rid} that wires a SECOND relationship
+    to the existing part without re-materialising it.
+
+    The carrier references point at SOURCE rIds that are dead in this deck:
+      * chart: the frame's `<c:chart r:id>` + each chart part's `<c:externalData
+        r:id>`;
+      * diagram: the frame's `<dgm:relIds r:dm/r:lo/r:qs/r:cs>` (slide-level) +
+        the dataN part's `<dsp:dataModelExt relId>` (a slide rel, but stored
+        INSIDE the data part's XML) + any data/drawing → image `r:embed`.
+
+    We:
+      1. Materialise every full part as a fresh `Part` (new partname from the
+         package so it can't collide with parts already in the output deck).
+      2. Wire relationships bottom-up: each child part is `relate_to`'d from its
+         parent (a chart/data/drawing part for the leaves) or from `slide.part`
+         (chart part + the four dgm parts + the drawing part). `relate_to`
+         returns the NEW rId. Ref entries wire an extra rel to an existing part.
+      3. Rewrite every r:id / r:embed / relId reference from the relevant src→new
+         map — the frame's chart/diagram refs from the slide-level map; each
+         part's own XML from that part's map; PLUS the dataN dataModelExt relId
+         from the slide-level map (it's a slide rel living inside the data part)
+         — then push the rewritten XML back onto each part's blob.
+
+    `[Content_Types].xml` + save-reachability are automatic once each part has
+    the right content_type and is related into the slide's part graph.
+    """
+    import base64
+    import json
+    from pptx.opc.package import Part
+    from pptx.oxml.ns import qn
+
+    try:
+        entries = json.loads(base64.b64decode(parts_b64).decode("utf-8"))
+    except Exception as exc:
+        raise DSLError(
+            f"native chart (line {node.line_no}): unparseable carried parts — {exc}"
+        )
+    if not entries:
+        return
+
+    pkg = slide.part.package
+    # Per content-type partname template (so a re-created xlsx lands in
+    # /ppt/embeddings/, styles in /ppt/charts/, etc.). Falls back to a generic
+    # chart-part slot for anything unforeseen — partname uniqueness is what
+    # matters; the directory is cosmetic.
+    _CT = {
+        "application/vnd.openxmlformats-officedocument.drawingml.chart+xml":
+            "/ppt/charts/chart%d.xml",
+        "application/vnd.ms-office.chartstyle+xml":
+            "/ppt/charts/style%d.xml",
+        "application/vnd.ms-office.chartcolorstyle+xml":
+            "/ppt/charts/colors%d.xml",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":
+            "/ppt/embeddings/Microsoft_Excel_Worksheet%d.xlsx",
+        # SmartArt / diagram parts — land them in /ppt/diagrams/ so the package
+        # mirrors a PowerPoint-authored deck (cosmetic; uniqueness is what counts).
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramData+xml":
+            "/ppt/diagrams/data%d.xml",
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramLayout+xml":
+            "/ppt/diagrams/layout%d.xml",
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramStyle+xml":
+            "/ppt/diagrams/quickStyle%d.xml",
+        "application/vnd.openxmlformats-officedocument.drawingml.diagramColors+xml":
+            "/ppt/diagrams/colors%d.xml",
+        "application/vnd.ms-office.drawingml.diagramDrawing+xml":
+            "/ppt/diagrams/drawing%d.xml",
+        "image/png": "/ppt/media/image%d.png",
+        "image/jpeg": "/ppt/media/image%d.jpeg",
+    }
+
+    # 1. Materialise every FULL part (no rels yet). `ref` entries (a diagram's
+    #    shared image, already materialised under its first parent) carry no blob
+    #    — skip them here; step 2 wires the extra relationship.
+    new_part: dict[str, Part] = {}
+    for e in entries:
+        if "ref" in e:
+            continue
+        tmpl = _CT.get(e["content_type"], "/ppt/charts/chart%d.xml")
+        pn = pkg.next_partname(tmpl)
+        p = Part(pn, e["content_type"], pkg, blob=base64.b64decode(e["blob"]))
+        new_part[e["partname"]] = p
+
+    # 2. Wire rels bottom-up + build a per-PARENT src_rid → new_rid map so we can
+    #    rewrite references inside each parent's XML afterwards. Keyed by the
+    #    parent's OLD partname (chart/data/drawing parts) or the literal "slide"
+    #    sentinel (chart part + the four dgm parts + the drawing part).
+    rid_map: dict[str, dict[str, str]] = {}
+    for e in entries:
+        # A ref entry points at an already-materialised part (its OLD partname);
+        # a full entry materialised one keyed by its own OLD partname.
+        child = new_part.get(e["ref"]) if "ref" in e else new_part.get(e["partname"])
+        if child is None:
+            continue
+        parent_key = e["parent"]
+        if parent_key == "slide":
+            parent_part = slide.part
+        else:
+            parent_part = new_part.get(parent_key)
+            if parent_part is None:
+                # Parent wasn't carried (shouldn't happen — capture is rooted at
+                # the chart / dgm parts) — skip wiring this orphan rather than crash.
+                continue
+        new_rid = parent_part.relate_to(child, e["reltype"])
+        src_rid = e.get("src_rid")
+        if src_rid:
+            rid_map.setdefault(parent_key, {})[src_rid] = new_rid
+
+    # 3a. Rewrite the FRAME's references (parent == "slide"): chart `<c:chart
+    #     r:id>` AND diagram `<dgm:relIds r:dm/r:lo/r:qs/r:cs>`.
+    slide_map = rid_map.get("slide", {})
+    if slide_map:
+        for cref in frame_el.iter(qn("c:chart")):
+            old = cref.get(qn("r:id"))
+            if old in slide_map:
+                cref.set(qn("r:id"), slide_map[old])
+        # `dgm` isn't a prefix python-pptx's `qn` knows, so match relIds via its
+        # Clark-notation namespace literal; the r:dm/lo/qs/cs attrs resolve fine.
+        _DGM = "http://schemas.openxmlformats.org/drawingml/2006/diagram"
+        for relids in frame_el.iter("{%s}relIds" % _DGM):
+            for _a in ("r:dm", "r:lo", "r:qs", "r:cs"):
+                old = relids.get(qn(_a))
+                if old in slide_map:
+                    relids.set(qn(_a), slide_map[old])
+        # A native-carried `<p:grpSp>` of decorative chrome may embed grouped
+        # `<p:pic>` images whose `<a:blip r:embed>` points at a dead SOURCE rId.
+        # Their media is carried as image parts (parent == "slide"), so rewrite
+        # every blip on the frame from the slide map. (Chart/diagram frames carry
+        # no slide-rel-referencing blip on the FRAME — their image refs live
+        # inside the chart/data/drawing PARTS and are fixed by 3b's part_map — so
+        # this is a no-op for them.)
+        for _blip in frame_el.iter(qn("a:blip")):
+            old = _blip.get(qn("r:embed"))
+            if old in slide_map:
+                _blip.set(qn("r:embed"), slide_map[old])
+            old_link = _blip.get(qn("r:link"))
+            if old_link in slide_map:
+                _blip.set(qn("r:link"), slide_map[old_link])
+
+    # 3b. Rewrite each carried part's own XML and push the rewritten bytes back.
+    #     Each part rewrites r:id / r:embed from its OWN map (chart →
+    #     <c:externalData r:id>; data/drawing → image <…r:embed>). The dataN part
+    #     ALSO carries a `<dsp:dataModelExt relId>` that is a SLIDE rel (it points
+    #     at the drawing part) — rewrite that one from the slide_map. We therefore
+    #     visit every part that has either its own map OR a dataModelExt to fix.
+    from lxml import etree as _etree
+    _R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+    _DSP = "http://schemas.microsoft.com/office/drawing/2008/diagram"
+    for old_pn, part in new_part.items():
+        part_map = rid_map.get(old_pn)
+        try:
+            root = _etree.fromstring(part.blob)
+        except Exception:
+            continue
+        changed = False
+        # The dataN dataModelExt relId is a SLIDE-level rel stored inside the data
+        # part. Rewrite it from slide_map (NOT this part's map).
+        if slide_map:
+            for dme in root.iter("{%s}dataModelExt" % _DSP):
+                old = dme.get("relId")
+                if old in slide_map:
+                    dme.set("relId", slide_map[old])
+                    changed = True
+        if part_map:
+            for el2 in root.iter():
+                for attr, val in list(el2.attrib.items()):
+                    if attr.startswith(f"{{{_R}}}") and val in part_map:
+                        el2.set(attr, part_map[val])
+                        changed = True
+        if changed:
+            part.blob = _etree.tostring(root, xml_declaration=True,
+                                        encoding="UTF-8", standalone=True)
+
+
 def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
-    """native <id> b64:"<base64 element>" [media:"<base64 image>"]
+    """native <id> b64:"<base64 element>" [media:"<base64 image>"] [parts:"<b64 json>"]
 
     Splice a native PPTX element carried verbatim from the source deck (base64 in
     the DSL, so the brand pack is self-contained). Used for fixed corporate-design
-    chrome: complex custGeom shapes (`<p:sp>`) and template images (`<p:pic>`,
-    `media:` carries the embedded bytes). The element stays real + EDITABLE in the
-    output — no rasterisation, no picture "cheat" — preserving geometry + colour.
+    chrome: complex custGeom shapes (`<p:sp>`), template images (`<p:pic>`,
+    `media:` carries the embedded bytes), and charts (`<p:graphicFrame>` with
+    `parts:` carrying the external chart part-graph). The element stays real +
+    EDITABLE in the output — no rasterisation, no picture "cheat" — preserving
+    geometry + colour.
     """
     blob = node.kw_args.get("b64")
     if not blob:
@@ -1863,6 +2046,9 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
         raise DSLError(
             f"native shape (line {node.line_no}): unparseable embedded element — {exc}"
         )
+    parts_b64 = node.kw_args.get("parts")
+    if parts_b64:
+        _splice_native_parts(slide, el, parts_b64, node)
     media_b64 = node.kw_args.get("media")
     if media_b64:
         # Carried <p:pic>: the source rId is meaningless in this deck, so re-embed
@@ -1956,6 +2142,44 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
         missing_assets.extend(ctx.missing_assets)
 
 
+def _set_theme_fonts(prs, major: str | None, minor: str | None) -> None:
+    """Align the deck theme's fontScheme major/minor latin typeface to the brand fonts.
+
+    python-pptx's default template ships a **Calibri** theme. Decompiled `style:` runs
+    carry explicit faces, but any text that INHERITS the theme font (`+mj-lt`/`+mn-lt`) —
+    notably NATIVE-CARRIED table cells and non-styled runs — would otherwise render in
+    Calibri, a deck-wide mismatch vs the source's brand theme. The theme part loads as a
+    generic `Part` (no `_element`), so edit its `.blob`.
+    """
+    from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+    from lxml import etree as _etree
+    A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    seen: set[int] = set()
+    for master in prs.slide_masters:
+        try:
+            tp = master.part.part_related_by(RT.THEME)
+        except KeyError:
+            continue
+        if id(tp) in seen:
+            continue
+        seen.add(id(tp))
+        try:
+            root = _etree.fromstring(tp.blob)
+        except Exception:
+            continue
+        changed = False
+        for tag, fam in (("majorFont", major), ("minorFont", minor)):
+            if not fam:
+                continue
+            latin = root.find(f".//{{{A}}}fontScheme/{{{A}}}{tag}/{{{A}}}latin")
+            if latin is not None and latin.get("typeface") != fam:
+                latin.set("typeface", fam)
+                changed = True
+        if changed:
+            tp._blob = _etree.tostring(root, xml_declaration=True,
+                                       encoding="UTF-8", standalone=True)
+
+
 def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
                        asset_root: Path | None = None,
                        asset_root_fallback: Path | None = None,
@@ -1984,15 +2208,21 @@ def build_presentation(nodes: list[DSLNode], tokens: Tokens, *,
     # Source-faithful rendering requires the brand's primary fonts to be
     # installed; substitution by LibreOffice/PowerPoint changes glyph metrics
     # and weights, which the user has called out as breaking exact match.
+    brand_fonts: dict[str, str] = {}
     for fam_key in ("display", "body"):
         try:
             family = tokens.font_family(fam_key)[0]
         except (KeyError, IndexError):
             continue
+        brand_fonts[fam_key] = family
         _assert_font_available(family, tokens.brand_name)
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
+    # The default python-pptx template theme is Calibri; align its fontScheme to the
+    # brand so theme-inheriting text (native-carried table cells, non-styled runs)
+    # renders in the brand font instead of falling back to Calibri.
+    _set_theme_fonts(prs, brand_fonts.get("display"), brand_fonts.get("body"))
     missing: list[dict] = []
     _append_slide(prs, nodes, tokens, asset_root=asset_root,
                   asset_root_fallback=asset_root_fallback,
@@ -2149,6 +2379,17 @@ def build_multi_slide(
     prs = Presentation()
     prs.slide_width  = _px(cw)
     prs.slide_height = _px(ch)
+    # Align the deck theme fontScheme to the brand (see build_presentation) so
+    # theme-inheriting / native-carried text doesn't fall back to Calibri.
+    try:
+        _maj = first_tokens.font_family("display")[0]
+    except (KeyError, IndexError):
+        _maj = None
+    try:
+        _min = first_tokens.font_family("body")[0]
+    except (KeyError, IndexError):
+        _min = None
+    _set_theme_fonts(prs, _maj, _min)
     missing: list[dict] = []
     for slide_idx, entry in enumerate(slides, start=1):
         nodes, tokens, asset_root, notes = _unpack_slide_payload(entry)
