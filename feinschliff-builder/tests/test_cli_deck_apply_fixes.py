@@ -241,7 +241,7 @@ def test_cli_apply_fixes_exits_one_on_empty_defects(tmp_path: Path):
 # 4. build --autofix — inner fix loop mutates plan on disk before compile
 # ---------------------------------------------------------------------------
 
-def test_cli_build_autofix_inner_loop(tmp_path: Path):
+def test_cli_build_autofix_inner_loop(tmp_path: Path, monkeypatch):
     """deck build --autofix runs up to 3 autofix cycles, writes the mutated
     plan back to disk before compile, AND compiles the PPTX from the FIXED
     content — not the pre-fix snapshot.
@@ -250,6 +250,13 @@ def test_cli_build_autofix_inner_loop(tmp_path: Path):
     overflow = 6 chars, BELOW the 20% swap threshold of 100.8 chars).  This
     forces shorten_slot (not swap_layout_larger), making it straightforward to
     assert that the PPTX text frame contains the shortened string.
+
+    The fixture pins HEURISTIC textfit numbers (budget=84 from the Noto Sans
+    table ratio) and asserts the fixed string verbatim — with real metrics,
+    prevent_orphan may legitimately NBSP-glue the last two words.  Force the
+    heuristic path so the pins stay machine-independent; the autofix loop
+    under test is metrics-agnostic.  The env var propagates to the `_run`
+    subprocess via the os.environ copy.
 
     Regression guard for the critical bug: prior to the fix, `slides_spec` was
     captured before `apply_fixes` ran.  The plan on disk received the fix but
@@ -263,6 +270,7 @@ def test_cli_build_autofix_inner_loop(tmp_path: Path):
     inner loop ran (plan-on-disk mutated) and that the PPTX was compiled from
     the fixed plan (pure python-pptx, no soffice needed).
     """
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
     # action_title budget for executive-summary = 84 chars.
     # Use 90 chars: above budget (triggers SLOT_OVERFLOW) but below the 20%
     # swap threshold (84 * 1.20 = 100.8), so shorten_slot fires.

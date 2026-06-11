@@ -6,14 +6,18 @@ The tests target `_emit_text` directly to keep them cheap.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
+import pytest
 from pptx import Presentation
 from pptx.util import Pt
 
+from feinschliff import textfit
 from feinschliff.dsl.parser import DSLNode
 from feinschliff.dsl.pptx_emit import EmitContext, _emit_text, _px_to_pt, _px
 from feinschmiede.dsl.tokens import load_tokens
+from feinschmiede.text import measure as _measure
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -179,3 +183,57 @@ def test_prevent_orphan_idempotent():
     once = textfit.prevent_orphan(text, font="Open Sans", size_pt=18, bold=False, width_emu=width_emu)
     twice = textfit.prevent_orphan(once, font="Open Sans", size_pt=18, bold=False, width_emu=width_emu)
     assert once == twice
+
+
+# ---------------------------------------------------------------------------
+# 5. Real font metrics (feinschmiede.text.measure) wired into textfit
+# ---------------------------------------------------------------------------
+
+def _real_face(face="DejaVu Sans"):
+    if shutil.which("fc-match") is None or _measure.find_font_file(face) is None:
+        pytest.skip(f"{face} not resolvable")
+    return face
+
+
+def test_real_metrics_beat_default_table():
+    face = _real_face()
+    ratio = _measure.avg_char_width_ratio(face)
+    w = textfit._avg_char_width_emu(face, 18, False)
+    assert abs(w - ratio * 18 * 12700) < 1.0     # measured, not table default 0.52
+
+
+def test_registered_metrics_win_over_measurement():
+    face = _real_face()
+    textfit.register_font_metrics(face, normal=0.99, bold=0.99)
+    try:
+        w = textfit._avg_char_width_emu(face, 18, False)
+        assert abs(w - 0.99 * 18 * 12700) < 1.0
+    finally:
+        textfit._FONT_WIDTH_RATIO.pop(face, None)
+        textfit._REGISTERED.discard(face)
+
+
+def test_measure_height_real_wrap_counts_lines():
+    face = _real_face()
+    one_line_pt = _measure.line_width_pt("hello world", face, 18)
+    h1 = textfit.measure_height_emu("hello world", font=face, size_pt=18,
+                                    width_emu=int(one_line_pt * 12700) + 200)
+    h2 = textfit.measure_height_emu("hello world", font=face, size_pt=18,
+                                    width_emu=int(one_line_pt * 12700 * 0.6))
+    assert h2 == 2 * h1
+
+
+def test_has_real_metrics_false_for_unknown():
+    assert textfit.has_real_metrics("No Such Font Family XYZ") is False
+
+
+def test_kill_switch_forces_heuristics(monkeypatch):
+    face = _real_face()
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    _measure.clear_caches()
+    w = textfit._avg_char_width_emu(face, 18, False)
+    # falls back to the builtin/default table ratio
+    table = textfit._FONT_WIDTH_RATIO.get(face, textfit._FONT_WIDTH_RATIO["default"])
+    assert abs(w - table["normal"] * 18 * 12700) < 1.0
+    monkeypatch.delenv("FEINSCHMIEDE_NO_REAL_METRICS")
+    _measure.clear_caches()
