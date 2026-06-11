@@ -20,13 +20,13 @@
           "vertical": {"type": "number", "minimum": 0, "maximum": 1}
         },
         "allOf": [
-          {"if": {"properties": {"kind": {"const": "hook_title"}}},
+          {"if": {"required": ["kind"], "properties": {"kind": {"const": "hook_title"}}},
            "then": {"required": ["title"]}},
-          {"if": {"properties": {"kind": {"const": "word_pop"}}},
+          {"if": {"required": ["kind"], "properties": {"kind": {"const": "word_pop"}}},
            "then": {"required": ["items"],
                     "properties": {"items": {"type": "array", "minItems": 1,
                       "items": {"type": "object", "required": ["text", "appear_sec"]}}}}},
-          {"if": {"properties": {"kind": {"const": "stat_punch"}}},
+          {"if": {"required": ["kind"], "properties": {"kind": {"const": "stat_punch"}}},
            "then": {"required": ["value", "caption"]}}
         ]
       }
