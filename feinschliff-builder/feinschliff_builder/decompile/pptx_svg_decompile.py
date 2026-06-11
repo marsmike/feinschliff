@@ -1494,6 +1494,36 @@ def extract_slide_bg_fill(slide, theme: dict[str, str],
     return None
 
 
+def extract_slide_bg_image(slide) -> tuple[bytes, str] | None:
+    """The slide's background image, walking slide → LAYOUT (not master).
+
+    Corporate/gallery templates paint full-bleed artwork via
+    `<p:bg><p:bgPr><a:blipFill>` (e.g. Scientific's engraved petri-dish
+    layout background) — invisible to the solid-fill extractor, so the
+    decompiled slide rendered bare white. Returns (blob, ext) of the first
+    blipFill bg found, resolved against the surface that declares it.
+    """
+    for src in [slide, *_layout_master_chain(slide)[:1]]:
+        bg = src.element.find(".//p:cSld/p:bg", NS)
+        if bg is None:
+            continue
+        blip = bg.find(".//p:bgPr/a:blipFill/a:blip", NS)
+        if blip is None:
+            return None  # this surface owns the bg, and it isn't an image
+        rid = blip.get(f"{{{RELS_NS}}}embed")
+        if not rid:
+            return None
+        try:
+            part = src.part.related_part(rid)
+        except Exception:
+            return None
+        partname = str(getattr(part, "partname", "/bg.png"))
+        ext = partname.rsplit(".", 1)[-1].lower() if "." in partname else "png"
+        blob = getattr(part, "blob", None)
+        return (blob, ext) if blob else None
+    return None
+
+
 def _resolve_bg_ref(bgRef, theme: dict[str, str],
                     palette: dict[str, tuple[int, int, int]]) -> str | None:
     """Resolve a `<p:bgRef idx="N">` reference against the theme's
@@ -3642,6 +3672,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
              theme_name: str = "feinschliff",
              placeholder_rel: str = PLACEHOLDER_REL,
              bg_fill: str | None = None,
+             bg_image_path: str | None = None,
              native_dir: Path | None = None,
              native_rel: str | None = None) -> str:
     out: list[str] = [
@@ -3656,7 +3687,12 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # full-canvas rect. PowerPoint draws this *under* every shape, so the
     # DSL ordering matches the source z-order. Without this, dark slides
     # rebuild on the brand's paper default and white text disappears.
-    if bg_fill:
+    # A blipFill background (template artwork, e.g. a full-bleed engraved
+    # illustration) emits as a fixed full-canvas picture instead — it is
+    # CHROME, not a fillable content slot, so no slot expression.
+    if bg_image_path:
+        out.append(f'picture 0,0 {cmap.cw}x{cmap.ch} path:"{bg_image_path}" cover:true')
+    elif bg_fill:
         out.append(f"rect 0,0 {cmap.cw}x{cmap.ch} fill:{bg_fill}")
 
     # Pre-split into geometry-first, text-last, footer-last.
@@ -4159,6 +4195,7 @@ def derive(
 
     shapes = walk_slide(slide, cmap, theme, palette)
     bg_fill = extract_slide_bg_fill(slide, theme, palette)
+    bg_image = extract_slide_bg_image(slide)
     _ = pdf_path  # reserved for SVG cross-check, off by default
 
     if image_extract_dir is not None:
@@ -4190,10 +4227,21 @@ def derive(
             (image_extract_dir / out_name).write_bytes(blob or b"")
             p.media_path = f"{image_extract_rel.rstrip('/')}/{out_name}"
 
+    # Background artwork needs a file on disk — only materialisable when the
+    # caller gave us an extract dir (brand-pack flows always do). Without
+    # one, fall back to the solid-fill path silently.
+    bg_image_path: str | None = None
+    if bg_image is not None and image_extract_dir is not None and image_extract_rel:
+        blob, ext = bg_image
+        image_extract_dir.mkdir(parents=True, exist_ok=True)
+        (image_extract_dir / f"bg.{ext}").write_bytes(blob)
+        bg_image_path = f"{image_extract_rel.rstrip('/')}/bg.{ext}"
+
     return emit_dsl(shapes, cmap, layout_name,
                     theme_name=theme_name,
                     placeholder_rel=placeholder_rel,
                     bg_fill=bg_fill,
+                    bg_image_path=bg_image_path,
                     native_dir=native_extract_dir,
                     native_rel=native_extract_rel)
 
