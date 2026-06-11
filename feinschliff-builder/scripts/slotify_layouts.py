@@ -12,7 +12,6 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import re
 import sys
 from pathlib import Path
 
@@ -38,10 +37,10 @@ def main() -> int:
     for path in sorted(layouts_dir.glob("*.slide.dsl")):
         text = path.read_text(encoding="utf-8")
         new_text, slots = slotify_dsl(text)
-        leftovers = [l for l in new_text.splitlines()
-                     if l.startswith("text ") and '"' in l and "{{" not in l]
-        bare_pics = [l for l in new_text.splitlines()
-                     if l.startswith("picture ") and "{{" not in l]
+        leftovers = [ln for ln in new_text.splitlines()
+                     if ln.startswith("text ") and '"' in ln and "{{" not in ln]
+        bare_pics = [ln for ln in new_text.splitlines()
+                     if ln.startswith("picture ") and "{{" not in ln]
         unslotified_text += len(leftovers)
         unslotified_pics += len(bare_pics)
         total_slots += len(slots)
