@@ -643,7 +643,7 @@ def test_materialise_trusts_content_type_over_hit_mime(tmp_path):
         # Response says webp — that wins.
         return _FakeHTTPResponse(webp_bytes, content_type="image/webp")
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -676,7 +676,7 @@ def test_materialise_strips_charset_suffix_from_content_type(tmp_path):
     def _fake_urlopen(url, timeout=None):  # noqa: ARG001
         return _FakeHTTPResponse(png_bytes, content_type="image/png; charset=binary")
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -709,7 +709,7 @@ def test_materialise_falls_back_to_hit_mime_when_content_type_missing(tmp_path):
     def _fake_urlopen(url, timeout=None):  # noqa: ARG001
         return _FakeHTTPResponse(png_bytes, content_type=None)
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -738,7 +738,7 @@ def test_materialise_defaults_to_bin_when_nothing_resolvable(tmp_path):
         # No Content-Type header, opaque bytes.
         return _FakeHTTPResponse(b"\x00\x01\x02\x03", content_type=None)
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -753,7 +753,7 @@ def test_materialise_defaults_to_bin_when_nothing_resolvable(tmp_path):
 def test_mime_to_ext_recognises_extended_image_mimes():
     """Direct lookup sanity check on the extended ``_MIME_TO_EXT`` map.
     These are the new entries added with the Content-Type trust change."""
-    from feinschliff.dsl.pptx_emit import _MIME_TO_EXT
+    from feinschliff.io.image_materialise import _MIME_TO_EXT
 
     assert _MIME_TO_EXT["image/webp"] == ".webp"
     assert _MIME_TO_EXT["image/gif"] == ".gif"
@@ -789,10 +789,12 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
         return _FakeHTTPResponse(png_bytes, content_type="image/png")
 
     # Reset the module-level registry state so this test is hermetic.
-    # ``monkeypatch.setattr`` restores the originals on teardown.
-    from feinschliff.dsl import pptx_emit as _pe
-    monkeypatch.setattr(_pe, "_THROWAWAY_CACHE_DIRS", [])
-    monkeypatch.setattr(_pe, "_THROWAWAY_CLEANUP_REGISTERED", False)
+    # ``monkeypatch.setattr`` restores the originals on teardown. The
+    # registry lives in feinschliff.io.image_materialise; the emitter
+    # accesses it via module attributes, so this is the single patch point.
+    from feinschliff.io import image_materialise as _im
+    monkeypatch.setattr(_im, "_THROWAWAY_CACHE_DIRS", [])
+    monkeypatch.setattr(_im, "_THROWAWAY_CLEANUP_REGISTERED", False)
 
     hit = ImageHit(
         url="https://example.invalid/throwaway.png",
@@ -818,7 +820,7 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
 
     # Track atexit.register calls so we can assert single registration.
     mock_register = MagicMock()
-    monkeypatch.setattr(_pe.atexit, "register", mock_register)
+    monkeypatch.setattr(_im.atexit, "register", mock_register)
 
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         # Build A — first fallback, expect atexit.register fired once.
@@ -839,15 +841,15 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
     )
     # The handler the guard registered is our cleanup function.
     registered_callable = mock_register.call_args.args[0]
-    assert registered_callable is _pe._cleanup_throwaway_caches
+    assert registered_callable is _im._cleanup_throwaway_caches
 
     # Both throwaway dirs accumulated in the registry — the single atexit
     # handler walks the full list on exit.
-    assert len(_pe._THROWAWAY_CACHE_DIRS) == 2, (
-        f"expected two registered tempdirs, got {_pe._THROWAWAY_CACHE_DIRS!r}"
+    assert len(_im._THROWAWAY_CACHE_DIRS) == 2, (
+        f"expected two registered tempdirs, got {_im._THROWAWAY_CACHE_DIRS!r}"
     )
     # And the guard reflects the registration happened.
-    assert _pe._THROWAWAY_CLEANUP_REGISTERED is True
+    assert _im._THROWAWAY_CLEANUP_REGISTERED is True
 
 
 def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
@@ -857,7 +859,7 @@ def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
     ``ignore_errors=True`` swallows the FileNotFoundError."""
     import unittest.mock as _um
 
-    from feinschliff.dsl import pptx_emit as _pe
+    from feinschliff.io import image_materialise as _im
 
     # Use real tempdirs so the rmtree call is meaningful.
     d1 = Path(tempfile.mkdtemp(prefix="feinschliff-cleanup-test-"))
@@ -866,9 +868,9 @@ def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
     shutil.rmtree(d2)
     assert not d2.exists()
 
-    with _um.patch.object(_pe, "_THROWAWAY_CACHE_DIRS", [d1, d2]):
+    with _um.patch.object(_im, "_THROWAWAY_CACHE_DIRS", [d1, d2]):
         # Must not raise — ignore_errors=True swallows the missing dir.
-        _pe._cleanup_throwaway_caches()
+        _im._cleanup_throwaway_caches()
 
     # d1 was actually cleaned.
     assert not d1.exists(), "live dir should have been removed by cleanup"
