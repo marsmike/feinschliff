@@ -3,6 +3,8 @@ role: data-timeline
 ideal_count: [3, 7]
 data_band: none
 comparison: false
+description: Five chevron/arrow steps in a row, one highlighted in accent color as active stage; title above, description
+  in each step
 ---
 # process-flow — 5 chevron stages pointing right; one highlighted as
 # active in the brand accent.

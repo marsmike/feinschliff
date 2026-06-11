@@ -3,6 +3,8 @@ role: content-columns
 ideal_count: [3, 6]
 data_band: none
 comparison: false
+description: 'Numbered list table: six rows with index counter, bold item name, and description column; subtitle above and
+  below list'
 ---
 # vertical-bullets — title + subtitle + 6 numbered rows (counter, heading,
 # description) separated by hairlines. Matches the .pptx baseline pattern.

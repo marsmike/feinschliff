@@ -6,6 +6,8 @@ comparison: false
 when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
 family: framing
 fixed_chrome: true
+description: 'White content slide: large section title top-left, four full-width bullet points, corner geometric shape accents'
+chrome_subject: teal semicircle top-right corner and orange triangle bottom-left as accent shapes; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 3 illustration'
 slide_index: 5
 slots:

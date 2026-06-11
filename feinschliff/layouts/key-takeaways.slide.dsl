@@ -3,6 +3,8 @@ role: closer
 ideal_count: [2, 4]
 data_band: none
 comparison: false
+description: 'Dark navy background, four takeaway cards across: gold rule, numbered index, bold heading, two-sentence elaboration
+  each'
 ---
 # key-takeaways — end-of-section summary on the dark ink ground. 2–4
 # takeaway columns with gold rule, mono number, white heading, gray-blue

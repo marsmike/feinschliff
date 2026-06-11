@@ -13,6 +13,7 @@ import base64
 from pathlib import Path
 
 import pytest
+import yaml
 
 from feinschliff.dsl.parser import parse_lines, split_frontmatter
 from feinschliff.layout_profile import parse_profile
@@ -20,6 +21,7 @@ from feinschliff_builder.decompile.layout_profile_gen import (
     apply_profile,
     classify_layout,
     derive_deck_map,
+    main as gen_main,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -63,6 +65,28 @@ ILLUSTRATION_XML = '<p:sp xmlns:p="p"><p:spPr><a:custGeom/></p:spPr></p:sp>'
 FULL_BLEED_PICTURE = ('picture 0,0 1920x1080 '
                       'path:"{{ image | default(\\"decompile/x/image.png\\") }}" '
                       'cover:true\n')
+
+
+def illu_xml(x=0, y=0, cx=6096000, cy=3429000) -> str:
+    """Decorative custGeom shape with root xfrm geometry in EMU. The default
+    6096000x3429000 ext is exactly a quarter of the standard 12192000x6858000
+    slide — comfortably above the 20 % area gate."""
+    return (f'<p:sp xmlns:p="p" xmlns:a="a"><p:spPr><a:xfrm>'
+            f'<a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/>'
+            f'</a:xfrm><a:custGeom/></p:spPr></p:sp>')
+
+
+def picture(name: str, w: int, h: int, x=100, y=100) -> str:
+    return (f'picture {x},{y} {w}x{h} '
+            f'path:"{{{{ {name} | default(\\"decompile/x/{name}.png\\") }}}}"\n')
+
+
+def prose_slots(start: int, n: int) -> str:
+    out = ""
+    for i in range(start, start + n):
+        out += slot(i, "Some longer prose paragraph here", x=100 + 300 * i,
+                    y=600, style="body", pt=18, maxw=280, maxh=300)
+    return out
 
 
 def classify(dsl: str, *, name="some-layout", index=5, total=13, **kw) -> dict:
@@ -230,6 +254,167 @@ def test_generated_frontmatter_passes_parse_profile():
     assert parsed["data"] == "chart"
     assert parsed["comp"] is True
     assert parsed["ideal_count"] == (1, 1)
+
+
+# --- area-based fixed-chrome gate -------------------------------------------------
+
+def test_area_gate_fires_for_big_illustration_with_many_text_slots():
+    # The motivating failure: a garden-scene illustration beside a text
+    # column classifies as content-columns (>2 text slots) and the picker
+    # pairs soccer content with a washing-machine illustration. The 25 %
+    # illustration share must gate it while KEEPING the role.
+    dsl = (HEADER + native(illu_xml(), "garden")
+           + slot(1, "Modern garden solutions", pt=40) + prose_slots(2, 4))
+    p = classify(dsl, name="garden-columns")
+    assert p["role"] == "content-columns"  # classification unchanged …
+    assert p["fixed_chrome"] is True       # … but the layout is gated
+    assert p["when_not_to_use"] == [
+        "role=content-columns", "role=data-quantity", "role=data-comparison",
+        "role=data-timeline", "role=concept-diagram",
+    ]
+
+
+def test_area_gate_ignores_small_illustration_and_non_illustration_kinds():
+    small = native(illu_xml(cx=2438400, cy=2743200), "corner")  # 8 % area
+    big_chart = native(  # chart kind never counts toward illustration area
+        '<p:graphicFrame xmlns:p="p"><a:xfrm><a:off x="0" y="0"/>'
+        '<a:ext cx="12192000" cy="6858000"/></a:xfrm>'
+        '<a:graphic><c:chart r:id="rId2"/></a:graphic></p:graphicFrame>',
+        "graphic1")
+    dsl = (HEADER + small + big_chart
+           + slot(1, "Growth", pt=40) + prose_slots(2, 4))
+    p = classify(dsl, name="growth")
+    assert p["role"] == "data-comparison"
+    assert "fixed_chrome" not in p
+    assert "when_not_to_use" not in p
+
+
+def test_area_gate_decode_failure_falls_back_to_slot_count_rule():
+    dsl = (HEADER + 'native shape1 xml_file:"native/missing.xml"\n'
+           + slot(1, "Headline", pt=40) + prose_slots(2, 4))
+    p = classify(dsl, name="busy")  # no asset_root → cannot decode geometry
+    assert p["role"] == "content-columns"
+    assert "fixed_chrome" not in p  # old rule: >2 visible slots → not gated
+
+
+# --- semantic annotation fields ---------------------------------------------------
+
+def test_semantic_annotation_fields_default_empty():
+    p = classify(HEADER + slot(1, "Plain"), name="plain")
+    assert p["description"] == ""
+    assert "chrome_subject" not in p  # no illustration chrome
+    p2 = classify(HEADER + native(ILLUSTRATION_XML) + slot(1, "Divider", pt=36),
+                  name="divider")
+    assert p2["description"] == ""
+    assert p2["chrome_subject"] == ""
+    p3 = classify(HEADER + native(CHART_XML, "graphic1") + slot(1, "Chart", pt=40),
+                  name="chart")
+    assert "chrome_subject" not in p3  # chart chrome is not an illustration
+
+
+def test_image_slot_classes():
+    dsl = (HEADER + FULL_BLEED_PICTURE              # share 1.0 → replace
+           + picture("image2", 180, 24, x=1700, y=40)   # tiny logo → keep
+           + picture("image3", 500, 400)                # mid photo → replace
+           + picture("image4", 1800, 160, y=40)         # wide strip → keep
+           + slot(1, "Team intro", pt=40))
+    slots = classify(dsl, name="team")["slots"]
+    assert slots["image"] == {"role": "image", "class": "replace"}
+    assert slots["image2"]["class"] == "keep"
+    assert slots["image3"]["class"] == "replace"
+    assert slots["image4"]["class"] == "keep"  # share 0.14, aspect 11 > 6
+
+
+# --- annotation preservation across re-runs ---------------------------------------
+
+ANNOTATED_DSL = (HEADER + native(illu_xml(), "deko") + FULL_BLEED_PICTURE
+                 + slot(1, "Garden stories", pt=40) + prose_slots(2, 4))
+
+
+def _annotate_fence(fenced: str, **fields) -> str:
+    """Simulate a vision-annotation pass: edit fields straight in the fence."""
+    fm, _ = split_frontmatter(fenced)
+    data = yaml.safe_load(fm)
+    for key, val in fields.items():
+        data[key] = val
+    body = fenced.split("---\n", 2)[2]
+    return "---\n" + yaml.safe_dump(data, sort_keys=False) + "---\n" + body
+
+
+def test_reapply_preserves_annotations_and_regenerates_mechanics():
+    p1 = classify(ANNOTATED_DSL, name="garden")
+    once = apply_profile(ANNOTATED_DSL, p1)
+    fm, _ = split_frontmatter(once)
+    ann = yaml.safe_load(fm)
+    ann["description"] = "Text column beside a garden scene"
+    ann["chrome_subject"] = "terrace garden with potting bench"
+    ann["slots"]["image"]["class"] = "keep"
+    ann["role"] = "bogus-role"   # mechanical tampering — must regenerate
+    ann["ideal_count"] = [9, 9]
+    annotated = _annotate_fence(once, **ann)
+
+    p2 = classify(annotated, name="garden")
+    final = apply_profile(annotated, p2)
+    out = yaml.safe_load(split_frontmatter(final)[0])
+    # Annotations survive …
+    assert out["description"] == "Text column beside a garden scene"
+    assert out["chrome_subject"] == "terrace garden with potting bench"
+    assert out["slots"]["image"]["class"] == "keep"
+    # … mechanical fields regenerate …
+    assert out["role"] == "content-columns"
+    assert out["ideal_count"] == [4, 4]
+    assert out["slots"]["text_1"]["role"] == "title"
+    # … and the DSL body stays byte-identical.
+    assert final.endswith(ANNOTATED_DSL)
+
+
+def test_apply_profile_ignores_empty_annotations_in_old_fence():
+    p = classify(ANNOTATED_DSL, name="garden")
+    once = apply_profile(ANNOTATED_DSL, p)
+    assert apply_profile(once, p) == once  # still idempotent with the merge
+
+
+# --- annotate CLI ------------------------------------------------------------------
+
+def test_annotate_cli_round_trip(tmp_path):
+    f = tmp_path / "garden.slide.dsl"
+    f.write_text(apply_profile(ANNOTATED_DSL, classify(ANNOTATED_DSL, name="garden")),
+                 encoding="utf-8")
+    rc = gen_main(["annotate", str(f),
+                   "--description", "Garden scene with text column",
+                   "--chrome-subject", "potting bench in a courtyard",
+                   "--image-class", "image=keep"])
+    assert rc == 0
+    fenced = f.read_text(encoding="utf-8")
+    d = yaml.safe_load(split_frontmatter(fenced)[0])
+    assert d["description"] == "Garden scene with text column"
+    assert d["chrome_subject"] == "potting bench in a courtyard"
+    assert d["slots"]["image"]["class"] == "keep"
+    assert fenced.endswith(ANNOTATED_DSL)  # body untouched
+    # A later generator re-run keeps the CLI's annotations (merge semantics).
+    refenced = apply_profile(fenced, classify(ANNOTATED_DSL, name="garden"))
+    d2 = yaml.safe_load(split_frontmatter(refenced)[0])
+    assert d2["description"] == "Garden scene with text column"
+    assert d2["chrome_subject"] == "potting bench in a courtyard"
+    assert d2["slots"]["image"]["class"] == "keep"
+
+
+def test_annotate_cli_rejects_fenceless_file_and_bad_class(tmp_path, capsys):
+    bare = tmp_path / "bare.slide.dsl"
+    original = HEADER + slot(1, "X")
+    bare.write_text(original, encoding="utf-8")
+    assert gen_main(["annotate", str(bare), "--description", "x"]) == 2
+    assert "frontmatter" in capsys.readouterr().err
+    assert bare.read_text(encoding="utf-8") == original  # left untouched
+
+    fenced = tmp_path / "fenced.slide.dsl"
+    fenced.write_text(
+        apply_profile(ANNOTATED_DSL, classify(ANNOTATED_DSL, name="garden")),
+        encoding="utf-8")
+    before = fenced.read_text(encoding="utf-8")
+    assert gen_main(["annotate", str(fenced), "--image-class", "image=banana"]) == 2
+    assert gen_main(["annotate", str(fenced), "--image-class", "nope=keep"]) == 2
+    assert fenced.read_text(encoding="utf-8") == before
 
 
 # --- deck map -------------------------------------------------------------------

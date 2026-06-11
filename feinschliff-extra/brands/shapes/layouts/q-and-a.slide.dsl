@@ -4,6 +4,9 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'White content slide: large title, asymmetric two-column layout (short bullets left / long paragraph + bullets
+  right), geometric accents'
+chrome_subject: blue semicircle top-right, orange triangle outline bottom-right, teal dashes bottom-left; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 2 illustration'
 slide_index: 8
 slots:

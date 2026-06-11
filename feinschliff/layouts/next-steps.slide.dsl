@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 narrative_role: close-action
 narrative_act: resolution
+description: 'Action table: up to five rows with accent verb, description, and right-aligned owner+date; eyebrow above title'
 ---
 # next-steps — closing slide. 3–7 immediate actions stacked vertically.
 # Each row leads with a verb in accent, body of what, and right-aligned

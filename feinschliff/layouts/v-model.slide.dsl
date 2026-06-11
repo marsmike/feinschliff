@@ -3,6 +3,8 @@ role: data-comparison
 ideal_count: [3, 5]
 data_band: none
 comparison: true
+description: 'V-model diagram: verification phases cascade left, validation phases mirror right, pivot bar at base; title
+  above'
 ---
 # v-model — paired verification (left) + validation (right) phases meeting
 # at a central pivot. 3–5 pairs in a row stack with central connectors.

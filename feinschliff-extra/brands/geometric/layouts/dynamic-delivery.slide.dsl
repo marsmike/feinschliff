@@ -4,6 +4,9 @@ ideal_count: [1, 1]
 data_band: table
 comparison: false
 family: organizational
+description: 'Mixed layout: title top, two narrative paragraphs left, data table with plain header right; geometric arc top-left
+  chrome'
+chrome_subject: blue circle and pink arc partially cropped at top-left corner; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 3 illustration, 1 table'
 slide_index: 10
 slots:

@@ -33,6 +33,30 @@ Classification heuristics — applied IN ORDER, first hit wins:
 11. ≥3 body slots                             → content-columns (organizational)
 12. otherwise                                 → content-columns (organizational)
 
+Area-based fixed-chrome gate — applied AFTER classification, role unchanged:
+when the native ILLUSTRATION payloads (kind "illustration" only, not
+chart/table/smartart) together cover > 20 % of the canvas, the layout gets
+`fixed_chrome: true` + a dense-content `when_not_to_use` list regardless of
+its text-slot count. Motivation: an illustration-heavy layout with a text
+column beside the artwork classifies as content-columns (>2 text slots), and
+without the gate the picker happily pairs arbitrary content with an
+unrelated illustration. Geometry comes from the payload's root
+`<a:xfrm><a:off|a:ext>` in EMU, scaled by `canvas_w / 12192000` (standard
+12192000x6858000 EMU slide). When any illustration payload cannot be
+decoded the gate falls back to the old ≤2-visible-slots rule (rule 8).
+
+Semantic annotation fields — every profile carries `description: ""` (one
+line: what is on this slide) and, when native illustration chrome is
+present, `chrome_subject: ""` (what the illustration depicts); both are
+meant to be filled by a later human/vision pass. Image slots appear in
+`slots:` with `class: replace|keep` (replace = content photo the deck
+should swap, keep = brand chrome such as a logo strip). `apply_profile`
+MERGES instead of replacing: non-empty `description` / `chrome_subject` /
+per-image `class` values in an existing fence survive a re-run, while all
+mechanical fields regenerate. The `annotate` CLI (`python -m
+feinschliff_builder.decompile.layout_profile_gen annotate …`) updates just
+those annotation fields in an existing fence.
+
 Slot roles (per text slot, in `slots:`): page-number (1-3 digit default),
 footer (bottom strip), title (largest-pt slot in the top half), eyebrow
 (small text above the title), source-note (small bottom-half text), body
@@ -75,6 +99,40 @@ _MAXH_RE = re.compile(r"\bmaxheight:(\d+(?:\.\d+)?)")
 _CANVAS_RE = re.compile(r"^canvas\s+(\d+)x(\d+)", re.M)
 _NATIVE_RE = re.compile(r"^native\s+\w+\s+(.*)$")
 _NATIVE_KW_RE = re.compile(r'(\w+):"((?:[^"\\]|\\.)*)"')
+
+# Root shape/group geometry inside a carried native payload. The FIRST
+# <a:xfrm> block is the root one (nested children come later); `<a:ext` with
+# cx/cy attributes cannot be confused with the `<a:ext uri=…>` extension-list
+# element because of the attribute names.
+_XFRM_BLOCK_RE = re.compile(r"<a:xfrm\b[^>]*>(.*?)</a:xfrm>", re.S)
+_XFRM_OFF_RE = re.compile(r'<a:off\s+x="(-?\d+)"\s+y="(-?\d+)"')
+_XFRM_EXT_RE = re.compile(r'<a:ext\s+cx="(\d+)"\s+cy="(\d+)"')
+
+# Standard PowerPoint 16:9 slide in EMU; declared `canvas` maps onto it.
+_EMU_SLIDE_W = 12192000.0
+
+# Illustration payloads covering more than this canvas-area share make the
+# layout fixed chrome (see module docstring).
+_ILLUSTRATION_AREA_GATE = 0.20
+
+# Dense-content roles that must not land on illustration-dominated chrome.
+_CHROME_GATE_AVOID = [
+    "role=content-columns", "role=data-quantity", "role=data-comparison",
+    "role=data-timeline", "role=concept-diagram",
+]
+
+# Image-slot `class` heuristics: canvas-area share above which an image slot
+# is a content photo (`replace`), below which — or at logo-strip aspect
+# ratios — it is brand chrome (`keep`).
+_IMAGE_REPLACE_SHARE = 0.15
+_IMAGE_KEEP_SHARE = 0.04
+_IMAGE_KEEP_ASPECT_HI = 6.0   # w/h above this = horizontal logo strip
+_IMAGE_KEEP_ASPECT_LO = 0.17  # w/h below this = vertical strip
+_IMAGE_CLASSES = ("keep", "replace")
+
+# Annotation fields a human/vision pass fills in; `apply_profile` preserves
+# their non-empty values across re-runs.
+_ANNOTATION_KEYS = ("description", "chrome_subject")
 
 # Heuristic trigger patterns (see module docstring).
 _AGENDA_RE = re.compile(r"agenda|inhalt|contents", re.I)
@@ -148,17 +206,23 @@ def _parse_image_slots(body: str) -> list[dict]:
     return slots
 
 
-def _native_kind(kwargs: dict[str, str], asset_root: Path | None) -> str:
-    """Cheap text-level kind sniff over a native payload's carried XML."""
+def _decode_native_xml(kwargs: dict[str, str], asset_root: Path | None) -> str | None:
+    """Decode a native payload's carried XML (inline b64 or sidecar file);
+    None on any failure — callers treat that as undecodable chrome."""
     try:
         if kwargs.get("b64"):
-            xml = base64.b64decode(kwargs["b64"]).decode("utf-8", "replace")
-        elif kwargs.get("xml_file") and asset_root is not None:
-            xml = (asset_root / kwargs["xml_file"]).read_text(
+            return base64.b64decode(kwargs["b64"]).decode("utf-8", "replace")
+        if kwargs.get("xml_file") and asset_root is not None:
+            return (asset_root / kwargs["xml_file"]).read_text(
                 encoding="utf-8", errors="replace")
-        else:
-            return "illustration"
     except Exception:
+        pass
+    return None
+
+
+def _native_kind(xml: str | None) -> str:
+    """Cheap text-level kind sniff over a native payload's carried XML."""
+    if xml is None:
         return "illustration"
     if "graphicFrame" in xml and "<c:chart" in xml:
         return "chart"
@@ -169,15 +233,55 @@ def _native_kind(kwargs: dict[str, str], asset_root: Path | None) -> str:
     return "illustration"
 
 
-def _parse_native_kinds(body: str, asset_root: Path | None) -> list[str]:
-    kinds: list[str] = []
+def _parse_natives(body: str, asset_root: Path | None) -> list[tuple[str, str | None]]:
+    """Each `native` line → (kind, decoded XML or None)."""
+    natives: list[tuple[str, str | None]] = []
     for line in body.splitlines():
         m = _NATIVE_RE.match(line)
         if m is None:
             continue
         kwargs = dict(_NATIVE_KW_RE.findall(m.group(1)))
-        kinds.append(_native_kind(kwargs, asset_root))
-    return kinds
+        xml = _decode_native_xml(kwargs, asset_root)
+        natives.append((_native_kind(xml), xml))
+    return natives
+
+
+def _root_xfrm_emu(xml: str) -> tuple[float, float, float, float] | None:
+    """(x, y, cx, cy) of the payload's root `<a:xfrm>` in EMU, or None when
+    the root shape/group carries no usable geometry."""
+    block = _XFRM_BLOCK_RE.search(xml)
+    if block is None:
+        return None
+    off = _XFRM_OFF_RE.search(block.group(1))
+    ext = _XFRM_EXT_RE.search(block.group(1))
+    if off is None or ext is None:
+        return None
+    return (float(off.group(1)), float(off.group(2)),
+            float(ext.group(1)), float(ext.group(2)))
+
+
+def _illustration_area_share(
+    natives: list[tuple[str, str | None]], canvas_w: float, canvas_h: float,
+) -> float | None:
+    """Canvas-area share covered by native ILLUSTRATION payloads (clipped to
+    the slide). None when any illustration geometry cannot be decoded — the
+    caller then falls back to the old slot-count gate for the layout."""
+    scale = canvas_w / _EMU_SLIDE_W
+    total = 0.0
+    for kind, xml in natives:
+        if kind != "illustration":
+            continue
+        if xml is None:
+            return None
+        xfrm = _root_xfrm_emu(xml)
+        if xfrm is None:
+            return None
+        x, y, w, h = (v * scale for v in xfrm)
+        vis_w = min(x + w, canvas_w) - max(x, 0.0)
+        vis_h = min(y + h, canvas_h) - max(y, 0.0)
+        if vis_w > 0 and vis_h > 0:
+            total += vis_w * vis_h
+    return total / (canvas_w * canvas_h)
 
 
 # --- Slot roles -------------------------------------------------------------
@@ -219,6 +323,19 @@ def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
         else:
             roles[t["name"]] = "body"
     return roles
+
+
+def _image_class(img: dict, canvas_w: float, canvas_h: float) -> str:
+    """Heuristic content-photo vs brand-chrome call for an image slot:
+    big → `replace`; tiny or logo-strip aspect → `keep`; else `replace`."""
+    share = (img["w"] * img["h"]) / (canvas_w * canvas_h)
+    if share > _IMAGE_REPLACE_SHARE:
+        return "replace"
+    aspect = img["w"] / img["h"] if img["h"] > 0 else float("inf")
+    if (share < _IMAGE_KEEP_SHARE or aspect > _IMAGE_KEEP_ASPECT_HI
+            or aspect < _IMAGE_KEEP_ASPECT_LO):
+        return "keep"
+    return "replace"
 
 
 # --- Image queries ----------------------------------------------------------
@@ -268,7 +385,8 @@ def classify_layout(
     sx, sy = canvas_w / 1920.0, canvas_h / 1080.0
     texts = _parse_text_slots(body)
     images = _parse_image_slots(body)
-    native_kinds = _parse_native_kinds(body, asset_root)
+    natives = _parse_natives(body, asset_root)
+    native_kinds = [k for k, _xml in natives]
     slot_roles = _assign_slot_roles(texts, canvas_h)
 
     title_slot = next((t for t in texts if slot_roles[t["name"]] == "title"), None)
@@ -324,6 +442,16 @@ def classify_layout(
     elif n_body >= 3:
         role, family = "content-columns", "organizational"
 
+    # Area-based fixed-chrome gate (additive to rule 8 — role stays as
+    # classified). None = some illustration geometry was undecodable; the
+    # old slot-count rule above already covered that layout.
+    illu_share = _illustration_area_share(natives, canvas_w, canvas_h)
+    if illu_share is not None and illu_share > _ILLUSTRATION_AREA_GATE:
+        fixed_chrome = True
+        base = when_not_to_use or []
+        when_not_to_use = base + [r for r in _CHROME_GATE_AVOID
+                                  if r not in base]
+
     if role in ("title-primary", "chapter-opener", "quote", "closer"):
         ideal_count = [1, 2]
     else:
@@ -343,6 +471,11 @@ def classify_layout(
     profile["family"] = family
     if fixed_chrome:
         profile["fixed_chrome"] = True
+    # Annotation slots for a later human/vision pass (see apply_profile —
+    # non-empty values survive regeneration).
+    profile["description"] = ""
+    if "illustration" in kinds:
+        profile["chrome_subject"] = ""
     if native_kinds:
         counts = {k: native_kinds.count(k) for k in sorted(kinds)}
         profile["chrome_note"] = (
@@ -350,7 +483,7 @@ def classify_layout(
             + ", ".join(f"{n} {k}" for k, n in counts.items())
         )
     profile["slide_index"] = slide_index
-    if texts:
+    if texts or images:
         profile["slots"] = {
             t["name"]: {
                 "role": slot_roles[t["name"]],
@@ -362,6 +495,11 @@ def classify_layout(
             }
             for t in texts
         }
+        for i in images:
+            profile["slots"][i["name"]] = {
+                "role": "image",
+                "class": _image_class(i, canvas_w, canvas_h),
+            }
     if images:
         query = _image_query(layout_name, title_default)
         profile["image_queries"] = {i["name"]: query for i in images}
@@ -385,11 +523,54 @@ def _strip_fence(dsl_text: str) -> str:
     return dsl_text  # unterminated fence — leave the document alone
 
 
+def _merge_annotations(profile: dict, old_fm: str | None) -> dict:
+    """Carry annotation values from an existing fence into a freshly
+    generated *profile*: non-empty `description` / `chrome_subject` and
+    per-image-slot `class` overrides survive a re-run (a vision-annotation
+    pass must never be wiped by regeneration); every mechanical field —
+    role, ideal_count, slots geometry, … — comes from the new profile."""
+    if old_fm is None:
+        return profile
+    try:
+        old = yaml.safe_load(old_fm)
+    except yaml.YAMLError:
+        return profile
+    if not isinstance(old, dict):
+        return profile
+    merged = dict(profile)
+    for key in _ANNOTATION_KEYS:
+        val = old.get(key)
+        # Only keys the new profile still emits — a chrome_subject for an
+        # illustration that no longer exists must not be resurrected.
+        if key in merged and isinstance(val, str) and val.strip():
+            merged[key] = val
+    old_slots = old.get("slots")
+    if isinstance(old_slots, dict) and isinstance(merged.get("slots"), dict):
+        merged["slots"] = {
+            name: dict(entry) if isinstance(entry, dict) else entry
+            for name, entry in merged["slots"].items()
+        }
+        for name, entry in merged["slots"].items():
+            if not (isinstance(entry, dict) and "class" in entry):
+                continue
+            prev = old_slots.get(name)
+            if isinstance(prev, dict) and prev.get("class") in _IMAGE_CLASSES:
+                entry["class"] = prev["class"]
+    return merged
+
+
+def _dump_fence(profile: dict) -> str:
+    return yaml.safe_dump(profile, sort_keys=False, allow_unicode=True,
+                          default_flow_style=None, width=120)
+
+
 def apply_profile(dsl_text: str, profile: dict) -> str:
-    """Prepend (or replace) the YAML frontmatter fence; the body after the
-    fence stays byte-identical, so re-running the generator is idempotent."""
-    fm = yaml.safe_dump(profile, sort_keys=False, allow_unicode=True,
-                        default_flow_style=None, width=120)
+    """Prepend (or merge-replace) the YAML frontmatter fence; the body after
+    the fence stays byte-identical, so re-running the generator is
+    idempotent. An existing fence is MERGED, not clobbered: annotation
+    fields survive per :func:`_merge_annotations`."""
+    old_fm, _ = split_frontmatter(dsl_text)
+    fm = _dump_fence(_merge_annotations(profile, old_fm))
     return "---\n" + fm + "---\n" + _strip_fence(dsl_text)
 
 
@@ -432,3 +613,62 @@ def derive_deck_map(profiles: dict[str, dict]) -> dict:
         used.add(closers[-1])
     deck_map["content"] = [n for n in ordered if n not in used]
     return deck_map
+
+
+# --- Annotation CLI -----------------------------------------------------------
+
+def main(argv: list[str] | None = None) -> int:
+    """`python -m feinschliff_builder.decompile.layout_profile_gen annotate
+    <layout.slide.dsl> [--description …] [--chrome-subject …]
+    [--image-class slot=keep|replace …]` — update just the annotation fields
+    in an EXISTING frontmatter fence. Creating the fence is the generator's
+    job (scripts/slotify_layouts.py), not this command's."""
+    import argparse
+    import sys
+
+    ap = argparse.ArgumentParser(prog="layout_profile_gen")
+    sub = ap.add_subparsers(dest="command", required=True)
+    an = sub.add_parser("annotate", help="fill the vision-annotation fields")
+    an.add_argument("layout", type=Path, help="profiled .slide.dsl file")
+    an.add_argument("--description", help="one line: what is on this slide")
+    an.add_argument("--chrome-subject",
+                    help="what the native illustration depicts")
+    an.add_argument("--image-class", action="append", default=[],
+                    metavar="SLOT=keep|replace",
+                    help="override an image slot's class (repeatable)")
+    args = ap.parse_args(argv)
+
+    try:
+        text = args.layout.read_text(encoding="utf-8")
+    except OSError as exc:
+        print(f"{args.layout}: cannot read layout file: {exc}", file=sys.stderr)
+        return 2
+    fm, _ = split_frontmatter(text)
+    try:
+        profile = yaml.safe_load(fm) if fm is not None else None
+    except yaml.YAMLError:
+        profile = None
+    if not isinstance(profile, dict):
+        print(f"{args.layout}: no parseable frontmatter fence — run the "
+              "profile generator first; `annotate` only updates its fields.",
+              file=sys.stderr)
+        return 2
+    if args.description is not None:
+        profile["description"] = args.description
+    if args.chrome_subject is not None:
+        profile["chrome_subject"] = args.chrome_subject
+    for spec in args.image_class:
+        slot, sep, cls = spec.partition("=")
+        entry = profile.get("slots", {}).get(slot)
+        if not sep or cls not in _IMAGE_CLASSES or not isinstance(entry, dict):
+            print(f"--image-class {spec!r}: expected <existing image slot>="
+                  f"{'|'.join(_IMAGE_CLASSES)}", file=sys.stderr)
+            return 2
+        entry["class"] = cls
+    args.layout.write_text("---\n" + _dump_fence(profile) + "---\n"
+                           + _strip_fence(text), encoding="utf-8")
+    return 0
+
+
+if __name__ == "__main__":  # pragma: no cover — exercised via main() in tests
+    raise SystemExit(main())

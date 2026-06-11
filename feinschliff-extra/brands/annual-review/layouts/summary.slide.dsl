@@ -4,6 +4,7 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'Teal panel: bold title, rule, two-column grid of four named text blocks (heading + body each)'
 slide_index: 12
 slots:
   text_1: {role: title, chars: 54, default: Summary}

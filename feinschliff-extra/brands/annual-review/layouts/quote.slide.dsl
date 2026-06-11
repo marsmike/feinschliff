@@ -4,6 +4,7 @@ ideal_count: [1, 2]
 data_band: none
 comparison: false
 family: voice
+description: 'Teal panel: large quotation marks and black rule at top, large pull-quote body text centered'
 slide_index: 7
 slots:
   text_1: {role: title, chars: 12, default: “}

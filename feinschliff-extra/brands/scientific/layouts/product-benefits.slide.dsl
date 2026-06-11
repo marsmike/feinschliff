@@ -4,10 +4,13 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 family: organizational
+description: 'Split benefits slide: green teal vertical bar left, circular lab-dropper photo inset; title and five bullet
+  items right'
 slide_index: 5
 slots:
   text_1: {role: title, chars: 225, default: PRODUCT BENEFITS}
   text_2: {role: body, chars: 660, default: INCREASED PRODUCTIVITY\nSEAMLESS INTEGRATION\nENHANCED USER EXPERIENCE\nSCALA…}
+  image: {role: image, class: replace}
 image_queries: {image: product benefits}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+description: 'Full-bleed dark navy cover: rule and eyebrow mid-left, oversized display title below, no image'
 ---
 # title-ink — opener on the dark ink ground. Gold rule + eyebrow, white
 # wordmark + display title.

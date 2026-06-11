@@ -4,6 +4,9 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'White two-column takeaways: large title top, hierarchical bullet list left, plain item list right, geometric
+  corner accents'
+chrome_subject: purple circle top-right corner, teal dashes and strokes bottom-right, orange square bottom-left; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 11
 slots:

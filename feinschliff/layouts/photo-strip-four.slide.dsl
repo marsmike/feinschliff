@@ -3,6 +3,8 @@ role: content-columns
 ideal_count: [4, 4]
 data_band: none
 comparison: false
+description: Four equal photo tiles in a horizontal strip, each with accent label above and two-line caption below; title
+  above strip
 ---
 # photo-strip-four — 4 vertical strip-cards, each with a colored accent header,
 # body copy, and a hero photo at the bottom.

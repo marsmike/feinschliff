@@ -3,6 +3,7 @@ role: title-with-visual
 ideal_count: [1, 1]
 data_band: none
 comparison: false
+description: 'Full-bleed photo occupies entire slide; minimal text overlay bottom-left: eyebrow rule, headline, caption'
 ---
 # full-bleed-editorial — cinematic mid-deck punctuation slide.
 # Full-bleed image with a small title+caption card pinned to the bottom-left

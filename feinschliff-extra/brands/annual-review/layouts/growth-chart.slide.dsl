@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: chart
 comparison: true
 family: comparison
+description: 'Teal panel: bold title, black rule, horizontal grouped bar chart (3 series, 4 categories)'
 chrome_note: 'carries native source chrome verbatim: 1 chart'
 slide_index: 5
 slots:

@@ -3,6 +3,7 @@ role: content-columns
 ideal_count: [6, 6]
 data_band: none
 comparison: false
+description: 2×3 or 3×2 photo grid with caption under each image; title and one-line summary above the grid
 ---
 # photo-grid — six photo-cards (3×2) + summary headline at bottom.
 # Best for "six exemplars" / case-study grids.

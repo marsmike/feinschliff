@@ -4,6 +4,7 @@ ideal_count: [8, 8]
 data_band: none
 comparison: false
 family: organizational
+description: 'White panel: title and rule at top, four portrait photo slots in a row each with name and role'
 slide_index: 8
 slots:
   text_1: {role: title, chars: 54, default: Our team}
@@ -18,6 +19,10 @@ slots:
   text_10: {role: footer, chars: 26, default: Annual Review}
   text_11: {role: footer, chars: 84, default: 'September 3, 20XX'}
   text_12: {role: page-number, chars: 11, default: '8'}
+  image1: {role: image, class: replace}
+  image2: {role: image, class: replace}
+  image3: {role: image, class: replace}
+  image4: {role: image, class: replace}
 image_queries: {image1: team, image2: team, image3: team, image4: team}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

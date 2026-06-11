@@ -32,6 +32,10 @@ The internal profile dict mirrors the keys the picker's scoring loop reads:
 ``role``, ``ideal_count`` (tuple), ``data``, ``comp``, plus the optional
 ``narrative_role`` / ``narrative_act`` / ``time_axis_role`` /
 ``diagram_complexity`` / ``when_not_to_use`` / ``variety_exempt`` fields.
+Decompiled brand-pack layouts may additionally carry content metadata —
+``fixed_chrome`` (bool), ``description`` (str), ``chrome_subject`` (str) —
+which is passed through verbatim when well-typed and silently omitted
+otherwise (type-or-ignore; never required, never validated beyond type).
 """
 from __future__ import annotations
 
@@ -143,6 +147,18 @@ def parse_profile(frontmatter_text: str, *, source: str) -> dict:
         if not isinstance(ve, bool):
             raise ProfileError(f"{source}: 'variety_exempt' must be a boolean")
         profile["variety_exempt"] = ve
+
+    # Content-metadata passthrough (decompiled brand packs). Optional and
+    # tolerant by design — present with the right type → carried through;
+    # absent or mistyped → omitted, never an error. The picker's
+    # fixed-chrome guard and the /deck planner read these to keep
+    # fact-heavy content off layouts whose decoration is carried verbatim.
+    if isinstance(raw.get("fixed_chrome"), bool):
+        profile["fixed_chrome"] = raw["fixed_chrome"]
+    for key in ("description", "chrome_subject"):
+        val = raw.get(key)
+        if isinstance(val, str) and val:
+            profile[key] = val
 
     return profile
 

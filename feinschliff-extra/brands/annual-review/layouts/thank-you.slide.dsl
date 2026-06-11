@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 variety_exempt: true
 family: closing
+description: 'Two-column closing: left has content photo slot; right has Thank You headline, body text, contact details'
 slide_index: 13
 slots:
   text_1: {role: title, chars: 28, default: Thank you}
@@ -13,6 +14,7 @@ slots:
   text_4: {role: footer, chars: 26, default: Annual Review}
   text_5: {role: footer, chars: 84, default: 'September 3, 20XX'}
   text_6: {role: page-number, chars: 11, default: '13'}
+  image: {role: image, class: replace}
 image_queries: {image: thank you}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

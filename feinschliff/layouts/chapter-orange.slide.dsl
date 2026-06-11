@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+description: Full-bleed gold/accent background, large chapter number and title bottom-left, ghost progress counter bottom-right
 ---
 # chapter-orange — section divider on the gold ground. Section number +
 # one-word chapter name in display, ghosted bignum counter bottom-right.

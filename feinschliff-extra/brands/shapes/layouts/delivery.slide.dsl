@@ -3,7 +3,12 @@ role: content-columns
 ideal_count: [2, 2]
 data_band: none
 comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
 family: organizational
+fixed_chrome: true
+description: 'White content slide: large title top, two-column body text with bullet sub-lists, geometric accent shapes at
+  edges'
+chrome_subject: small purple circle top-center, blue quarter-circle right edge, teal dashes bottom-left; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 7
 slots:

@@ -4,12 +4,17 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
 family: framing
+fixed_chrome: true
+description: 'Two-column agenda: title and numbered section list left; rectangular lab flask photo right; teal corner accent'
+chrome_subject: three Erlenmeyer flasks with blue dye dissolving in water; scientific lab stock imagery — replace
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 2
 slots:
   text_1: {role: title, chars: 145, default: AGENDA}
   text_2: {role: body, chars: 380, default: ABOUT US\nPRODUCT OVERVIEW\nMARKET OVERVIEW\nGROWTH STRATEGY\nSUMMARY}
+  image: {role: image, class: replace}
 image_queries: {image: agenda}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

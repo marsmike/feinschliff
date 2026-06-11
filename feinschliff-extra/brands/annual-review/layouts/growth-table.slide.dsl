@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: table
 comparison: false
 family: organizational
+description: 'Yellow panel: bold title, black rule, data table with 3 rows x 4 columns (quarterly series)'
 chrome_note: 'carries native source chrome verbatim: 1 table'
 slide_index: 6
 slots:

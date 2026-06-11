@@ -4,6 +4,9 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'Split content: title and numbered bullets left on cream; content photo circular-cropped right with geometric
+  colour accents'
+chrome_subject: pink arc and small navy circle overlapping photo frame; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 8
 slots:
@@ -11,6 +14,7 @@ slots:
   text_2: {role: title, chars: 94, default: NAVIGATING Q&A\nSESSIONS}
   text_3: {role: body, chars: 855, default: Maintaining composure during the Q&A session is essential for projecting conf…}
   text_4: {role: body, chars: 931, default: Know your material in advance\nAnticipate common questions\nRehearse your res…}
+  image: {role: image, class: replace}
 image_queries: {image: navigating sessions}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

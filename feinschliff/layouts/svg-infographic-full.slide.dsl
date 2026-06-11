@@ -5,6 +5,7 @@ data_band: chart
 comparison: true
 narrative_role: custom-viz
 diagram_complexity: deep
+description: 'Full-slide SVG infographic with minimal chrome: thin title strip top, infographic fills remaining height'
 ---
 # svg-infographic-full — full-slide deep custom data viz / infographic.
 # Use when the chart needs 8+ data points, custom annotations, callouts,
