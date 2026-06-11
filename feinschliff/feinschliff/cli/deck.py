@@ -182,13 +182,12 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_build.add_argument(
         "--strict-static",
         action="store_true",
-        help="Run the pre-render static geometry verifier (feinschliff_builder.verify.static) "
-             "before compile. Aborts with exit 1 and prints defects when any "
-             "slot-overflow or empty-placeholder issues are detected. "
-             "Note: slot-overflow is now FATAL by default (real font metrics make "
-             "the predictor trustworthy), so this flag primarily gates "
-             "empty-placeholder WARNs. Off by default — opting in avoids "
-             "surprising existing automation.",
+        help="Promote static-verifier WARNs to build-blocking errors. The "
+             "pre-render static geometry verifier (feinschliff_builder.verify.static) "
+             "runs on every build when feinschliff-builder is installed; FATAL "
+             "defects (slot-overflow) abort the build by default, no flag "
+             "needed. With this flag, WARN-level defects (empty-placeholder) "
+             "abort too (exit 1, defects printed).",
     )
     p_build.add_argument(
         "--autofix",
@@ -196,9 +195,10 @@ def register(parser: argparse.ArgumentParser) -> None:
         help="Run the static verifier before compile and automatically apply "
              "mechanical fixes (shorten_slot, delete_word, drop_bullet, "
              "swap_layout_*) for known defect classes.  Up to 3 inner fix "
-             "cycles are attempted; residual defects are printed but do NOT "
-             "block the compile.  The fixed plan is written back to disk "
-             "before compile.",
+             "cycles are attempted; residual WARN defects are printed but do "
+             "NOT block the compile.  Residual FATAL defects (slot-overflow) "
+             "still abort via the default static gate.  The fixed plan is "
+             "written back to disk before compile.",
     )
     p_build.set_defaults(func=cmd_build)
 
@@ -619,6 +619,45 @@ def cmd_build(args) -> int:
         # Re-capture slides_spec from the (potentially mutated) plan so the
         # compile loop below uses the fixed content, not the pre-fix snapshot.
         slides_spec = plan.get("slides") or []
+
+    # ── Default static gate — fatal static defects block EVERY build ─────
+    # Run the same pre-render static verifier --strict-static uses, but gate
+    # the abort on fatal_kinds(): FATAL static defects (slot-overflow) abort
+    # the build; WARN-only results (empty-placeholder) never block a default
+    # build — promoting those to errors stays --strict-static's job. Placed
+    # after --autofix so the gate judges the fixed plan, and skipped under
+    # --strict-static (which already aborted on ANY defect above). When
+    # feinschliff-builder is not installed the import misses and the gate
+    # degrades to a no-op — same optional-import pattern as pipeline.py's
+    # structural validators (never crash, never delegate for a default build).
+    _validate_static_gate = None
+    if not getattr(args, "strict_static", False):
+        try:
+            from feinschliff_builder.verify.static import (  # type: ignore[import]
+                validate as _validate_static_gate,
+            )
+        except ImportError:
+            _validate_static_gate = None  # builder absent → gate is a no-op
+    if _validate_static_gate is not None:
+        _gate_bag = _validate_static_gate(
+            plan, brand=default_brand_obj, plan_dir=plan_path.parent
+        )
+        _gate_fatal = [d for d in _gate_bag if d.kind.value in fatal_kinds()]
+        if _gate_fatal:
+            for _d in _gate_fatal:
+                _loc = _d.location or "slide ?"
+                print(
+                    f"deck build: static: {_loc}: "
+                    f"[{_d.severity.value.upper()}] {_d.kind.value} — {_d.message}",
+                    file=sys.stderr,
+                )
+            print(
+                f"deck build: aborting — {len(_gate_fatal)} fatal static "
+                f"defect(s) found pre-render. Shorten the flagged content, "
+                f"enable autoshrink on the layout, or run --autofix.",
+                file=sys.stderr,
+            )
+            return 1
 
     # Compute the output deck path up front so it can serve as `deck_dir`
     # for `asset_lock.json` + `.cache/` during the build.
