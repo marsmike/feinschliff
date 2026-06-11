@@ -63,10 +63,15 @@ def test_text_without_optins_is_unchanged(heuristic_metrics):
     """A plain `text` node (no autoshrink, no lang) emits the same shape as
     before: original text intact, font size = style.size_px → pt."""
     slide, ctx = _fresh_slide()
+    # maxwidth 900, not 800: fit budgets are inset-aware (default text-frame
+    # insets eat ~29 design-px of wrap width), and at 800 the always-on
+    # orphan control would correctly predict a wrap and NBSP-glue the last
+    # word pair. This test is about the OPT-IN features staying off, so give
+    # the line room to fit without any wrap.
     node = DSLNode(
         kind="text",
         pos_args=["100,100"],
-        kw_args={"style": "body", "maxwidth": "800", "maxheight": "40"},
+        kw_args={"style": "body", "maxwidth": "900", "maxheight": "40"},
         label="Donaudampfschifffahrtsgesellschaft is a long compound word.",
         line_no=1,
     )
