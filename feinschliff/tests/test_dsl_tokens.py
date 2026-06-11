@@ -280,3 +280,37 @@ def test_resolve_style_brand_override_absent_is_noop():
     resolved = tokens.resolve_style("title")
     # Canonical `title` bundle is weight=bold; absence of `style` leaves it.
     assert resolved.weight == 700
+
+
+def test_style_bundle_italic():
+    """A brand-defined style with `italic: true` resolves to italic=True."""
+    from feinschmiede.dsl.tokens import Tokens
+    raw = {
+        "color": {"ink": "#111", "accent": "#f00", "paper": "#fff"},
+        "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
+        "font-size": {"slide-title": "56px", "body": "18px", "eyebrow": "14px"},
+        "font-weight": {"regular": 400, "bold": 700},
+        "style": {
+            # Brand override adds italic:true on top of the canonical body bundle.
+            "body": {"font": "body", "size": "body", "weight": "regular",
+                     "color": "ink", "italic": True},
+        },
+    }
+    tokens = Tokens.from_dict(raw, brand_name="test")
+    resolved = tokens.resolve_style("body")
+    assert resolved.italic is True
+
+
+def test_styles_default_not_italic():
+    """Canonical STYLE_BUNDLES resolve with italic=False by default."""
+    from feinschmiede.dsl.tokens import Tokens
+    raw = {
+        "color": {"ink": "#111", "accent": "#f00", "paper": "#fff",
+                  "graphite": "#444"},
+        "font-family": {"display": ["Inter"], "body": ["Inter"], "mono": ["Consolas"]},
+        "font-size": {"slide-title": "56px", "body": "18px", "eyebrow": "14px"},
+        "font-weight": {"regular": 400, "bold": 700},
+    }
+    tokens = Tokens.from_dict(raw, brand_name="test")
+    resolved = tokens.resolve_style("body")
+    assert resolved.italic is False
