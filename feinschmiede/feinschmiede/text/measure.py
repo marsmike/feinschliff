@@ -27,6 +27,21 @@ def clear_caches() -> None:
     _avg_char_width_ratio_cached.cache_clear()
 
 
+def _family_matches(requested: str, families: list[str]) -> bool:
+    """True when fc-match resolved the REQUESTED family (not a substitute).
+
+    `requested` may carry a weight suffix ("Open Sans SemiBold") that
+    fontconfig reports as family "Open Sans" — accept when the request
+    starts with the resolved family. The reverse (resolved family more
+    specific than the request, e.g. "Open Sans Condensed" for "Open
+    Sans") is rejected: a different-width variant would silently produce
+    wrong metrics, and None correctly degrades to the heuristic path.
+    """
+    req = requested.strip().lower()
+    fams = [f.strip().lower() for f in families if f.strip()]
+    return any(req == g or req.startswith(g) for g in fams)
+
+
 def find_font_file(face: str, *, bold: bool = False) -> Path | None:
     """Resolve `face` to its font file, or None when fontconfig is missing,
     the kill-switch is set, or fc-match falls back to a different family."""
@@ -43,7 +58,7 @@ def _find_font_file_cached(face: str, bold: bool) -> Path | None:
     pattern = f"{face}:weight=bold" if bold else face
     try:
         proc = subprocess.run(
-            [fc, "-f", "%{family}\\t%{file}", pattern],
+            [fc, "-f", "%{family}\t%{file}", pattern],   # real tab separator in output
             capture_output=True, text=True, timeout=10, check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
@@ -52,12 +67,8 @@ def _find_font_file_cached(face: str, bold: bool) -> Path | None:
         return None
     family_field, file_field = proc.stdout.split("\t", 1)
     # fc-match ALWAYS returns some font — only trust the resolution when the
-    # family actually matches the request. Face strings may carry a weight
-    # suffix ("Open Sans SemiBold"); accept prefix matches in both directions.
-    requested = face.strip().lower()
-    families = [f.strip().lower() for f in family_field.split(",") if f.strip()]
-    if not any(requested == g or requested.startswith(g) or g.startswith(requested)
-               for g in families):
+    # family actually matches the request.
+    if not _family_matches(face, family_field.split(",")):
         return None
     p = Path(file_field.strip())
     return p if p.is_file() else None
