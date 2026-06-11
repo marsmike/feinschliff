@@ -1468,6 +1468,23 @@ def _resolve_provider_image(
     return materialised
 
 
+def _contain_geometry(
+    img_w: int, img_h: int, x: float, y: float, w: float, h: float,
+) -> tuple[float, float, float, float]:
+    """Scale img to fit w×h preserving aspect; center in the box. Design-px in/out."""
+    if img_w <= 0 or img_h <= 0:
+        return x, y, w, h
+    src_aspect = img_w / img_h
+    box_aspect = w / h
+    if abs(src_aspect - box_aspect) < 1e-3:
+        return x, y, w, h
+    if src_aspect > box_aspect:
+        new_h = w / src_aspect
+        return x, y + (h - new_h) / 2.0, w, new_h
+    new_w = h * src_aspect
+    return x + (w - new_w) / 2.0, y, new_w, h
+
+
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     """picture X,Y WxH path:PATH cover:true
 
@@ -1605,15 +1622,29 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         if endpoints is not None:
             treatment = "duotone"
             duotone_dark, duotone_light = endpoints
-    if cover or treatment != "none":
-        bytes_io = _prepare_picture_bytes(p, target_aspect=(w / h) if cover else None,
+    if cover:
+        bytes_io = _prepare_picture_bytes(p, target_aspect=(w / h),
                                           treatment=treatment,
                                           duotone_dark=duotone_dark,
                                           duotone_light=duotone_light)
         slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
     else:
-        # Fast path: no crop, no treatment — let python-pptx read the file.
-        slide.shapes.add_picture(str(p), _px(x), _px(y), width=_px(w), height=_px(h))
+        # Contain: scale to fit the box preserving aspect ratio, center in the slot.
+        try:
+            with Image.open(p) as _im:
+                img_w, img_h = _im.size
+            cx, cy, cw, ch = _contain_geometry(img_w, img_h, x, y, w, h)
+        except Exception:
+            cx, cy, cw, ch = x, y, w, h
+        if treatment != "none":
+            bytes_io = _prepare_picture_bytes(p, target_aspect=None,
+                                              treatment=treatment,
+                                              duotone_dark=duotone_dark,
+                                              duotone_light=duotone_light)
+            slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+        else:
+            # Fast path: no treatment — let python-pptx read the file directly.
+            slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
 
 
 def _prepare_picture_bytes(
