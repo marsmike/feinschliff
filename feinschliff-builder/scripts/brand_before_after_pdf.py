@@ -31,10 +31,11 @@ import json
 import sys
 from pathlib import Path
 
-import yaml
 from PIL import Image, ImageDraw, ImageFont
 
 REPO = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPO))
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 PAGE_W, PAGE_H = 1920, 1080      # rendering canvas (px); PDF inherits aspect
 PANEL_W, PANEL_H = 580, 326      # 16:9 thumbnails
@@ -142,9 +143,12 @@ def main() -> int:
     brand_pack: Path = args.brand_pack.resolve()
     if not brand_pack.is_dir():
         sys.exit(f"brand pack not found: {brand_pack}")
-    verify_map = brand_pack / "verify-map.yaml"
-    if not verify_map.is_file():
+    try:
+        _vm = load_verify_map(brand_pack)
+    except FileNotFoundError:
         sys.exit(f"missing verify-map.yaml in {brand_pack}")
+    except ValueError as exc:
+        sys.exit(str(exc))
     brand_name = brand_pack.name
     out_root: Path = (args.output_dir or REPO / "out" / brand_name / "verify-loop").resolve()
     source_png_dir = out_root / "source-png"
@@ -159,7 +163,7 @@ def main() -> int:
         sys.exit(f"missing render-png/: {after_dir}\nRun the verify loop first.")
     pdf_path: Path = args.pdf or out_root / "before-after.pdf"
 
-    mapping: dict[str, int] = yaml.safe_load(verify_map.read_text())["layouts"]
+    mapping: dict[str, int] = dict(_vm.layouts)
     if args.only:
         wanted = set(args.only)
         mapping = {k: v for k, v in mapping.items() if k in wanted}

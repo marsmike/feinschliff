@@ -36,10 +36,13 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 from pathlib import Path
 
-import yaml
 from PIL import Image
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 DESIGN_W, DESIGN_H = 1920, 1080
 
@@ -66,13 +69,16 @@ def main() -> int:
                    help="Directory with slide-NN.png exports from source deck")
     args = p.parse_args()
 
-    map_path = args.brand_pack / "verify-map.yaml"
-    if not map_path.is_file():
-        print(f"missing {map_path}")
+    try:
+        _vm = load_verify_map(args.brand_pack)
+    except FileNotFoundError as exc:
+        print(str(exc))
         return 1
-    cfg = yaml.safe_load(map_path.read_text())
-    layouts_map = cfg.get("layouts", {})
-    chart_bboxes = cfg.get("chart_bboxes", {})
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+    layouts_map = dict(_vm.layouts)
+    chart_bboxes = dict(_vm.chart_bboxes)
 
     layouts_dir = args.brand_pack / "layouts"
     assets_dir = args.brand_pack / "assets"

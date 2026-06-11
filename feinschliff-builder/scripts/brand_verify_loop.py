@@ -48,10 +48,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import yaml
-
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+sys.path.insert(0, str(REPO))
+from feinschliff_builder.verify.verify_map import load_verify_map
 
 SOFFICE = "/usr/bin/soffice" if Path("/usr/bin/soffice").exists() else "soffice"
 
@@ -249,9 +250,12 @@ def main() -> int:
     brand_pack: Path = args.brand_pack.resolve()
     if not brand_pack.is_dir():
         sys.exit(f"brand pack not found: {brand_pack}")
-    verify_map = brand_pack / "verify-map.yaml"
-    if not verify_map.is_file():
+    try:
+        _vm = load_verify_map(brand_pack)
+    except FileNotFoundError:
         sys.exit(f"missing verify-map.yaml in {brand_pack}")
+    except ValueError as exc:
+        sys.exit(str(exc))
     source_pptx: Path = args.source_pptx.resolve()
     if not source_pptx.is_file():
         sys.exit(f"source pptx not found: {source_pptx}")
@@ -264,7 +268,7 @@ def main() -> int:
     diff_dir = out_root / "diff"
     work_root = out_root / "work"
 
-    mapping: dict[str, int] = yaml.safe_load(verify_map.read_text())["layouts"]
+    mapping: dict[str, int] = dict(_vm.layouts)
     # `is not None` (not truthiness): `--only` with zero names yields [], which
     # must error as "no layouts matched", NOT silently fall through to all.
     if args.only is not None:
@@ -272,7 +276,7 @@ def main() -> int:
         mapping = {k: v for k, v in mapping.items() if k in wanted}
         if not mapping:
             sys.exit(f"--only matched no layouts (have: "
-                     f"{sorted(yaml.safe_load(verify_map.read_text())['layouts'])})")
+                     f"{sorted(_vm.layouts)})")
 
     failures: list[str] = []
     if not args.skip_source_export:
