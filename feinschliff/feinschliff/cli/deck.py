@@ -183,8 +183,11 @@ def register(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Run the pre-render static geometry verifier (feinschliff_builder.verify.static) "
              "before compile. Aborts with exit 1 and prints defects when any "
-             "slot-overflow or empty-placeholder issues are detected. Off by "
-             "default — opting in avoids surprising existing automation.",
+             "slot-overflow or empty-placeholder issues are detected. "
+             "Note: slot-overflow is now FATAL by default (real font metrics make "
+             "the predictor trustworthy), so this flag primarily gates "
+             "empty-placeholder WARNs. Off by default — opting in avoids "
+             "surprising existing automation.",
     )
     p_build.add_argument(
         "--autofix",

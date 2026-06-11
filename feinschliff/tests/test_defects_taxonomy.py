@@ -53,3 +53,8 @@ def test_format_defect_human_readable():
     assert "slide 2" in s
     assert "slot-overflow" in s
     assert "WARN" in s
+
+
+def test_slot_overflow_is_fatal():
+    from feinschliff.defects import DefectKind, fatal_kinds
+    assert DefectKind.SLOT_OVERFLOW.value in fatal_kinds()
