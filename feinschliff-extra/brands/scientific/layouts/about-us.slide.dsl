@@ -4,10 +4,12 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 family: organizational
+description: 'About us: full-width lab close-up photo banner top, large centred title, blue dash rule, body tagline below'
 slide_index: 3
 slots:
   text_1: {role: title, chars: 132, default: ABOUT US}
   text_2: {role: body, chars: 202, default: Aiming to revolutionize industries through our forward-thinking solutions}
+  image: {role: image, class: replace}
 image_queries: {image: about us}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

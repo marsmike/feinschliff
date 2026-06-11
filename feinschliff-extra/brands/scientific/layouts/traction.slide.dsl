@@ -4,6 +4,8 @@ ideal_count: [1, 1]
 data_band: table
 comparison: false
 family: organizational
+description: 'Traction slide: title top, three milestone bullet blocks left (bold label + body); two-column milestone table
+  right'
 chrome_note: 'carries native source chrome verbatim: 1 table'
 slide_index: 10
 slots:

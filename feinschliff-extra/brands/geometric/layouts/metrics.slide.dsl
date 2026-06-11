@@ -4,6 +4,8 @@ ideal_count: [1, 1]
 data_band: table
 comparison: false
 family: organizational
+description: 'Cream metrics slide: large bold centred title top, full-width striped data table spanning page with light grey
+  rows'
 chrome_note: 'carries native source chrome verbatim: 1 table'
 slide_index: 12
 slots:

@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 variety_exempt: true
 family: framing
+description: 'Teal panel agenda: bold title over full-width black rule, numbered list of five agenda sections'
 slide_index: 2
 slots:
   text_1: {role: title, chars: 54, default: Agenda}

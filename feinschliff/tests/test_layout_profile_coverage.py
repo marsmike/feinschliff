@@ -19,6 +19,7 @@ from feinschliff.layout_profile import (
     ProfileError,
     build_profile_table,
     load_profile,
+    parse_profile,
 )
 
 _BUNDLED = Path(__file__).resolve().parents[1] / "layouts"
@@ -99,6 +100,54 @@ def test_missing_profile_fails_loud(tmp_path):
     layout.write_text("canvas 1920x1080\ntheme feinschliff\n")
     with pytest.raises(ProfileError):
         load_profile(layout)
+
+
+# ── content-metadata passthrough (decompiled brand packs) ────────────────────
+
+_MINIMAL_FM = (
+    "role: data-quantity\n"
+    "ideal_count: [2, 4]\n"
+    "data_band: kpi\n"
+    "comparison: false\n"
+)
+
+
+def test_parse_profile_passes_through_content_metadata():
+    """fixed_chrome / description / chrome_subject ride through verbatim."""
+    profile = parse_profile(
+        _MINIMAL_FM
+        + "fixed_chrome: true\n"
+        + "description: Workshop illustrations left, text column right\n"
+        + "chrome_subject: courtyard planters\n",
+        source="t",
+    )
+    assert profile["fixed_chrome"] is True
+    assert profile["description"] == "Workshop illustrations left, text column right"
+    assert profile["chrome_subject"] == "courtyard planters"
+
+
+def test_parse_profile_content_metadata_absent_is_omitted():
+    """Optional means optional: absent fields don't appear at all."""
+    profile = parse_profile(_MINIMAL_FM, source="t")
+    for key in ("fixed_chrome", "description", "chrome_subject"):
+        assert key not in profile
+
+
+def test_parse_profile_content_metadata_wrong_type_is_ignored():
+    """Type-or-ignore: mistyped content metadata is dropped, not an error —
+    while the strict required-key validation stays intact."""
+    profile = parse_profile(
+        _MINIMAL_FM
+        + "fixed_chrome: maybe\n"   # str, not bool
+        + "description: [a, b]\n"   # list, not str
+        + "chrome_subject: 7\n",    # int, not str
+        source="t",
+    )
+    for key in ("fixed_chrome", "description", "chrome_subject"):
+        assert key not in profile
+    # Existing strictness is untouched.
+    with pytest.raises(ProfileError):
+        parse_profile("role: data-quantity\n", source="t")
 
 
 def test_brand_only_layout_is_ranked(tmp_path):

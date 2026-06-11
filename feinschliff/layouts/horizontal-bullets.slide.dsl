@@ -3,6 +3,8 @@ role: content-columns
 ideal_count: [3, 3]
 data_band: none
 comparison: true
+description: 'Three equal columns separated by hairlines: numbered heading and three bullets each; title spans full width
+  above'
 ---
 # horizontal-bullets — three parallel columns, each with a counter,
 # heading, and short bullet stack. Columns separated by vertical fog

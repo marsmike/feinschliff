@@ -4,6 +4,8 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'White competitive analysis: title and teal accent bar top; two side-by-side tinted text boxes with bullet lists
+  (Strengths / Needs)'
 slide_index: 8
 slots:
   text_1: {role: title, chars: 144, default: COMPETITIVE LANDSCAPE}

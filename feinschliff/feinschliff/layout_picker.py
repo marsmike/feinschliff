@@ -64,6 +64,16 @@ _VARIETY_EXEMPT = frozenset({
     "chapter-orange", "chapter-ink", "agenda", "end",
 })
 
+# Content-bearing caller roles that must not land on `fixed_chrome` layouts
+# (decompiled brand layouts whose decoration is carried verbatim — no room
+# to reflow dense content around it). Framing roles (covers, chapter
+# openers, quotes, closers) are deliberately NOT listed: those are exactly
+# the brand moments fixed-chrome layouts exist for.
+_FIXED_CHROME_GUARD_ROLES = frozenset({
+    "content-columns", "data-quantity", "data-comparison",
+    "data-timeline", "concept-diagram",
+})
+
 
 # Per-layout affinity profile. Each layout declares its profile in a YAML
 # frontmatter fence at the top of its `.slide.dsl` file (parsed by
@@ -91,6 +101,9 @@ _VARIETY_EXEMPT = frozenset({
 #   audience_mode bonus   +0.5 (sparser fit when presentation, denser
 #                                when discussion; any layout, scaled
 #                                against its ideal_count range)
+#   fixed-chrome guard    -6   (profile `fixed_chrome: true` vs a
+#                                content/data caller role — see
+#                                _FIXED_CHROME_GUARD_ROLES)
 # Negative if role mismatched.
 #
 # The scoring table is no longer hand-maintained here: it is derived at
@@ -311,6 +324,20 @@ def pick_layout(
         if neg_hits:
             rationale_parts.append(f"negative-guidance:{','.join(neg_hits)}")
 
+        # Fixed-chrome guard: a decompiled brand layout that carries its
+        # source decoration verbatim (`fixed_chrome: true`) cannot host
+        # dense content — sink it hard whenever the caller asks for a
+        # content/data role. Additive like every other signal (NOT a hard
+        # drop): a pinned `layout:` bypasses the picker entirely, and
+        # framing roles (cover / chapter / quote / closer) are unaffected.
+        guard_hit = (
+            bool(profile.get("fixed_chrome"))
+            and role in _FIXED_CHROME_GUARD_ROLES
+        )
+        if guard_hit:
+            score -= 6.0
+            rationale_parts.append("fixed-chrome-guard")
+
         # Variety penalty: nudge recently-used layouts down so the deck
         # avoids visual monotony (Presenton principle: adjacent slides
         # should differ unless necessary). Structural layouts are exempt —
@@ -354,10 +381,18 @@ def pick_layout(
             score -= 1
             rationale_parts.append("diagram_complexity=deep/anti-narrow")
 
+        # Surface the layout's content description (decompiled brand packs
+        # declare what the slide chrome depicts) in the rationale, so a
+        # planning LLM reading pick output sees what's on the slide.
+        desc = profile.get("description")
+        if isinstance(desc, str) and desc:
+            rationale_parts.append(f"desc:{desc[:80]}")
+
         # Include layouts with positive score, OR layouts that received a
-        # when_not_to_use penalty (so the planning agent can read the
-        # negative-guidance rationale even though the layout ranked low).
-        if score > 0 or neg_hits:
+        # when_not_to_use penalty / fixed-chrome guard (so the planning
+        # agent can read the demotion rationale even though the layout
+        # ranked low).
+        if score > 0 or neg_hits or guard_hit:
             scored.append({
                 "layout": layout_id,
                 "score": score,

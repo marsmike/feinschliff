@@ -6,10 +6,13 @@ comparison: false
 when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
 family: framing
 fixed_chrome: true
+description: 'Section divider: full-bleed content photo with large white circle overlay bearing section title and subtitle'
+chrome_subject: white circle mask centred on a full-bleed photo; brand-neutral layout device
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 3
 slots:
   text_1: {role: title, chars: 198, default: The power\nof communication}
+  image: {role: image, class: replace}
 image_queries: {image: section intro power communication}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

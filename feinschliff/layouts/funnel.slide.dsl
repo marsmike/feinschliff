@@ -3,6 +3,8 @@ role: data-comparison
 ideal_count: [3, 6]
 data_band: chart
 comparison: false
+description: Trapezoid funnel graphic left; four-stage table center with count and percentage; two drop-off annotations with
+  delta values right
 ---
 # funnel — 3-column composition matching the canonical baseline:
 #   left   funnel silhouette (4 narrowing rects; one stage in accent)

@@ -4,6 +4,7 @@ ideal_count: [8, 8]
 data_band: none
 comparison: false
 family: organizational
+description: 'Yellow panel: bold title, black rule, four-column quarterly timeline with period labels and body text'
 slide_index: 9
 slots:
   text_1: {role: title, chars: 54, default: Timeline}

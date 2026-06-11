@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 variety_exempt: true
 family: framing
+description: 'Yellow panel cover: bold black display title over thick black rule, org/team/date line below'
 slide_index: 1
 slots:
   text_1: {role: title, chars: 78, default: Annual Review}

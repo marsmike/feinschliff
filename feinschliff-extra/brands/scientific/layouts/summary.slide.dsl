@@ -4,6 +4,8 @@ ideal_count: [2, 2]
 data_band: none
 comparison: false
 family: organizational
+description: 'Summary: title and teal accent top; two tinted side-by-side text boxes with narrative bullets (prose left, key
+  points right)'
 slide_index: 12
 slots:
   text_1: {role: title, chars: 144, default: SUMMARY}

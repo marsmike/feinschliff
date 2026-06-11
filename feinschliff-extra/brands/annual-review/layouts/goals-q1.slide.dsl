@@ -4,6 +4,7 @@ ideal_count: [4, 4]
 data_band: none
 comparison: false
 family: organizational
+description: 'White panel: bold title, black rule, two-column bullet layout (business priorities / employee opportunities)'
 slide_index: 10
 slots:
   text_1: {role: title, chars: 54, default: Goals for Q1}

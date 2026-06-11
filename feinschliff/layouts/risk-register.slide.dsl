@@ -4,6 +4,8 @@ ideal_count: [4, 8]
 data_band: table
 comparison: false
 narrative_role: risk
+description: 'Tabular risk register: numbered rows with risk description, probability, impact, severity badge, mitigation
+  text, and owner'
 ---
 # risk-register — tabular risk register. Rows × columns:
 #   id, name, probability, impact, severity (colored cell), mitigation, owner.

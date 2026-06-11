@@ -6,11 +6,15 @@ comparison: false
 when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
 family: framing
 fixed_chrome: true
+description: 'Split intro: title and subtitle left on cream; content photo right half; coloured geometric band accents at
+  corners'
+chrome_subject: pink and olive geometric band segments at top/bottom corners; brand-neutral
 chrome_note: 'carries native source chrome verbatim: 2 illustration'
 slide_index: 4
 slots:
   text_1: {role: title, chars: 190, default: OVERCOMING NERVOUSNESS}
   text_2: {role: body, chars: 513, default: Confidence-building strategies}
+  image: {role: image, class: replace}
 image_queries: {image: nervousness overcoming}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

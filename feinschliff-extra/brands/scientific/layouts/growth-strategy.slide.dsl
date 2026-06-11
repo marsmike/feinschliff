@@ -4,6 +4,8 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 family: process
+description: 'Growth strategy: title top, three bullet items upper right, horizontal arrow roadmap with three milestone nodes
+  labelled Expand/Enhance/Explore'
 chrome_note: 'carries native source chrome verbatim: 1 smartart'
 slide_index: 9
 slots:

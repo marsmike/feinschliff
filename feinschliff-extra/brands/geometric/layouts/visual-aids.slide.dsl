@@ -3,9 +3,11 @@ role: chapter-opener
 ideal_count: [1, 2]
 data_band: none
 comparison: false
-when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
 family: framing
 fixed_chrome: true
+description: 'Section intro on cream: large bold title and subtitle right; blue circle and pink arc geometric stack left side'
+chrome_subject: navy circle, pink arc, and blue quarter-circle stack on left strip; brand-neutral geometric shapes
 chrome_note: 'carries native source chrome verbatim: 5 illustration'
 slide_index: 6
 slots:

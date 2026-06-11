@@ -3,6 +3,7 @@ role: data-comparison
 ideal_count: [3, 6]
 data_band: chart
 comparison: true
+description: Horizontal bar chart on left two-thirds, large photo filling right third; title and source line above chart
 ---
 # chart-photo — bar chart on the left half + hero photo on the right half.
 # Best for data narratives with human/scene context.

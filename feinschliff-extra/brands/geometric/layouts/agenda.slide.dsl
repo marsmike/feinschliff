@@ -4,7 +4,11 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
 family: framing
+fixed_chrome: true
+description: 'Agenda: bold AGENDA title and five items on left half; crossing olive/pink triangles and blue dot on right half'
+chrome_subject: crossing olive-green and pink triangles with navy circle accent; brand-neutral geometric composition
 chrome_note: 'carries native source chrome verbatim: 3 illustration'
 slide_index: 2
 slots:

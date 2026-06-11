@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 narrative_role: system
 diagram_complexity: simple
+description: Title and eyebrow top-left, Excalidraw diagram occupying central body area, so-what line and source below
 ---
 # excalidraw-diagram — free-form concept diagram (boxes, arrows, flows,
 # architectures). Use when content describes a system or relationship

@@ -289,6 +289,34 @@ The picker enforces `when_not_to_use` rules declared on each layout and
 applies a variety penalty over `layout_history`, so consecutive slides
 don't reuse the same layout.
 
+### Brand-pack content metadata
+
+Decompiled brand packs carry planning metadata — consume it here:
+
+- **`<brand>/deck-map.yaml`** names the brand's cover / agenda /
+  section / quote / closer / content layouts. Use it for the deck
+  skeleton picks (cover, agenda, section breaks, closer) before
+  scoring the content slides.
+- **`description` / `chrome_subject`** in each layout's frontmatter
+  say what the baked-in chrome depicts (the picker echoes
+  `description` as `desc:…` in its rationale). **Reject** brand
+  layouts whose depicted subject clashes with the deck topic — e.g.
+  off-topic decorative illustrations for a sports brief — and fall back to
+  toolkit layouts rendered in brand tokens instead.
+- **`fixed_chrome: true`** marks layouts whose decoration is carried
+  verbatim and cannot reflow. Use at most 1–2 per deck, only as
+  deliberate brand moments (section breaks, covers) — never for
+  fact-heavy content. The picker already sinks these for content/data
+  roles (`fixed-chrome-guard`); don't pin one over its objection
+  without cause.
+- **Image slots** declare `class: replace` or `class: keep` in the
+  frontmatter `slots:` map. For `replace` slots, bind a topical image
+  (ctx var) or set a `query:` derived from the slide content — the
+  emitter resolves `query:` via the image provider when the path slot
+  is unbound. `keep` slots retain their default asset; leave them.
+- When no brand layout fits a slide's content shape, prefer a toolkit
+  layout (kpi-grid, process-flow, …) — the picker ranks both pools.
+
 **Compute slot budgets** before drafting slot values. The same call
 runs at pre-render content-lint time, so honoring the budget here
 avoids burning an iteration on `slot-overflow` defects:

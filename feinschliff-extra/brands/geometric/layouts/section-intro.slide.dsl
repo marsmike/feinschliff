@@ -6,10 +6,14 @@ comparison: false
 when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
 family: framing
 fixed_chrome: true
+description: 'Section intro: content photo left half (duotone), section title and subtitle right on cream; blue dot and pink
+  arc accents'
+chrome_subject: small navy circle and pink quarter-circle arc top-right on cream background; brand-neutral geometric marks
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 3
 slots:
   text_1: {role: title, chars: 380, default: THE POWER OF COMMUNICATION}
+  image: {role: image, class: replace}
 image_queries: {image: section intro power communication}
 ---
 # auto-derived from PPTX+SVG hybrid — review before use

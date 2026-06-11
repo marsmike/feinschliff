@@ -3,6 +3,8 @@ role: data-comparison
 ideal_count: [3, 3]
 data_band: none
 comparison: true
+description: Three-circle Venn diagram left with overlap labels; intersection annotations in stacked rows right with accent
+  eyebrow
 ---
 # venn — 3 overlapping circles using real oval shapes in the brand
 # palette. Right column lists named intersections + a triple-overlap.

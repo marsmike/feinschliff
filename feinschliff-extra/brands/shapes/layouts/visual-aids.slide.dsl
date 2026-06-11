@@ -6,6 +6,8 @@ comparison: false
 when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison]
 family: framing
 fixed_chrome: true
+description: 'Section divider: large blue circle centre bearing title and subtitle; scattered circles and dashes as chrome'
+chrome_subject: scattered purple circles, teal dashes, and small blue dots; brand-neutral abstract shapes
 chrome_note: 'carries native source chrome verbatim: 1 illustration'
 slide_index: 6
 slots:

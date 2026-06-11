@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+description: 'Full-bleed gold/accent cover: rule and eyebrow mid-left, oversized display title below, no image'
 ---
 # title-orange — opener on the gold ground. Same dark-text chrome as
 # `end` and `quote`; differs by carrying a large 1–2 line title.
