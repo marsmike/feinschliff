@@ -69,6 +69,13 @@ def _cwd_dev_brands_roots() -> list[Path]:
     `~/work/feinschliff/feinschliff/brands/<brand>/` and runs scripts that
     don't sit inside the package.
 
+    Sibling plugin dirs in the same checkout ship brands too — the public
+    `feinschliff-extra/brands/` plus gitignored corporate fixtures
+    (`feinschliff-<corp>/brands/`). Without the glob those packs (and any
+    brand they `extends:`-derive) are invisible unless FEINSCHLIFF_BRAND_PATH
+    is exported, and a stale installed-plugin copy of a same-named brand
+    silently wins.
+
     The walk stops at the first git boundary so we don't accidentally scan
     the whole home directory.
     """
@@ -81,6 +88,9 @@ def _cwd_dev_brands_roots() -> list[Path]:
         candidate = ancestor / "feinschliff" / "brands"
         if candidate.is_dir():
             out.append(candidate)
+        for plugin_brands in sorted(ancestor.glob("feinschliff-*/brands")):
+            if plugin_brands.is_dir():
+                out.append(plugin_brands)
         # Also handle a checkout where the cwd is already inside `feinschliff/`.
         sibling = ancestor / "brands"
         if (ancestor / "pyproject.toml").is_file() and sibling.is_dir():
@@ -93,14 +103,15 @@ def _cwd_dev_brands_roots() -> list[Path]:
 def _discovery_sources() -> list[tuple[str, Path]]:
     """Source-tagged list used by both discovery and the not-found error.
 
-    `env` outranks `plugin`: FEINSCHLIFF_BRAND_PATH is an explicit operator
-    override (a dev checkout, a verify-loop --brand-pack), so it must not be
-    shadowed by a same-named brand in a stale installed plugin.
+    `env` and `cwd-dev` outrank `plugin`: an explicit FEINSCHLIFF_BRAND_PATH
+    override and the working checkout the user is standing in are both more
+    intentional than an ambient installed plugin — a stale marketplace copy
+    of a same-named brand must not shadow either.
     """
     items: list[tuple[str, Path]] = [("bundled", _bundled_brands_root())]
     items.extend(("env", p) for p in _env_brands_roots())
-    items.extend(("plugin", p) for p in _plugin_brands_roots())
     items.extend(("cwd-dev", p) for p in _cwd_dev_brands_roots())
+    items.extend(("plugin", p) for p in _plugin_brands_roots())
     items.append(("user", _user_brands_root()))
     return items
 

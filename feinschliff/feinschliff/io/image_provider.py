@@ -241,14 +241,14 @@ def _cwd_dev_providers_roots() -> list[Path]:
 def _provider_search_paths() -> list[tuple[str, Path]]:
     """Source-tagged list of provider directories, in discovery order.
 
-    `env` outranks `plugin`: FEINSCHLIFF_PROVIDER_PATH is an explicit
-    operator override, so it must not be shadowed by a stale installed
-    plugin.
+    `env` and `cwd-dev` outrank `plugin`: an explicit
+    FEINSCHLIFF_PROVIDER_PATH override and the working checkout are both
+    more intentional than an ambient installed plugin.
     """
     items: list[tuple[str, Path]] = [("bundled", _bundled_providers_root())]
     items.extend(("env", p) for p in _env_providers_roots())
-    items.extend(("plugin", p) for p in _plugin_providers_roots())
     items.extend(("cwd-dev", p) for p in _cwd_dev_providers_roots())
+    items.extend(("plugin", p) for p in _plugin_providers_roots())
     items.append(("user", _user_providers_root()))
     return items
 
