@@ -9,25 +9,13 @@ block.
 """
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
-
 import numpy as np
 import pytest
 
-SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "brand_visual_diff.py"
-
 pytest.importorskip("scipy")
 
+from feinschliff_builder.verify import visual_diff as bvd
 
-def _load_module():
-    spec = importlib.util.spec_from_file_location("brand_visual_diff", SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-bvd = _load_module()
 H, W = bvd.DESIGN_H, bvd.DESIGN_W
 
 

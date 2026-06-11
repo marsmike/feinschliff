@@ -10,9 +10,10 @@ Any brand pack with a `verify-map.yaml` can run a single command to:
      runs `feinschliff build` on `<brand>/layouts/<layout>.slide.dsl` →
      `.pptx` → `.pdf` → PNG. Slot defaults take over so the layout's own
      placeholder text/illustration appears in the render.
-  3. **Diff** — delegates to `scripts/brand_visual_diff.py` to write
-     per-layout 3-panel overlays, ghost masks, `report.json`, and an
-     append-only `score-trace.jsonl` for plateau detection.
+  3. **Diff** — calls the shared scorer
+     (`feinschliff_builder.verify.visual_diff.run_visual_diff`) in-process
+     to write per-layout 3-panel overlays, ghost masks, `report.json`, and
+     an append-only `score-trace.jsonl` for plateau detection.
 
 Everything caches under `<output-dir>/` keyed by file mtime, so re-runs
 after a single DSL edit only rebuild the affected layout.
@@ -49,12 +50,16 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-SCRIPT_DIR = Path(__file__).resolve().parent
 
 sys.path.insert(0, str(REPO))
 from feinschliff_builder.verify.verify_map import load_verify_map
+from feinschliff_builder.verify.visual_diff import run_visual_diff
 
-SOFFICE = "/usr/bin/soffice" if Path("/usr/bin/soffice").exists() else "soffice"
+# Canonical LibreOffice/pdftoppm path: isolated `UserInstallation` profiles
+# per conversion, so a verify-loop run concurrent with e.g.
+# `render_brand_atlas --workers 8` can't collide on the shared soffice
+# profile lock and silently produce no output.
+from feinschliff.io.soffice import pdf_to_pngs, pptx_to_pdf
 
 
 def _run(cmd: list[str], **kw) -> None:
@@ -81,32 +86,22 @@ def export_source_pngs(source_pptx: Path, source_pdf: Path,
     if _newer(source_pdf, source_pptx):
         source_pdf.parent.mkdir(parents=True, exist_ok=True)
         print(f"[source] {source_pptx.name} → {source_pdf.name}")
-        # Fatal: without the source PDF there is nothing to compare against.
-        _run([SOFFICE, "--headless", "--convert-to", "pdf",
-              "--outdir", str(source_pdf.parent), str(source_pptx)],
-             capture_output=True)
-        produced = source_pdf.parent / (source_pptx.stem + ".pdf")
-        if produced != source_pdf:
-            produced.rename(source_pdf)
+        # Fatal: without the source PDF there is nothing to compare against
+        # (pptx_to_pdf raises RuntimeError, which propagates).
+        produced_pdf = pptx_to_pdf(source_pptx, source_pdf.parent)
+        if produced_pdf != source_pdf:
+            produced_pdf.rename(source_pdf)
     failures: list[str] = []
     for n in slide_nos:
         out_png = source_png_dir / f"slide-{n:02d}.png"
         if not _newer(out_png, source_pdf):
             continue
-        stem = source_png_dir / f"_p{n}"
         try:
-            _run(["pdftoppm", "-png", "-f", str(n), "-l", str(n),
-                  "-scale-to-x", "1920", "-scale-to-y", "1080",
-                  str(source_pdf), str(stem)])
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode() if e.stderr else ""
+            produced = pdf_to_pngs(source_pdf, source_png_dir, slide_index=n,
+                                   scale_to=(1920, 1080), prefix=f"_p{n}")
+        except RuntimeError as e:
             out_png.unlink(missing_ok=True)
-            failures.append(f"source slide {n}: pdftoppm failed — {stderr[-160:]}")
-            continue
-        produced = list(source_png_dir.glob(f"_p{n}-*.png"))
-        if not produced:
-            out_png.unlink(missing_ok=True)
-            failures.append(f"source slide {n}: pdftoppm produced no file")
+            failures.append(f"source slide {n}: {str(e)[-160:]}")
             continue
         produced[0].rename(out_png)
         print(f"[source] slide {n:02d} → {out_png.name}")
@@ -169,28 +164,17 @@ def render_derived_pngs(brand_pack: Path, brand_name: str, work_root: Path,
             failures.append(f"{layout}: build failed — {stderr[-200:]}")
             continue
         try:
-            _run([SOFFICE, "--headless", "--convert-to", "pdf",
-                  "--outdir", str(work), str(pptx)],
-                 capture_output=True)
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode() if e.stderr else ""
+            pdf = pptx_to_pdf(pptx, work)
+        except RuntimeError as e:
             out_png.unlink(missing_ok=True)
-            failures.append(f"{layout}: soffice failed — {stderr[-200:]}")
+            failures.append(f"{layout}: {str(e)[-200:]}")
             continue
-        pdf = work / f"{layout}.pdf"
-        stem = work / "_p"
         try:
-            _run(["pdftoppm", "-png", "-scale-to-x", "1920", "-scale-to-y", "1080",
-                  str(pdf), str(stem)])
-        except subprocess.CalledProcessError as e:
-            stderr = e.stderr.decode() if e.stderr else ""
+            produced = pdf_to_pngs(pdf, work, scale_to=(1920, 1080),
+                                   prefix="_p")
+        except RuntimeError as e:
             out_png.unlink(missing_ok=True)
-            failures.append(f"{layout}: pdftoppm failed — {stderr[-200:]}")
-            continue
-        produced = sorted(work.glob("_p-*.png"))
-        if not produced:
-            out_png.unlink(missing_ok=True)
-            failures.append(f"{layout}: pdftoppm produced nothing")
+            failures.append(f"{layout}: {str(e)[-200:]}")
             continue
         produced[0].rename(out_png)
         print(f"[render] {layout} → {out_png.name}")
@@ -203,21 +187,14 @@ def run_diff(brand_pack: Path, source_png_dir: Path,
              loupe: bool = False) -> int:
     """Run the scorer; return its exit code (non-zero = some layout unscored).
 
-    Deliberately does NOT use check=True: the scorer writes report.json even
-    on a partial run and signals partial-ness via a non-zero code, which the
-    caller surfaces — a raised exception here would discard that signal.
+    The scorer deliberately returns a code instead of raising: it writes
+    report.json even on a partial run and signals partial-ness via a
+    non-zero code, which the caller surfaces — an exception here would
+    discard that signal.
     """
     diff_dir.mkdir(parents=True, exist_ok=True)
-    cmd = ["uv", "run", "python", str(SCRIPT_DIR / "brand_visual_diff.py"),
-           "--brand-pack", str(brand_pack),
-           "--source-dir", str(source_png_dir),
-           "--render-dir", str(render_png_dir),
-           "--output-dir", str(diff_dir)]
-    if only:
-        cmd += ["--only", *only]
-    if loupe:
-        cmd.append("--loupe")
-    return subprocess.run(cmd, cwd=REPO).returncode
+    return run_visual_diff(brand_pack, source_png_dir, render_png_dir,
+                           diff_dir, only=only, loupe=loupe)
 
 
 def main() -> int:
