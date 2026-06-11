@@ -3,22 +3,13 @@
 canvas 1920x1080
 theme annual-review
 
-line 163,294 1758,294 stroke:black stroke-width:13
+line 163,295 1758,296 stroke:fog stroke-width:12
 
-text 149,139 style:title-l weight:bold color:ink size:48pt maxwidth:1230 maxheight:120 "Goals for Q1"
-text 149,353 style:body weight:bold color:ink size:18pt maxwidth:782 maxheight:50 "Business priorities"
-text 986,353 style:body weight:bold color:ink size:18pt maxwidth:782 maxheight:50 "Employee opportunities"
-
-text 134,459 style:body color:ink size:18pt maxwidth:760 maxheight:50 "▪  Increase customer satisfaction by 2%"
-text 134,519 style:body color:ink size:18pt maxwidth:760 maxheight:50 "▪  Maintain growth"
-text 134,577 style:body color:ink size:18pt maxwidth:760 maxheight:50 "▪  Diversify investment in sector 2"
-text 134,636 style:body color:ink size:18pt maxwidth:760 maxheight:50 "▪  Initiative partnership with 3rd party"
-text 193,676 style:body color:ink size:18pt maxwidth:700 maxheight:50 "organizations"
-
-text 961,459 style:body color:ink size:18pt maxwidth:780 maxheight:50 "▪  End of fiscal celebration on July 15th"
-text 961,518 style:body color:ink size:18pt maxwidth:780 maxheight:50 "▪  Employee day of learning on August 14th"
-text 961,577 style:body color:ink size:18pt maxwidth:780 maxheight:50 "▪  Employee Yoga on September 3rd"
-text 961,636 style:body color:ink size:18pt maxwidth:780 maxheight:50 "▪  Seminar series begins September 10th"
-text 1307,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:230 maxheight:29 "Annual Review"
-text 1548,991 style:body-sm size:12pt padding:1 maxwidth:240 maxheight:29 "September 3, 20XX"
-text 1810,991 style:body-sm size:12pt padding:14,7,14,7 maxwidth:80 maxheight:29 "10"
+text 162,157 style:sub color:black weight:bold size:44pt valign:bottom padding:1 maxwidth:1748 maxheight:102 "{{ text_1 | default(\"Goals for Q1\") }}"
+text 148,367 style:body color:black weight:bold size:18pt padding:14,7,14,7 maxwidth:828 maxheight:102 "{{ text_2 | default(\"Business priorities\") }}"
+text 986,367 style:body color:black weight:bold size:18pt padding:14,7,14,7 maxwidth:924 maxheight:102 "{{ text_3 | default(\"Employee opportunities\") }}"
+text 163,479 style:body color:black size:18pt valign:top padding:1 maxwidth:817 maxheight:591 "{{ text_4 | default(\"Increase customer satisfaction by 2%\nMaintain growth\nDiversify investment in sector 2\nInitiative partnership with 3rd party organizations\") }}"
+text 990,479 style:body color:black size:18pt valign:top padding:1 maxwidth:920 maxheight:502 "{{ text_5 | default(\"End of fiscal celebration on July 15th\nEmployee day of learning on August 14th\nEmployee Yoga on September 3rd\nSeminar series begins September 10th\") }}"
+text 1307,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:231 maxheight:29 "{{ text_6 | default(\"Annual Review\") }}"
+text 1548,991 style:body-sm color:black size:12pt padding:1 maxwidth:252 maxheight:79 "{{ text_7 | default(\"September 3, 20XX\") }}"
+text 1810,991 style:body-sm color:black size:12pt valign:middle padding:14,7,14,7 maxwidth:100 maxheight:29 "{{ text_8 | default(\"10\") }}"
