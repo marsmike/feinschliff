@@ -30,6 +30,14 @@ def _load_model(model_size: str):
             "faster-whisper is not installed — install the edit extra: "
             "uv pip install 'feinschnitt[edit]'"
         ) from exc
+    # Prefer the locally cached model: unauthenticated HF-hub revalidation can
+    # stall for minutes (observed 2026-06-12 on the first real-voice run).
+    # Only fall back to a network download when no local copy exists yet.
+    try:
+        return WhisperModel(model_size, compute_type="auto",
+                            local_files_only=True)
+    except Exception:
+        pass
     try:
         return WhisperModel(model_size, compute_type="auto")
     except Exception as exc:
