@@ -115,10 +115,10 @@ jobs:
         # keeps lockfile resolution consistent across jobs.
         run: uv sync --all-packages --all-groups
       - name: Lint (ruff)
-        working-directory: feinschliff
-        run: uv run ruff check .
+        run: uv run ruff check feinschliff tests/feinschliff
       - name: Run tests
-        working-directory: feinschliff
+        # Tests live at the repo root (tests/<package>/), outside the plugin
+        # directories, so plugin installs don't ship them.
         # Skip legacy test_skill_validator: pre-existing failures unrelated to
         # the lib code; re-include once the legacy skills are reformatted.
         # Skip render-dependent tests: CI doesn't install libcairo / playwright,
@@ -127,14 +127,14 @@ jobs:
         # on structural coverage. (The rough+cairosvg render path is covered by
         # the feinbild leg of the `packages` matrix, which installs libcairo2.)
         run: |
-          uv run pytest -q \
-            --ignore=tests/test_skill_validator.py \
-            --ignore=tests/test_layout_excalidraw_diagram.py \
-            --ignore=tests/test_layout_svg_infographic.py \
-            --ignore=tests/test_diagrams_render.py \
-            --ignore=tests/test_excalidraw_render.py \
-            --ignore=tests/test_excalidraw_vocabulary_parity.py \
-            --deselect tests/test_examples_decks.py::test_deck_builds
+          uv run pytest -q tests/feinschliff \
+            --ignore=tests/feinschliff/test_skill_validator.py \
+            --ignore=tests/feinschliff/test_layout_excalidraw_diagram.py \
+            --ignore=tests/feinschliff/test_layout_svg_infographic.py \
+            --ignore=tests/feinschliff/test_diagrams_render.py \
+            --ignore=tests/feinschliff/test_excalidraw_render.py \
+            --ignore=tests/feinschliff/test_excalidraw_vocabulary_parity.py \
+            --deselect tests/feinschliff/test_examples_decks.py::test_deck_builds
 
   feinschliff-builder:
     name: feinschliff-builder tests
@@ -149,17 +149,15 @@ jobs:
       - name: Install workspace (all packages + dev groups)
         run: uv sync --all-packages --all-groups
       - name: Lint (ruff)
-        working-directory: feinschliff-builder
-        run: uv run ruff check .
+        run: uv run ruff check feinschliff-builder tests/feinschliff-builder
       - name: Run tests
-        working-directory: feinschliff-builder
         # Only the Playwright/Chromium refurbish tests stay ignored (no browser
         # in CI). The chrome-scanner and atlas-cache tests are backend-free
         # (python-pptx/lxml + filesystem) and run here.
         run: |
-          uv run pytest -q \
-            --ignore=tests/test_examples_refurbish.py \
-            --ignore=tests/test_refurbish_polish_cli.py
+          uv run pytest -q tests/feinschliff-builder \
+            --ignore=tests/feinschliff-builder/test_examples_refurbish.py \
+            --ignore=tests/feinschliff-builder/test_refurbish_polish_cli.py
 
   packages:
     name: ${{ matrix.pkg }} tests
@@ -180,11 +178,9 @@ jobs:
       - name: Install workspace (all packages + dev groups)
         run: uv sync --all-packages --all-groups
       - name: Lint (ruff)
-        working-directory: ${{ matrix.pkg }}
-        run: uv run ruff check .
+        run: uv run ruff check ${{ matrix.pkg }} tests/${{ matrix.pkg }}
       - name: Run tests
-        working-directory: ${{ matrix.pkg }}
-        run: uv run pytest -q
+        run: uv run pytest -q tests/${{ matrix.pkg }}
 
   wheel-install:
     name: ${{ matrix.plugin }} wheel install + CLI smoke

@@ -90,7 +90,7 @@ def main() -> int:
 
     brand_dir = REPO_ROOT / "brands" / args.brand
     layouts_dir = REPO_ROOT / "layouts"
-    examples_dir = REPO_ROOT / "tests" / "fixtures" / "layouts"
+    examples_dir = REPO_ROOT.parent / "tests" / "feinschliff" / "fixtures" / "layouts"
     std_compounds = REPO_ROOT / "compounds"
     brands_dir = REPO_ROOT / "brands"
 

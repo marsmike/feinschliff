@@ -92,7 +92,7 @@ feinschliff/examples/**/*.pptx
 # `scripts/dsl_golden_compare.py`. No pytest test gates against them,
 # so they're regenerated on demand via `scripts/render_v2_goldens.py`
 # and never committed (they drifted ~3 MB into the repo per refresh).
-feinschliff/tests/golden/
+tests/feinschliff/golden/
 
 # Per-slide thumbnails — locally useful for review, too heavy for the
 # repo (was ~10 MB across 30 PNGs for the water-cycle deck alone). The

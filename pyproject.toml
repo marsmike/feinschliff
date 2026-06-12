@@ -9,3 +9,13 @@ members = [
     "feinklang",
     "feinschnitt",
 ]
+
+# Tests for all workspace packages live in tests/<package>/ at the repo root,
+# NOT inside the package directories: plugin installs copy the whole plugin
+# source directory verbatim (no exclude mechanism), so anything under
+# <plugin>/tests/ would ship to every user's plugin cache.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# importlib mode lets same-named test modules coexist across tests/<pkg>/ dirs
+# (e.g. test_cli_errors.py exists for feinbild, feinklang, and feinschnitt).
+addopts = "--import-mode=importlib"

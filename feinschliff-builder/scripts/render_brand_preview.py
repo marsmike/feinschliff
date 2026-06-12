@@ -47,7 +47,7 @@ from feinschliff.io.soffice import SOFFICE, pptx_to_pdf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SHARED_LAYOUTS = REPO_ROOT / "layouts"
-SHARED_CONTENT = REPO_ROOT / "tests" / "fixtures" / "layouts"
+SHARED_CONTENT = REPO_ROOT.parent / "tests" / "feinschliff" / "fixtures" / "layouts"
 
 PDFUNITE = shutil.which("pdfunite") or "/opt/homebrew/bin/pdfunite"
 FEINSCHLIFF_CLI = "feinschliff"  # resolved via `uv run`, see _build_pptx

@@ -20,7 +20,7 @@ any subset of:
 - `opacity`
 
 Brand `tokens.json::style.title` → merged over `STYLE_BUNDLES["title"]`.
-Three unit tests in `tests/test_dsl_tokens.py` lock the behavior.
+Three unit tests in `tests/feinschliff/test_dsl_tokens.py` (repo root) lock the behavior.
 
 ## For `feinschliff:compile`
 When scaffolding a new brand pack, look at the source's typography choices

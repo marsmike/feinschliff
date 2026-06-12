@@ -1,0 +1,4 @@
+# Tests do sys.path / environment setup before imports, same as the old
+# per-package "tests/**" = ["E402"] per-file-ignores.
+[lint]
+ignore = ["E402"]

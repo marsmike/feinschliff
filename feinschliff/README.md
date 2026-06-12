@@ -40,8 +40,9 @@ Three CLI subcommands (`feinschliff <subcommand>`):
 FEINSCHLIFF_BRAND=catppuccin-macchiato /deck "..."
 
 # Standalone CLI (no Claude Code required)
-feinschliff build layouts/quote.slide.dsl \
-  --brand feinschliff --content tests/fixtures/layouts/quote.yaml -o out.pptx
+feinschliff build feinschliff/layouts/quote.slide.dsl \
+  --brand feinschliff \
+  --content tests/feinschliff/fixtures/layouts/quote.yaml -o out.pptx  # from the repo root
 ```
 
 ## Brand packs (3 ship in the box)

@@ -39,11 +39,7 @@ dev = [
     "scikit-image>=0.22",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["E402"]
 "scripts/**" = ["E402"]
 
 [tool.setuptools.packages.find]

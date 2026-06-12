@@ -53,7 +53,7 @@ feinschmiede (engine)  ◀── feinbild ◀── feinschliff ◀── feinsc
 
 Solid arrows are *import/vendor* dependencies (toward the engine). `feinschnitt`
 depends on `feinbild` and `feinklang` only as **CLI calls**, not imports. The
-engine never imports any plugin — a test (`feinschmiede/tests/
+engine never imports any plugin — a test (`tests/feinschmiede/
 test_engine_smoke.py`) fails the build if any `feinschliff` import appears in
 engine source.
 

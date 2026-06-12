@@ -43,11 +43,7 @@ dev = [
     "feinschliff-builder",
 ]
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["E402"]
 "scripts/**" = ["E402"]
 # Vendored, self-contained media-skill CLI scripts (copied verbatim from
 # agentic-toolkit). They do __future__/sys.path setup before imports, so E402
