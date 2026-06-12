@@ -34,6 +34,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, CompoundDef
+from feinschliff.dsl.style_resolve import resolve_node_style
 from feinschmiede.dsl.tokens import Tokens
 from feinschmiede.geometry import units
 from feinschliff.textfit import (
@@ -281,8 +282,9 @@ def compute_slot_budgets(
             )
             height_px = 0.0
 
+        # resolve_node_style raises on unknown style/color/weight/size tokens — such nodes are unbudgetable, skip them (the emitter will fail loudly on the same token).
         try:
-            resolved = tokens.resolve_style(style_name)
+            resolved = resolve_node_style(node, tokens, px_to_pt=px_to_pt)
         except (KeyError, ValueError):
             continue
 
