@@ -674,7 +674,7 @@ def expand_diagram_blocks(
                     body, brand_dir=brand_dir, canvas_override=(virtual_w, virtual_h)
                 )
             artifact.write_text(expanded_text)
-            _render_mod.render(artifact, png)
+            _render_mod.render(artifact, png, brand_dir=brand_dir)
 
         # Build a picture-kind DSLNode.  Geometry goes into kw_args (consistent
         # with how diagram nodes store their own geometry).  Diagram metadata is

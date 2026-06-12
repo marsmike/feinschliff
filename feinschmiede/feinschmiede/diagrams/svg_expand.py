@@ -69,6 +69,7 @@ from ._dsl_common import (
 )
 from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, resolve_fonts, strip_brand_directive
 from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
+from feinschmiede.text.measure import find_font_file as _find_font_file
 
 
 # SVG path `d` attribute allowlist. Letters allow the canonical command set
@@ -91,9 +92,8 @@ def _font_stack(brand_dir: Path, *, mono: bool = False) -> str:
     fonts = resolve_fonts(brand_dir)
     primary = fonts.primary_mono if mono else fonts.primary_body
     if primary is not None:
-        from feinschmiede.text.measure import find_font_file
         key = (brand_dir.name, primary)
-        if key not in _warned_font_fallback and find_font_file(primary) is None:
+        if key not in _warned_font_fallback and _find_font_file(primary) is None:
             _warned_font_fallback.add(key)
             print(
                 f"feinschmiede: WARN: diagram-font-fallback — brand face "
@@ -231,9 +231,10 @@ def _emit_text(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
             anchor = {"left": "start", "center": "middle", "right": "end"}.get(v, v)
         elif p.startswith("color:"):
             fill = resolve(p.split(":", 1)[1], brand_dir)
+    stack = _font_stack(brand_dir, mono=(level == "mono"))
     return (
         f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" '
-        f'text-anchor="{anchor}" font-family="{_font_stack(brand_dir, mono=(level == "mono"))}">{_escape(content)}</text>'
+        f'text-anchor="{anchor}" font-family="{stack}">{_escape(content)}</text>'
     )
 
 

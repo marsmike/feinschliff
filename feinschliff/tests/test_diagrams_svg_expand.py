@@ -146,3 +146,4 @@ text t1 200,150 body "Hello"
     err = capsys.readouterr().err
     assert "diagram-font-fallback" in err
     measure.clear_caches()
+    sx._warned_font_fallback.clear()

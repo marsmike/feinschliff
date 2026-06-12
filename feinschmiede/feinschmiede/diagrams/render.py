@@ -70,12 +70,25 @@ def _cairo_load_error() -> OSError | None:
     return None
 
 
-def render(src: Path, out: Path) -> Path:
+def render(src: Path, out: Path, *, brand_dir: Path | None = None) -> Path:
+    """Render a diagram artifact to PNG.
+
+    Parameters
+    ----------
+    src:
+        Path to the source `.svg` or `.excalidraw` file.
+    out:
+        Destination `.png` path.
+    brand_dir:
+        Optional brand directory. When supplied, the rough renderer
+        substitutes the brand's typographic faces for Excalidraw's built-in
+        font enums (F3). Ignored for SVG inputs and the Playwright fallback.
+    """
     ext = src.suffix.lower()
     if ext == ".svg":
         return _render_svg(src, out)
     if ext == ".excalidraw":
-        return _render_excalidraw(src, out)
+        return _render_excalidraw(src, out, brand_dir=brand_dir)
     raise ValueError(f"render: unsupported format {ext!r}")
 
 
@@ -140,7 +153,8 @@ def _render_svg_playwright(src: Path, out: Path) -> Path:
     return out
 
 
-def _render_excalidraw(src: Path, out: Path) -> Path:
+def _render_excalidraw(src: Path, out: Path,
+                       brand_dir: Path | None = None) -> Path:
     """Render Excalidraw JSON → PNG. rough (pure Python) first; Playwright
     fallback when rough/cairosvg can't handle the document.
 
@@ -154,7 +168,7 @@ def _render_excalidraw(src: Path, out: Path) -> Path:
     import sys
     try:
         from .render_rough import render_excalidraw as _r_rough
-        return _r_rough(src, out, style="clean")
+        return _r_rough(src, out, style="clean", brand_dir=brand_dir)
     except (ImportError, OSError, NotImplementedError) as exc:
         print(
             f"render: rough/cairosvg path unavailable ({exc.__class__.__name__}: "
@@ -173,6 +187,7 @@ def _render_excalidraw(src: Path, out: Path) -> Path:
 
     try:
         from .render_playwright import render_excalidraw as _r_pw
+        # playwright runs the real Excalidraw app — bundled fonts only (documented limitation)
         return _r_pw(src, out)
     except ImportError as exc:
         cairo_exc = _cairo_load_error()

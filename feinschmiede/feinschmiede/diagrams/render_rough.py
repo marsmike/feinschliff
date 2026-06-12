@@ -16,16 +16,26 @@ Known fidelity gaps vs the Playwright (real-Excalidraw) backend:
 from __future__ import annotations
 
 import json
+import sys
 from html import escape
 from itertools import pairwise
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import rough
 
+from .brand_bridge import resolve_fonts
 from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
 
+if TYPE_CHECKING:
+    from .brand_bridge import BrandFonts
 
-def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
+# One WARN per (brand, face) per process — fallback never breaks a render.
+_warned_font_fallback: set[tuple[str, str]] = set()
+
+
+def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
+                      brand_dir: Path | None = None) -> Path:
     """Render `.excalidraw` JSON at `src` to PNG at `out` via rough + cairosvg.
 
     Style modes (one code path, one set of opt selectors):
@@ -35,7 +45,28 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
                   upstream plugin enforces as a hard rule.
       - "sketchy": roughness=1 with multi-stroke — whiteboard / hand-drawn
                   aesthetic.
+
+    When brand_dir is supplied, Normal (fontFamily=2) and Code (fontFamily=3)
+    text elements use the brand's typographic faces rather than Excalidraw's
+    built-in Helvetica/Cascadia defaults (F3). The .excalidraw JSON stays
+    upstream-valid — font enums are never mutated, substitution is render-only.
     """
+    fonts: BrandFonts | None = None
+    if brand_dir is not None:
+        fonts = resolve_fonts(brand_dir)
+        if fonts.primary_body is not None:
+            from feinschmiede.text.measure import find_font_file
+            key = (brand_dir.name, fonts.primary_body)
+            if key not in _warned_font_fallback and find_font_file(fonts.primary_body) is None:
+                _warned_font_fallback.add(key)
+                print(
+                    f"feinschmiede: WARN: diagram-font-fallback — brand face "
+                    f"'{fonts.primary_body}' not fontconfig-resolvable; the rough "
+                    f"render keeps Excalidraw's default faces.",
+                    file=sys.stderr,
+                )
+                fonts = None  # true fallback: render exactly as today
+
     data = json.loads(src.read_text(encoding="utf-8"))
     elements = [e for e in data.get("elements", []) if not e.get("isDeleted")]
     if not elements:
@@ -51,7 +82,7 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
     # Shift everything into positive space.
     tx, ty = pad - mn_x, pad - mn_y
 
-    svg = _compose_svg(elements, elements_by_id, canvas_w, canvas_h, tx, ty, bg, style)
+    svg = _compose_svg(elements, elements_by_id, canvas_w, canvas_h, tx, ty, bg, style, fonts)
 
     import cairosvg
     cairosvg.svg2png(bytestring=svg.encode("utf-8"), write_to=str(out),
@@ -89,7 +120,8 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
     return mn_x, mn_y, mx_x, mx_y
 
 
-def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean") -> str:
+def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean",
+                 fonts: "BrandFonts | None" = None) -> str:
     g = rough.RoughGenerator()
     body = [f'<rect x="0" y="0" width="{w}" height="{h}" fill="{bg}"/>']
 
@@ -124,7 +156,7 @@ def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean") -> str
     # Second pass: text (top layer, after all shapes).
     for e in elements:
         if e.get("type") == "text":
-            body.append(_emit_text(e, by_id, tx, ty))
+            body.append(_emit_text(e, by_id, tx, ty, fonts))
 
     return (
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -287,11 +319,12 @@ def _arrowhead(x1: float, y1: float, x2: float, y2: float,
     return f'<polygon points="{pts}" fill="{stroke}" stroke="{stroke}" stroke-linejoin="round"/>'
 
 
-def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
+def _emit_text(e: dict, by_id: dict, tx: float, ty: float,
+               fonts: "BrandFonts | None" = None) -> str:
     text = e.get("text") or ""
     fs = e.get("fontSize") or 16
     fill = e.get("strokeColor") or "#000000"
-    font = _font_family_name(e.get("fontFamily"))
+    font = _font_family_name(e.get("fontFamily"), fonts)
     lines = text.split("\n") if "\n" in text else [text]
     line_h = fs * 1.2
 
@@ -329,8 +362,15 @@ def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
     )
 
 
-def _font_family_name(idx) -> str:
-    """Map Excalidraw fontFamily index to a CSS font stack."""
+def _font_family_name(idx, fonts: "BrandFonts | None" = None) -> str:
+    """Map an Excalidraw fontFamily index to a CSS stack. With brand fonts
+    resolved (F3), 'Normal' (2) and 'Code' (3) take the brand faces; the
+    hand-drawn face (1) stays Excalidraw's own."""
+    if fonts is not None:
+        if (idx or 2) == 2 and fonts.primary_body is not None:
+            return fonts.svg_body
+        if idx == 3 and fonts.primary_mono is not None:
+            return fonts.svg_mono
     return {
         1: "Virgil, Cascadia, sans-serif",       # Excalidraw "hand-drawn"
         2: "Helvetica, Arial, sans-serif",       # "Normal"
