@@ -56,6 +56,15 @@ def register(parser: argparse.ArgumentParser) -> None:
              "unset. Default: fatal. Mark intentionally-empty slots with "
              "`optional:true` to skip the abort without this flag.",
     )
+    parser.add_argument(
+        "--embed-fonts",
+        action="store_true",
+        help="Embed brand display/body font files into the .pptx so "
+             "recipients without the fonts render faithfully (opt-in; "
+             "enlarges the file). "
+             "No font-license (fsType) check is performed — verify your "
+             "brand fonts permit embedding.",
+    )
     parser.set_defaults(func=cmd_build)
 
 
@@ -174,6 +183,12 @@ def cmd_build(args) -> int:
             file=sys.stderr,
         )
         return 1
+    if getattr(args, "embed_fonts", False):
+        from feinschliff.dsl.font_embed import embed_brand_fonts
+
+        embedded = embed_brand_fonts(prs, tokens)
+        if embedded:
+            print(f"embedded fonts: {', '.join(embedded)}", file=sys.stderr)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     prs.save(str(out_path))
     print(f"wrote {out_path} ({len(prs.slides)} slide, "

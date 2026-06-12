@@ -1,3 +1,17 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+description: 'Traction slide: title top, three milestone bullet blocks left (bold label + body); two-column milestone table
+  right'
+chrome_note: 'carries native source chrome verbatim: 1 table'
+slide_index: 10
+slots:
+  text_1: {role: title, chars: 144, default: TRACTION}
+  text_2: {role: body, chars: 1102, default: 'Product launch\nSuccessful introduction of our product to market\n10,000 user…'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: traction
 canvas 1920x1080

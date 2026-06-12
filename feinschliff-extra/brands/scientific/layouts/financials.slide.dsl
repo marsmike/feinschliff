@@ -1,3 +1,16 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+description: 'Financials table: title and teal accent top; full-width quarterly table (4 rows x 4 cols: Quarter/Revenue/Expenses/Net
+  profit)'
+chrome_note: 'carries native source chrome verbatim: 1 table'
+slide_index: 11
+slots:
+  text_1: {role: title, chars: 144, default: FINANCIALS}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: financials
 canvas 1920x1080

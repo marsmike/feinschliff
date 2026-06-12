@@ -172,6 +172,7 @@ class ResolvedStyle:
     letter_spacing: float = 0.0      # em fraction (e.g. 0.1 = 10% letter-spacing)
     line_height: float = 1.2         # paragraph line-height multiplier (CSS line-height)
     color_role: str = "ink"          # token role name (preserved for hierarchy stepping)
+    italic: bool = False             # italic face / synthesis (python-pptx font.italic)
 
 
 @dataclass
@@ -331,6 +332,7 @@ class Tokens:
             letter_spacing=float(bundle.get("letter_spacing", 0.0)),
             line_height=float(bundle.get("line_height", 1.2)),
             color_role=bundle["color"],
+            italic=bool(bundle.get("italic", False)),
         )
 
 

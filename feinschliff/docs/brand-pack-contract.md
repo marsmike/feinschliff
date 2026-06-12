@@ -30,10 +30,23 @@ Required top-level groups:
 | `font-size` | Named dimensions | `"display": { "$value": "160px" }` |
 
 Optional groups: `font-weight`, `slide` (canvas dimensions), `typography`,
-`picture_treatment`, `locale`, `chart`, `brief_defaults`, `$image_provider`.
+`picture_treatment`, `locale`, `chart`, `brief_defaults`, `$image_provider`,
+`font-metrics`.
 
 Plain string values (`"accent": "#C9A24A"`) and DTCG objects
 (`"accent": { "$value": "#C9A24A" }`) are both accepted.
+
+### font-metrics
+
+Packs shipping fonts the toolkit doesn't know can declare average-glyph-width
+ratios so the slot-budget / verify-static width predictors stay accurate:
+
+```json
+"font-metrics": { "<Family>": { "normal": 0.48, "bold": 0.53 } }
+```
+
+`$`-prefixed keys are skipped and malformed entries are ignored — metrics are
+a measurement aid, never a build-breaker.
 
 ## Inheritance
 
@@ -59,16 +72,23 @@ Required for dark-background layouts: `header-dark.dsl`, `footer-dark.dsl`.
 Sources are checked in priority order (first match wins):
 
 1. **bundled** — `brands/` shipped inside the `feinschliff` plugin
-2. **plugin** — `brands/` directory in any installed Claude Code plugin
-3. **env** — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
-4. **cwd-dev** — `feinschliff/brands/` found by walking up from `$CWD`
+2. **env** — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
+3. **cwd-dev** — `feinschliff/brands/` found by walking up from `$CWD`, plus
+   `brands/` in sibling `feinschliff-*` directories of the same checkout
+   (layouts and image providers follow the same sibling glob)
+4. **plugin** — `brands/` directory in any installed Claude Code plugin
 5. **user** — `~/.feinschliff/brands/`
+
+An explicit env override and the checkout you are standing in outrank an
+ambient installed plugin: a stale marketplace copy of a same-named brand
+never shadows the working tree. `extends:`-parents resolve through the
+same sources.
 
 ## Distribution
 
 Distribute a brand pack by:
 
 - Shipping it as a Claude Code plugin with a `brands/` directory
-  (discovery source 2 above picks it up automatically on install).
+  (discovery source 4 above picks it up automatically on install).
 - Setting `FEINSCHLIFF_BRAND_PATH=/path/to/your/brands` in the shell
-  (discovery source 3 — useful for local / private packs).
+  (discovery source 2 — useful for local / private packs).

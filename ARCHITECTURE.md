@@ -38,7 +38,7 @@ That edge points builder → office (acyclic) and is declared in
 | **feinklang** | plugin | Audio — ElevenLabs voiceover. |
 | **feinschnitt** | plugin | Video — Remotion videos, CLI session recordings, and plan-driven editing of talking-head footage into brand-themed cuts; composes feinbild + feinklang. |
 | **feinschliff-builder** | plugin | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). The office sub-family; imports feinschliff. |
-| **feinschliff-extra** | plugin (data) | 10 extra brand packs. No Python. |
+| **feinschliff-extra** | plugin (data) | 14 extra brand packs. No Python. |
 
 ### Dependency directions
 
@@ -89,7 +89,8 @@ third-party closure to the CI-tested lock via the committed `constraints.txt`.
 feinschmiede/
   brand/            BrandPack — a cross-media "look" (a brand styles decks,
                     diagrams, AND video consistently)
-  brand_discovery   discovery across bundled / plugin / env / cwd / user sources
+  brand_discovery   discovery across bundled / env / cwd-dev / plugin / user
+                    sources (priority order — working tree beats installed plugin)
   dsl/{ast,tokens}  DSL data model + DTCG-flavoured token loader (extends:
                     inheritance via DESIGN.md frontmatter, schema-validated)
   diagnostics       Defect / DiagnosticBag taxonomy
@@ -104,6 +105,13 @@ deck, a diagram, and a video identically, so the brand/token/discovery system
 belongs in the shared engine, not in any one plugin. Token resolution is
 semantic-only (a fixed vocabulary of names like `accent`, `ink`, `chart-series-1`
 resolved through brand tokens) with luminance-based contrast.
+
+**`feinschmiede.text.measure`** provides actual glyph-width measurements via
+fontconfig (`fc-match`) + PIL: when the brand font resolves on the host, textfit
+and slot-budget predictions use real per-character widths rather than a
+font-family char-ratio heuristic. When the font is absent, the heuristic path
+runs unchanged. Set `FEINSCHMIEDE_NO_REAL_METRICS=1` to force the heuristic path
+for reproducibility in CI environments that do not install brand fonts.
 
 The render dispatcher tries the pure-Python **rough + cairosvg** path first
 (~150 ms, no browser) and falls back to a real headless-Chromium Excalidraw
@@ -139,8 +147,11 @@ A brand pack is discovered data: `tokens.json` (+ optional `DESIGN.md`,
 `layouts/`, `assets/`). `feinschmiede.brand_discovery` scans every installed
 plugin's `brands/` dir plus env/home overrides (`FEINSCHLIFF_BRAND_PATH`,
 `~/.feinschliff/brands`) and the bundled packs, so co-installed packs unify
-across plugin boundaries. The discovery error lists every searched source with
-found/missing markers and the env-var fix.
+across plugin boundaries. Inside a checkout, cwd-dev discovery also picks up
+sibling `feinschliff-*` plugin dirs and outranks installed plugins — a stale
+marketplace copy of a same-named brand never shadows the working tree. The
+discovery error lists every searched source with found/missing markers and
+the env-var fix.
 
 The public gallery at <https://marsmike.github.io/feinschmiede/brands/> renders
 every pack against every layout; see

@@ -1,3 +1,19 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+description: 'White two-column takeaways: large title top, hierarchical bullet list left, plain item list right, geometric
+  corner accents'
+chrome_subject: purple circle top-right corner, teal dashes and strokes bottom-right, orange square bottom-left; brand-neutral
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 11
+slots:
+  text_1: {role: title, chars: 106, default: Final tips & takeaways}
+  text_2: {role: body, chars: 1743, default: Consistent rehearsal\nStrengthen your familiarity\nRefine delivery style\nPac…}
+  text_3: {role: body, chars: 900, default: Seek feedback\nReflect on performance\nExplore new techniques\nSet personal g…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: takeaways
 canvas 1920x1080

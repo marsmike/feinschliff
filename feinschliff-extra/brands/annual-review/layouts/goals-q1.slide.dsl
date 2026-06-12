@@ -1,3 +1,21 @@
+---
+role: content-columns
+ideal_count: [4, 4]
+data_band: none
+comparison: false
+family: organizational
+description: 'White panel: bold title, black rule, two-column bullet layout (business priorities / employee opportunities)'
+slide_index: 10
+slots:
+  text_1: {role: title, chars: 54, default: Goals for Q1}
+  text_2: {role: body, chars: 124, default: Business priorities}
+  text_3: {role: body, chars: 140, default: Employee opportunities}
+  text_4: {role: body, chars: 976, default: Increase customer satisfaction by 2%\nMaintain growth\nDiversify investment i…}
+  text_5: {role: body, chars: 897, default: End of fiscal celebration on July 15th\nEmployee day of learning on August 14…}
+  text_6: {role: footer, chars: 26, default: Annual Review}
+  text_7: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_8: {role: page-number, chars: 11, default: '10'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: goals-q1
 canvas 1920x1080

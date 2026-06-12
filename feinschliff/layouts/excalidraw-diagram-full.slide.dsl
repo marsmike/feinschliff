@@ -5,6 +5,7 @@ data_band: none
 comparison: false
 narrative_role: system
 diagram_complexity: deep
+description: 'Full-slide Excalidraw diagram with minimal chrome: thin eyebrow/title strip top, diagram fills remaining height'
 ---
 # excalidraw-diagram-full — full-slide deep architecture diagram (10-20+
 # nodes, zones, typed arrows). Use when the audience is technical and the

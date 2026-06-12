@@ -1,3 +1,23 @@
+---
+role: closer
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: closing
+fixed_chrome: true
+description: 'Closing slide: THANK YOU title and contact details left on cream; large pink circle with concentric arc lines
+  right side'
+chrome_subject: large pink circle with white concentric arc lines and navy top band; brand-neutral geometric motif
+chrome_note: 'carries native source chrome verbatim: 2 illustration'
+slide_index: 13
+slots:
+  text_1: {role: title, chars: 195, default: THANK\nYOU}
+  text_2: {role: body, chars: 522, default: Brita Tamm\n502-555-0152\nbrita@firstupconsultants.com\nwww.firstupconsultant…}
+  image: {role: image, class: replace}
+image_queries: {image: thank you}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: thank-you
 canvas 1920x1080

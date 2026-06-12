@@ -54,6 +54,30 @@ class CompileResult:
     defects: list[Defect]
 
 
+def _register_brand_font_metrics(tokens) -> None:
+    """Register tokens' `font-metrics` width ratios with the textfit table.
+
+    Block shape: ``{"<Family>": {"normal": 0.48, "bold": 0.53}, ...}``;
+    ``$``-prefixed keys (descriptions etc.) are skipped. Malformed entries
+    are ignored — metrics are a measurement aid, never a build-breaker.
+    """
+    from feinschliff.textfit import register_font_metrics
+
+    raw = getattr(tokens, "raw", None)
+    block = raw.get("font-metrics") if isinstance(raw, dict) else None
+    if not isinstance(block, dict):
+        return
+    for family, m in block.items():
+        if family.startswith("$") or not isinstance(m, dict):
+            continue
+        try:
+            register_font_metrics(
+                family, normal=float(m["normal"]), bold=float(m["bold"])
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
+
+
 def compile_slide(
     *,
     layout_path: Path,
@@ -65,6 +89,10 @@ def compile_slide(
     diagrams_out_dir.mkdir(parents=True, exist_ok=True)
 
     tokens = load_tokens(brand_dir)
+    # Brand packs may ship width ratios for their own (often proprietary)
+    # fonts via a tokens `font-metrics` block — register them so the
+    # slot-budget / verify-static predictors measure those fonts accurately.
+    _register_brand_font_metrics(tokens)
     compounds = load_compounds_for_brand(
         brand_dir, std_dir=compounds_dir(),
     )

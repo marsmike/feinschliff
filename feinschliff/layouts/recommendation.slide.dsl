@@ -5,6 +5,8 @@ data_band: none
 comparison: false
 narrative_role: recommendation
 narrative_act: resolution
+description: 'Three recommendation cards across: rule, numbered label, bold action headline, bullet evidence, accent impact
+  KPI + owner'
 ---
 # recommendation — Pyramid Principle closer-but-one. 2–3 named "moves"
 # side by side, each with a verb-led headline, supporting sub-initiatives,

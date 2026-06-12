@@ -1,3 +1,23 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: organizational
+fixed_chrome: true
+description: 'White content slide: large title top, two-column body text with bullet sub-lists, geometric accent shapes at
+  edges'
+chrome_subject: small purple circle top-center, blue quarter-circle right edge, teal dashes bottom-left; brand-neutral
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 7
+slots:
+  text_1: {role: title, chars: 110, default: Effective delivery techniques}
+  text_2: {role: body, chars: 1216, default: 'Effective body language enhances your message, making it more impactful and
+      m…'}
+  text_3: {role: body, chars: 1064, default: 'This is a powerful tool in public speaking. It involves varying pitch, tone,
+      …'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: delivery
 canvas 1920x1080

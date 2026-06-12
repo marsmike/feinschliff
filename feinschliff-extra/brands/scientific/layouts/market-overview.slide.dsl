@@ -1,3 +1,16 @@
+---
+role: content-columns
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: organizational
+description: 'Section divider: centred title on white inset over full-bleed faint molecular pattern background'
+slide_index: 6
+slots:
+  text_1: {role: title, chars: 160, default: MARKET OVERVIEW}
+  image: {role: image, class: replace}
+image_queries: {image: market overview}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: market-overview
 canvas 1920x1080

@@ -3,6 +3,8 @@ role: content-columns
 ideal_count: [3, 5]
 data_band: kpi
 comparison: false
+description: Headline + body paragraph top; two bullet columns (insights left, next steps right) below; three KPI cells across
+  bottom strip
 ---
 # executive-summary — one-page rollup: title + subtitle paragraph,
 # 2-column insights/next-steps list, KPI strip at the bottom.

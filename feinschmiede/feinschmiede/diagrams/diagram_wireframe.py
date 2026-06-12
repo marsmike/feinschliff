@@ -22,7 +22,11 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._dsl_common import canvas_scale as _canvas_scale, parse_xy, parse_wh
-from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES
+from .text_metrics import (
+    SVG_TEXT_SIZES as _SVG_TEXT_SIZES,
+    EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES,
+    CHAR_WIDTH_EM as _CHAR_WIDTH_EM,
+)
 
 
 @dataclass
@@ -66,9 +70,10 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
             x, y = parse_xy(xy)
             base_size = _SVG_TEXT_SIZES.get(level, 14)
             size = base_size * scale
+            max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
                 id=_id, kind="text",
-                x=x, y=int(y - size), w=len(content) * 8, h=int(size + 4),
+                x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
                 label=content, role=level, font_size=float(size),
             ))
         elif head == "axis":
@@ -205,8 +210,9 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
                 if p.startswith("size:"):
                     base_size = _EXCALIDRAW_TEXT_SIZES.get(p.split(":", 1)[1], 14)
             size = base_size * scale
+            max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
-                id=_id, kind="text", x=x, y=int(y - size), w=len(content) * 8, h=int(size + 4),
+                id=_id, kind="text", x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
                 label=content, role=("title" if base_size >= 20 else "body"), font_size=float(size),
             ))
     return prims

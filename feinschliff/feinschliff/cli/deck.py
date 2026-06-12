@@ -46,6 +46,7 @@ from pathlib import Path
 
 import yaml
 
+from feinschliff.deck.content_metadata import auto_bind_slots
 from feinschliff.deck.orchestrate import (
     patch_set_hash as _patch_set_hash_fn,
     build_primitives_for_layout as _build_primitives_for_layout_fn,
@@ -181,10 +182,12 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_build.add_argument(
         "--strict-static",
         action="store_true",
-        help="Run the pre-render static geometry verifier (feinschliff_builder.verify.static) "
-             "before compile. Aborts with exit 1 and prints defects when any "
-             "slot-overflow or empty-placeholder issues are detected. Off by "
-             "default — opting in avoids surprising existing automation.",
+        help="Promote static-verifier WARNs to build-blocking errors. The "
+             "pre-render static geometry verifier (feinschliff_builder.verify.static) "
+             "runs on every build when feinschliff-builder is installed; FATAL "
+             "defects (slot-overflow) abort the build by default, no flag "
+             "needed. With this flag, WARN-level defects (empty-placeholder) "
+             "abort too (exit 1, defects printed).",
     )
     p_build.add_argument(
         "--autofix",
@@ -192,9 +195,19 @@ def register(parser: argparse.ArgumentParser) -> None:
         help="Run the static verifier before compile and automatically apply "
              "mechanical fixes (shorten_slot, delete_word, drop_bullet, "
              "swap_layout_*) for known defect classes.  Up to 3 inner fix "
-             "cycles are attempted; residual defects are printed but do NOT "
-             "block the compile.  The fixed plan is written back to disk "
-             "before compile.",
+             "cycles are attempted; residual WARN defects are printed but do "
+             "NOT block the compile.  Residual FATAL defects (slot-overflow) "
+             "abort via the default static gate.  The fixed plan is "
+             "written back to disk before compile.",
+    )
+    p_build.add_argument(
+        "--embed-fonts",
+        action="store_true",
+        help="Embed brand display/body font files into the .pptx so "
+             "recipients without the fonts render faithfully (opt-in; "
+             "enlarges the file). "
+             "No font-license (fsType) check is performed — verify your "
+             "brand fonts permit embedding.",
     )
     p_build.set_defaults(func=cmd_build)
 
@@ -616,6 +629,50 @@ def cmd_build(args) -> int:
         # compile loop below uses the fixed content, not the pre-fix snapshot.
         slides_spec = plan.get("slides") or []
 
+    # ── Default static gate — fatal static defects block EVERY build ─────
+    # Run the same pre-render static verifier --strict-static uses, but gate
+    # the abort on fatal_kinds(): FATAL static defects (slot-overflow) abort
+    # the build; WARN-only results (empty-placeholder) never block a default
+    # build — promoting those to errors stays --strict-static's job. Placed
+    # after --autofix so the gate judges the fixed plan, and skipped under
+    # --strict-static (which already aborted on ANY defect above). When
+    # feinschliff-builder is not installed the import misses and the gate
+    # degrades to a no-op — same optional-import pattern as pipeline.py's
+    # structural validators (never crash, never delegate for a default build).
+    _validate_static_gate = None
+    if not getattr(args, "strict_static", False):
+        try:
+            from feinschliff_builder.verify.static import (  # type: ignore[import]
+                validate as _validate_static_gate,
+            )
+        except ImportError:
+            _validate_static_gate = None  # builder absent → gate is a no-op
+    if _validate_static_gate is not None:
+        _gate_bag = _validate_static_gate(
+            plan, brand=default_brand_obj, plan_dir=plan_path.parent
+        )
+        _gate_fatal = [d for d in _gate_bag if d.kind.value in fatal_kinds()]
+        if _gate_fatal:
+            for _d in _gate_fatal:
+                _loc = _d.location or "slide ?"
+                print(
+                    f"deck build: static: {_loc}: "
+                    f"[{_d.severity.value.upper()}] {_d.kind.value} — {_d.message}",
+                    file=sys.stderr,
+                )
+            _autofix_hint = (
+                ""
+                if getattr(args, "autofix", False)
+                else " or run --autofix"
+            )
+            print(
+                f"deck build: aborting — {len(_gate_fatal)} fatal static "
+                f"defect(s) found pre-render. Shorten the flagged content, "
+                f"enable autoshrink on the layout{_autofix_hint}.",
+                file=sys.stderr,
+            )
+            return 1
+
     # Compute the output deck path up front so it can serve as `deck_dir`
     # for `asset_lock.json` + `.cache/` during the build.
     out_path = Path(args.output or plan.get("out", "deck.pptx")).resolve()
@@ -678,6 +735,19 @@ def cmd_build(args) -> int:
                         print(f"deck: slide {i}: content_file not found: {spec['content_file']}", file=sys.stderr)
                         return 2
                 ctx = yaml.safe_load(content_path.read_text()) or {}
+
+            # Brand-layout slot metadata: auto-bind footer / page-number
+            # slots (from deck-level `vars:` / the slide index) and derive
+            # provider queries for unbound `class: replace` image slots.
+            # Explicit plan bindings — including an explicit "" — always win.
+            ctx = auto_bind_slots(
+                ctx,
+                layout_path=layout_path,
+                layout_nodes=layout_nodes,
+                slide_index=i + 1,
+                deck_vars=plan.get("vars"),
+                image_provider_available=provider is not None,
+            )
 
             if content_defects_by_slide is not None:
                 slide_index = i + 1
@@ -778,6 +848,14 @@ def cmd_build(args) -> int:
                 file=sys.stderr,
             )
             return 1
+        if getattr(args, "embed_fonts", False) and slides_payload:
+            from feinschliff.dsl.font_embed import embed_brand_fonts
+
+            # Per-slide `brand:` overrides exist, but font embedding is
+            # deck-wide — the first slide's brand tokens win.
+            embedded = embed_brand_fonts(prs, slides_payload[0][1])
+            if embedded:
+                print(f"embedded fonts: {', '.join(embedded)}", file=sys.stderr)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         prs.save(str(out_path))
         print(f"wrote {out_path} ({len(prs.slides)} slides)")
@@ -1752,6 +1830,43 @@ def cmd_verify_static(args) -> int:
     return 1 if bag else 0
 
 
+def _parse_severity(value: str):
+    """Parse a severity string that may use either engine or legacy vocabulary.
+
+    ``deck verify-static --json`` emits ENGINE severity values because it goes
+    through ``feinschliff_builder.verify.static.validate()``, which maps the
+    legacy Severity enum to the ``feinschmiede.diagnostics`` engine enum before
+    serialising:
+
+        legacy FATAL  → engine "error"
+        legacy WARN   → engine "warning"
+        legacy INFO   → engine "info"
+
+    Legacy values (``"fatal"``, ``"warn"``, ``"info"``) are also accepted so
+    that hand-crafted defect files and older tooling continue to work.
+
+    The inverse mapping applied here exactly undoes validate()'s forward mapping:
+
+        engine "error"   → Severity.FATAL
+        engine "warning" → Severity.WARN
+        engine "info"    → Severity.INFO
+        legacy "fatal"   → Severity.FATAL  (pass-through)
+        legacy "warn"    → Severity.WARN   (pass-through)
+
+    Raises ``ValueError`` for unrecognised values (caller logs + skips).
+    """
+    from feinschliff.defects import Severity
+    _ENGINE_TO_LEGACY = {
+        "error": Severity.FATAL,
+        "warning": Severity.WARN,
+        "info": Severity.INFO,
+    }
+    if value in _ENGINE_TO_LEGACY:
+        return _ENGINE_TO_LEGACY[value]
+    # Fall through to legacy enum constructor (handles "fatal", "warn", "info").
+    return Severity(value)
+
+
 def cmd_apply_fixes(args) -> int:
     """`feinschliff deck apply-fixes <plan.yaml> --defects <defects.json> [-o out.yaml]`
 
@@ -1765,6 +1880,11 @@ def cmd_apply_fixes(args) -> int:
       - Collated:   {"defects": {"1": [...], "2": [...]}, ...}
         (output shape used by cli/verify.py)
 
+    Severity values accepted: both ENGINE vocabulary ("error", "warning",
+    "info" — emitted by ``deck verify-static --json``) and LEGACY vocabulary
+    ("fatal", "warn", "info" — used by hand-crafted files and older tooling).
+    See ``_parse_severity()`` for the exact mapping.
+
     Exit codes:
       0 — at least one patch was applied
       1 — no patches applied (defects present but none mechanically fixable,
@@ -1774,7 +1894,7 @@ def cmd_apply_fixes(args) -> int:
     _require_or_delegate_builder("deck apply-fixes")
     import json as _json
     from feinschliff_builder.verify.autofix import plan_fixes, apply_fixes, diff_summary
-    from feinschliff.defects import Defect, DefectKind, Severity
+    from feinschliff.defects import Defect, DefectKind
 
     plan_path = Path(args.plan).resolve()
     if not plan_path.is_file():
@@ -1819,7 +1939,7 @@ def cmd_apply_fixes(args) -> int:
             defects.append(Defect(
                 slide_index=int(dd["slide_index"]),
                 kind=DefectKind(dd["kind"]),
-                severity=Severity(dd["severity"]),
+                severity=_parse_severity(dd["severity"]),
                 message=str(dd.get("message", "")),
                 meta=dict(dd.get("meta") or {}),
             ))

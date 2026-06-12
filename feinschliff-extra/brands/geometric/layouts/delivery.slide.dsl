@@ -1,3 +1,23 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: organizational
+fixed_chrome: true
+description: 'Cream content slide: large bold title top-left, two-column body text with bullet sub-lists; pink and olive triangle
+  blocks right edge'
+chrome_subject: pink and olive-green triangle blocks stacked in right-edge column; brand-neutral geometric motif
+chrome_note: 'carries native source chrome verbatim: 4 illustration'
+slide_index: 7
+slots:
+  text_1: {role: page-number, chars: 44, default: '7'}
+  text_2: {role: title, chars: 94, default: EFFECTIVE DELIVERY TECHNIQUES}
+  text_3: {role: body, chars: 855, default: 'This is a powerful tool in public speaking. It involves varying pitch, tone,
+      …'}
+  text_4: {role: body, chars: 784, default: 'Effective body language enhances your message, making it more impactful and m…'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: delivery
 canvas 1920x1080

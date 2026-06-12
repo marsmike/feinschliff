@@ -8,42 +8,104 @@ boxes without hand-tuning every slide. Avoids two recurring failure modes:
 2. German compounds like "Unterrichtsplanung" break mid-word because
    python-pptx wraps purely on whitespace.
 
-Height estimation here is intentionally rough — python-pptx does not lay out
-text. The per-font character-width ratios are empirical and good enough to
-pick a font size that *will* fit; the verify pass is still authoritative.
+Width prediction prefers REAL font metrics (fontconfig + PIL, via
+`feinschmiede.text.measure`) whenever the requested family resolves to an
+actual font file on the build host; the per-font character-width ratios
+below are the fallback when it doesn't. Runtime-registered brand metrics
+(`register_font_metrics`) always win over measurement — they encode
+operator intent for fonts the build host can't resolve. Set
+`FEINSCHMIEDE_NO_REAL_METRICS=1` to force the heuristic path
+(deterministic CI / A-B debugging). The verify pass stays authoritative.
 """
 from __future__ import annotations
 
+import math
 
 import pyphen
+
+from feinschmiede.text import measure as _measure
 
 
 _EMU_PER_PT = 12700
 
 # Empirical average glyph widths as fraction of font size. Tune per brand by
 # rendering a swatch and measuring. The "default" entry is the fallback for
-# unknown fonts.
+# unknown fonts. Used only when real measurement is unavailable — except for
+# families in _REGISTERED, whose ratios always win.
 _FONT_WIDTH_RATIO: dict[str, dict[str, float]] = {
     "Open Sans":         {"normal": 0.50, "bold": 0.54},
     "Noto Sans":         {"normal": 0.51, "bold": 0.55},
-    # Bosch corporate font (brand pack: feinschliff-bosch). Measured from the
-    # shipped TTFs (Regular/Bold) over a representative slide sample, plus the
-    # same conservative margin the other entries carry. It is noticeably
-    # narrower than the generic default, so registering it lets the slot-budget
-    # / verify-static predictors estimate width accurately instead of warning
-    # "font 'Bosch Office Sans' not in width-ratio table".
-    "Bosch Office Sans": {"normal": 0.48, "bold": 0.53},
     "Consolas":          {"normal": 0.55, "bold": 0.55},
     "Noto Sans Mono":    {"normal": 0.60, "bold": 0.60},
     "JetBrains Mono":    {"normal": 0.60, "bold": 0.60},
     "default":           {"normal": 0.52, "bold": 0.56},
 }
 
+# Families registered at runtime via register_font_metrics(). Their table
+# ratios beat real measurement: registration is operator intent (typically
+# for proprietary fonts the build host can't resolve), while the builtin
+# table entries are just defaults that measurement should beat.
+_REGISTERED: set[str] = set()
+
+
+def register_font_metrics(family: str, *, normal: float, bold: float) -> None:
+    """Register / override the average-glyph-width ratios for *family*.
+
+    Brand packs ship metrics for their own (often proprietary) fonts via a
+    `font-metrics` block in tokens.json — the build pipeline registers them
+    here, so the slot-budget / verify-static width predictors stay accurate
+    without this module hardcoding any client font name. Registered ratios
+    take precedence over real measurement for that family.
+    """
+    _FONT_WIDTH_RATIO[family] = {"normal": float(normal), "bold": float(bold)}
+    _REGISTERED.add(family)
+
+
+def has_real_metrics(font: str, bold: bool = False) -> bool:
+    """True when textfit's predictions for *font* come from real measured
+    glyph widths (font resolved AND not overridden by registered ratios)."""
+    return font not in _REGISTERED and _measure.find_font_file(font, bold=bold) is not None
+
 
 def _avg_char_width_emu(font: str, size_pt: float, bold: bool) -> float:
+    # Priority: runtime-registered brand metrics (operator intent for fonts
+    # we can't resolve) > measured real metrics > builtin ratio table.
+    if font not in _REGISTERED:
+        measured = _measure.avg_char_width_ratio(font, bold=bold)
+        if measured is not None:
+            return measured * size_pt * _EMU_PER_PT
     table = _FONT_WIDTH_RATIO.get(font, _FONT_WIDTH_RATIO["default"])
     ratio = table["bold"] if bold else table["normal"]
     return ratio * size_pt * _EMU_PER_PT
+
+
+def _greedy_wrap_real(line: str, font: str, size_pt: float, bold: bool,
+                      width_emu: int) -> list[list[str]] | None:
+    """Greedy word-wrap with measured widths. None when no real metrics.
+    Splits on regular spaces only — NBSP-glued tokens stay together, like
+    the heuristic packer.
+
+    Families in _REGISTERED return None too: their registered ratios always
+    win, so callers fall back to heuristic packing with those ratios instead
+    of a measured wrap that would contradict them.
+    """
+    if font in _REGISTERED:
+        return None
+    width_pt = width_emu / _EMU_PER_PT
+    lines: list[list[str]] = [[]]
+    cur = ""
+    for word in line.split(" "):
+        cand = word if not cur else f"{cur} {word}"
+        w = _measure.line_width_pt(cand, font, size_pt, bold=bold)
+        if w is None:
+            return None
+        if w <= width_pt or not lines[-1]:
+            lines[-1].append(word)
+            cur = cand
+        else:
+            lines.append([word])
+            cur = word
+    return lines
 
 
 def supported_fonts() -> frozenset[str]:
@@ -72,23 +134,40 @@ def measure_height_emu(
 ) -> int:
     """Estimate rendered height (EMU) of `text` at `font`/`size_pt` in `width_emu`.
 
-    Counts explicit '\\n' newlines plus soft-wrap lines estimated from character
-    count vs. column width. Soft hyphens (U+00AD) are ignored in the count
-    since they are invisible unless a wrap actually breaks at one.
+    Counts explicit '\\n' newlines plus soft-wrap lines — measured greedy
+    word-wrap when real font metrics resolve, character count vs. column
+    width otherwise. Soft hyphens (U+00AD) are ignored in the count since
+    they are invisible unless a wrap actually breaks at one.
     """
     if not text:
         return 0
-    avg_w = _avg_char_width_emu(font, size_pt, bold)
-    chars_per_line = max(1, int(width_emu / avg_w))
     line_h = _line_height_emu(size_pt, line_height)
+    width_pt = width_emu / _EMU_PER_PT
+    cols: int | None = None    # heuristic columns, computed lazily on fallback
     total_lines = 0
     for hard_line in text.split("\n"):
         visible = hard_line.replace("­", "")
         if not visible:
             total_lines += 1
             continue
-        # ceil(len / chars_per_line)
-        total_lines += max(1, (len(visible) + chars_per_line - 1) // chars_per_line)
+        wrapped = _greedy_wrap_real(visible, font, size_pt, bold, width_emu)
+        if wrapped is not None:
+            for line_words in wrapped:
+                if len(line_words) == 1:
+                    w_pt = _measure.line_width_pt(line_words[0], font, size_pt, bold=bold)
+                    if w_pt is not None and w_pt > width_pt:
+                        # Renderers break over-wide words mid-word (and at soft
+                        # hyphens, stripped above); count the minimum lines the
+                        # glyph mass needs. Over-estimates vs. syllable
+                        # breaking — the safe direction for overflow checks.
+                        total_lines += max(1, math.ceil(w_pt / width_pt))
+                        continue
+                total_lines += 1
+        else:
+            if cols is None:
+                cols = chars_per_line(font, size_pt, bold, width_emu)
+            # ceil(len / cols)
+            total_lines += max(1, (len(visible) + cols - 1) // cols)
     return total_lines * line_h
 
 
@@ -160,6 +239,9 @@ def prevent_orphan(
     with U+00A0 (NBSP) so the pair wraps together. Otherwise return `text`
     unchanged.
 
+    The wrap uses measured widths when real font metrics resolve (and the
+    family has no registered ratios), character-count packing otherwise.
+
     Idempotent: if the text already contains an NBSP between the last two
     words (no regular space there), the orphan check sees the pair as one
     token and leaves it alone.
@@ -173,23 +255,31 @@ def prevent_orphan(
     if " " in parts[-1]:
         return text
 
-    avg_w = _avg_char_width_emu(font, size_pt, bold)
-    chars_per_line = max(1, int(width_emu / avg_w))
+    # Measured greedy wrap when available; heuristic char packing otherwise.
+    # Strip soft hyphens (U+00AD) before measuring, mirroring
+    # measure_height_emu — they're invisible unless a break lands on one, and
+    # correctness shouldn't depend on per-font SHY advance. The NBSP glue
+    # below still happens on the ORIGINAL text.
+    visible = text.replace("­", "")
+    lines = _greedy_wrap_real(visible, font, size_pt, bold, width_emu)
+    if lines is None:
+        avg_w = _avg_char_width_emu(font, size_pt, bold)
+        chars_per_line = max(1, int(width_emu / avg_w))
 
-    # Greedy line packing: count NBSPs as part of the token (no break).
-    lines: list[list[str]] = [[]]
-    current_len = 0
-    for word in parts:
-        # Visible length sees NBSP as one cell, just like a letter.
-        word_len = len(word)
-        sep = 1 if lines[-1] else 0
-        prospective = current_len + sep + word_len
-        if prospective <= chars_per_line or not lines[-1]:
-            lines[-1].append(word)
-            current_len = prospective
-        else:
-            lines.append([word])
-            current_len = word_len
+        # Greedy line packing: count NBSPs as part of the token (no break).
+        lines = [[]]
+        current_len = 0
+        for word in parts:
+            # Visible length sees NBSP as one cell, just like a letter.
+            word_len = len(word)
+            sep = 1 if lines[-1] else 0
+            prospective = current_len + sep + word_len
+            if prospective <= chars_per_line or not lines[-1]:
+                lines[-1].append(word)
+                current_len = prospective
+            else:
+                lines.append([word])
+                current_len = word_len
 
     # Orphan condition: more than one line AND last line has exactly one word.
     if len(lines) > 1 and len(lines[-1]) == 1:

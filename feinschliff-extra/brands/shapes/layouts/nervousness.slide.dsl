@@ -1,3 +1,22 @@
+---
+role: chapter-opener
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: framing
+fixed_chrome: true
+description: 'Split layout: circular content photo left with section title and subtitle right; geometric shape accents (corner
+  squares, circles) as chrome'
+chrome_subject: corner orange square outline, small circles top and bottom; brand-neutral geometric accents
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 4
+slots:
+  text_1: {role: title, chars: 84, default: Overcoming\nnervousness}
+  text_2: {role: body, chars: 416, default: Confidence-building\nstrategies}
+  image: {role: image, class: replace}
+image_queries: {image: nervousness overcoming}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: nervousness
 canvas 1920x1080

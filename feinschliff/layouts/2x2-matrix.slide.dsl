@@ -3,6 +3,7 @@ role: data-comparison
 ideal_count: [4, 4]
 data_band: table
 comparison: true
+description: Four-quadrant 2×2 grid with axis labels, accent fill on priority cell; title above, legend text right
 ---
 # 2x2-matrix — classic prioritisation grid with axis labels and one focus
 # cell flagged. Cells in reading order: TL, TR, BL, BR.

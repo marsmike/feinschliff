@@ -3,6 +3,7 @@ role: reference
 ideal_count: [3, 8]
 data_band: table
 comparison: true
+description: 'Data table: header row with accent labels, five data rows × six columns, hairline separators, title above'
 ---
 # table — 5 columns × N data rows. Header row + a `for` block that grows
 # with the input. Rows pitch every 80px starting at y=500; the canonical

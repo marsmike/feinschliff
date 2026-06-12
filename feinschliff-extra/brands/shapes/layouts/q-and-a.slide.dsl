@@ -1,3 +1,19 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+description: 'White content slide: large title, asymmetric two-column layout (short bullets left / long paragraph + bullets
+  right), geometric accents'
+chrome_subject: blue semicircle top-right, orange triangle outline bottom-right, teal dashes bottom-left; brand-neutral
+chrome_note: 'carries native source chrome verbatim: 2 illustration'
+slide_index: 8
+slots:
+  text_1: {role: title, chars: 110, default: Navigating Q&A sessions}
+  text_2: {role: body, chars: 1869, default: Maintaining composure during the Q&A session is essential for projecting conf…}
+  text_3: {role: body, chars: 924, default: Know your material in advance\nAnticipate common questions\nRehearse your res…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: q-and-a
 canvas 1920x1080

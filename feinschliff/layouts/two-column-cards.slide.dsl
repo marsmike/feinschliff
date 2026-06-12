@@ -3,6 +3,7 @@ role: content-columns
 ideal_count: [2, 2]
 data_band: none
 comparison: true
+description: 'Two wide columns with hairline divider: accent label, bold lead sentence, and supporting detail paragraph each'
 ---
 # two-column-cards — paired ideas with parallel weight. Title block + two
 # .col.card panels side-by-side.

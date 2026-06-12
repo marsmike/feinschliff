@@ -1,3 +1,21 @@
+---
+role: title-primary
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: framing
+fixed_chrome: true
+description: 'Scientific cover: large title centred, circular lab-glassware photo above, presenter name below, thin blue accent
+  rule'
+chrome_subject: circular cropped photo of pills in a petri dish, teal border frame; scientific/lab stock imagery — replace
+chrome_note: 'carries native source chrome verbatim: 1 illustration'
+slide_index: 1
+slots:
+  text_1: {role: title, chars: 220, default: SCIENTIFIC DISCOVERY}
+  text_2: {role: body, chars: 188, default: AIDYN ZHANBOLAT}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: cover
 canvas 1920x1080

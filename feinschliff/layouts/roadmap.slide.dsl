@@ -5,6 +5,8 @@ data_band: none
 comparison: true
 narrative_role: plan
 time_axis_role: strategic
+description: 'Multi-workstream roadmap grid: four rows × five quarter columns, colour-coded milestone cells, milestone diamond
+  markers above'
 ---
 # roadmap — strategic plan. Workstream rows × time-period columns with
 # per-phase status coloring and optional milestone diamonds above the

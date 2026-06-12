@@ -2,7 +2,9 @@
 
 Covers the 6 cases enumerated in the image-provider-framework plan:
 
-  1. ``query:`` + ``path:`` together → ``DSLError``.
+  1. ``query:`` + ``path:`` together → layered fallback (path wins when it
+     resolves; query drives the provider search when it misses). Detailed
+     coverage lives in ``test_picture_path_query_fallback.py``.
   2. ``query:`` with no provider wired → loud error.
   3. Happy path: a fake provider returns one hit; the slide gets a
      picture shape and ``asset_lock.json`` is written.
@@ -66,18 +68,24 @@ def _build(dsl: str, *, deck_dir: Path, provider: ImageProvider | None = None):
 
 
 # ---------------------------------------------------------------------------
-# Case 1 — mutex: query: and path: cannot coexist
+# Case 1 — query: + path: coexist as a layered fallback (no longer a mutex)
 # ---------------------------------------------------------------------------
 
-def test_picture_query_and_path_together_raises_dsl_error(tmp_path):
+def test_picture_query_and_path_together_no_longer_raises(tmp_path):
+    """``path:`` + ``query:`` used to be mutually exclusive; they now form
+    a layered fallback (path → query → placeholder). With no provider
+    wired and a missing path, the build must complete with the gem
+    placeholder rather than raise. Full layered-behaviour coverage lives
+    in ``test_picture_path_query_fallback.py``."""
     dsl = (
         'canvas 1920x1080\n'
         'theme test\n'
-        'picture 100,100 200x200 query:"kitchen" path:"/tmp/x.png"'
+        'picture 100,100 200x200 query:"kitchen" path:"/tmp/does-not-exist-x.png"'
     )
-    with pytest.raises(DSLError) as exc:
-        _build(dsl, deck_dir=tmp_path)
-    assert "mutually exclusive" in str(exc.value).lower()
+    prs = _build(dsl, deck_dir=tmp_path)  # must not raise
+    assert any(
+        e.get("kind") == "missing-file" for e in prs.missing_assets
+    ), f"expected a missing-file entry, got {prs.missing_assets!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -635,7 +643,7 @@ def test_materialise_trusts_content_type_over_hit_mime(tmp_path):
         # Response says webp — that wins.
         return _FakeHTTPResponse(webp_bytes, content_type="image/webp")
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -668,7 +676,7 @@ def test_materialise_strips_charset_suffix_from_content_type(tmp_path):
     def _fake_urlopen(url, timeout=None):  # noqa: ARG001
         return _FakeHTTPResponse(png_bytes, content_type="image/png; charset=binary")
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -701,7 +709,7 @@ def test_materialise_falls_back_to_hit_mime_when_content_type_missing(tmp_path):
     def _fake_urlopen(url, timeout=None):  # noqa: ARG001
         return _FakeHTTPResponse(png_bytes, content_type=None)
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -730,7 +738,7 @@ def test_materialise_defaults_to_bin_when_nothing_resolvable(tmp_path):
         # No Content-Type header, opaque bytes.
         return _FakeHTTPResponse(b"\x00\x01\x02\x03", content_type=None)
 
-    from feinschliff.dsl.pptx_emit import _materialise as _mat
+    from feinschliff.io.image_materialise import _materialise as _mat
     cache_dir = tmp_path / "cache"
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         result, err = _mat(hit, cache_dir)
@@ -745,7 +753,7 @@ def test_materialise_defaults_to_bin_when_nothing_resolvable(tmp_path):
 def test_mime_to_ext_recognises_extended_image_mimes():
     """Direct lookup sanity check on the extended ``_MIME_TO_EXT`` map.
     These are the new entries added with the Content-Type trust change."""
-    from feinschliff.dsl.pptx_emit import _MIME_TO_EXT
+    from feinschliff.io.image_materialise import _MIME_TO_EXT
 
     assert _MIME_TO_EXT["image/webp"] == ".webp"
     assert _MIME_TO_EXT["image/gif"] == ".gif"
@@ -781,10 +789,12 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
         return _FakeHTTPResponse(png_bytes, content_type="image/png")
 
     # Reset the module-level registry state so this test is hermetic.
-    # ``monkeypatch.setattr`` restores the originals on teardown.
-    from feinschliff.dsl import pptx_emit as _pe
-    monkeypatch.setattr(_pe, "_THROWAWAY_CACHE_DIRS", [])
-    monkeypatch.setattr(_pe, "_THROWAWAY_CLEANUP_REGISTERED", False)
+    # ``monkeypatch.setattr`` restores the originals on teardown. The
+    # registry lives in feinschliff.io.image_materialise; the emitter
+    # accesses it via module attributes, so this is the single patch point.
+    from feinschliff.io import image_materialise as _im
+    monkeypatch.setattr(_im, "_THROWAWAY_CACHE_DIRS", [])
+    monkeypatch.setattr(_im, "_THROWAWAY_CLEANUP_REGISTERED", False)
 
     hit = ImageHit(
         url="https://example.invalid/throwaway.png",
@@ -810,7 +820,7 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
 
     # Track atexit.register calls so we can assert single registration.
     mock_register = MagicMock()
-    monkeypatch.setattr(_pe.atexit, "register", mock_register)
+    monkeypatch.setattr(_im.atexit, "register", mock_register)
 
     with _um.patch.object(_urlreq, "urlopen", _fake_urlopen):
         # Build A — first fallback, expect atexit.register fired once.
@@ -831,15 +841,15 @@ def test_throwaway_cache_registry_single_atexit_registration(monkeypatch):
     )
     # The handler the guard registered is our cleanup function.
     registered_callable = mock_register.call_args.args[0]
-    assert registered_callable is _pe._cleanup_throwaway_caches
+    assert registered_callable is _im._cleanup_throwaway_caches
 
     # Both throwaway dirs accumulated in the registry — the single atexit
     # handler walks the full list on exit.
-    assert len(_pe._THROWAWAY_CACHE_DIRS) == 2, (
-        f"expected two registered tempdirs, got {_pe._THROWAWAY_CACHE_DIRS!r}"
+    assert len(_im._THROWAWAY_CACHE_DIRS) == 2, (
+        f"expected two registered tempdirs, got {_im._THROWAWAY_CACHE_DIRS!r}"
     )
     # And the guard reflects the registration happened.
-    assert _pe._THROWAWAY_CLEANUP_REGISTERED is True
+    assert _im._THROWAWAY_CLEANUP_REGISTERED is True
 
 
 def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
@@ -849,7 +859,7 @@ def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
     ``ignore_errors=True`` swallows the FileNotFoundError."""
     import unittest.mock as _um
 
-    from feinschliff.dsl import pptx_emit as _pe
+    from feinschliff.io import image_materialise as _im
 
     # Use real tempdirs so the rmtree call is meaningful.
     d1 = Path(tempfile.mkdtemp(prefix="feinschliff-cleanup-test-"))
@@ -858,9 +868,9 @@ def test_cleanup_throwaway_caches_tolerates_missing_dirs(tmp_path):
     shutil.rmtree(d2)
     assert not d2.exists()
 
-    with _um.patch.object(_pe, "_THROWAWAY_CACHE_DIRS", [d1, d2]):
+    with _um.patch.object(_im, "_THROWAWAY_CACHE_DIRS", [d1, d2]):
         # Must not raise — ignore_errors=True swallows the missing dir.
-        _pe._cleanup_throwaway_caches()
+        _im._cleanup_throwaway_caches()
 
     # d1 was actually cleaned.
     assert not d1.exists(), "live dir should have been removed by cleanup"

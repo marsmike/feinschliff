@@ -1,3 +1,18 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+description: 'White competitive analysis: title and teal accent bar top; two side-by-side tinted text boxes with bullet lists
+  (Strengths / Needs)'
+slide_index: 8
+slots:
+  text_1: {role: title, chars: 144, default: COMPETITIVE LANDSCAPE}
+  text_2: {role: body, chars: 1121, default: Strong market presence\nPositioned as a market leader\nLeveraging a robust in…}
+  text_3: {role: body, chars: 1311, default: 'Need:\nMore agility and adaptability\nStronger competitive edge\nAbility to
+      a…'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: competitive-landscape
 canvas 1920x1080

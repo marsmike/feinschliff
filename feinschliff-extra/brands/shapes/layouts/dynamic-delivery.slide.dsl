@@ -1,3 +1,20 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: organizational
+fixed_chrome: true
+description: 'Mixed content slide: section title top-left, short narrative paragraphs left, data table with blue header row
+  right'
+chrome_subject: small teal circle top-right, teal dashes and single accent stroke bottom-left; brand-neutral
+chrome_note: 'carries native source chrome verbatim: 1 illustration, 1 table'
+slide_index: 10
+slots:
+  text_1: {role: title, chars: 110, default: Dynamic delivery}
+  text_2: {role: body, chars: 777, default: Learn to infuse energy into your delivery to leave a lasting impression\nOne …}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: dynamic-delivery
 canvas 1920x1080

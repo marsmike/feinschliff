@@ -126,8 +126,9 @@ def discover_brands() -> list[BrandPack]:
     Sources scanned, in priority order:
       1. bundled — `brands/` next to the installed `lib/`
       2. env — directories listed in `FEINSCHLIFF_BRAND_PATH` (colon-separated)
-      3. plugin — `~/.claude/plugins/.../brands/`
-      4. cwd-dev — `feinschliff/brands/` reachable by walking up from $CWD
+      3. cwd-dev — `feinschliff/brands/` and sibling `feinschliff-*/brands/`
+         reachable by walking up from $CWD
+      4. plugin — `~/.claude/plugins/.../brands/`
       5. user — `~/.feinschliff/brands/`
     """
     seen: dict[str, BrandPack] = {}

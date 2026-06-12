@@ -1,3 +1,19 @@
+---
+role: agenda
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+description: 'White background agenda: large blue circle left bearing section title; five plain agenda items right; teal dash
+  arc top-right'
+slide_index: 2
+slots:
+  text_1: {role: body, chars: 1008, default: Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal
+      …}
+  text_2: {role: title, chars: 200, default: Agenda}
+chrome_subject: scattered teal dashes and small circles as accent marks; brand-neutral abstract
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: agenda
 canvas 1920x1080

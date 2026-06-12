@@ -1,3 +1,16 @@
+---
+role: title-with-visual
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: image-driven
+description: Full-bleed content photo with bold section title and thin rule overlaid top-left
+slide_index: 4
+slots:
+  text_1: {role: title, chars: 54, default: Last year}
+  image: {role: image, class: replace}
+image_queries: {image: last year}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: last-year
 canvas 1920x1080

@@ -21,7 +21,11 @@ _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _OUTLINE_FAT_THRESHOLD_EMU = 12700
 
 # Marker the emitter writes on a <p:sp> that opted in via `effect:allow`.
-_EFFECT_ALLOW_ATTR = "effect-allow"
+# Primary form: namespaced Clark notation (schema-valid OOXML extension).
+# Legacy form: bare attribute accepted on read for old decks.
+_FS_NS = "urn:feinschliff:emit"
+_EFFECT_ALLOW_ATTR = f"{{{_FS_NS}}}effect-allow"   # Clark notation for lxml
+_EFFECT_ALLOW_LEGACY = "effect-allow"              # accepted on read (old files)
 
 
 @dataclass
@@ -43,10 +47,13 @@ def _shape_label(shape) -> str:
 
 def _has_allow_marker(sp_element) -> bool:
     """True if any <p:sp> ancestor (inclusive) of sp_element carries
-    effect-allow="1"."""
+    the effect opt-in marker (namespaced or legacy bare form)."""
     cur = sp_element
     while cur is not None:
-        if cur.tag.endswith("}sp") and cur.get(_EFFECT_ALLOW_ATTR) == "1":
+        if cur.tag.endswith("}sp") and (
+            cur.get(_EFFECT_ALLOW_ATTR) == "1"
+            or cur.get(_EFFECT_ALLOW_LEGACY) == "1"
+        ):
             return True
         cur = cur.getparent()
     return False
@@ -73,8 +80,11 @@ def scan_pp_chrome(prs) -> list[ChromeDefect]:
                     detail="effectLst present (drop-shadow / glow / soft-edge)",
                 ))
                 break
-            # Gradient fill.
-            if sp_el.find(f".//{{{_NS_A}}}gradFill") is not None:
+            # Gradient fill — unless this shape opted in via the allow marker.
+            if (
+                sp_el.find(f".//{{{_NS_A}}}gradFill") is not None
+                and not _has_allow_marker(sp_el)
+            ):
                 out.append(ChromeDefect(
                     kind="gradient-fill",
                     slide_index=i,

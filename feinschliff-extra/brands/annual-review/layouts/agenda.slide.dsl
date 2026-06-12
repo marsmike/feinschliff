@@ -1,3 +1,19 @@
+---
+role: agenda
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+variety_exempt: true
+family: framing
+description: 'Teal panel agenda: bold title over full-width black rule, numbered list of five agenda sections'
+slide_index: 2
+slots:
+  text_1: {role: title, chars: 54, default: Agenda}
+  text_2: {role: body, chars: 935, default: 01. Introduction\n02. Results from last year\n03. Team\n04. What's next\n05. …}
+  text_3: {role: footer, chars: 26, default: Annual Review}
+  text_4: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_5: {role: page-number, chars: 11, default: '2'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: agenda
 canvas 1920x1080

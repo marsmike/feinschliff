@@ -6,18 +6,35 @@ The tests target `_emit_text` directly to keep them cheap.
 """
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
+import pytest
 from pptx import Presentation
 from pptx.util import Pt
 
+from feinschliff import textfit
 from feinschliff.dsl.parser import DSLNode
 from feinschliff.dsl.pptx_emit import EmitContext, _emit_text, _px_to_pt, _px
 from feinschmiede.dsl.tokens import load_tokens
+from feinschmiede.text import measure as _measure
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 BRANDS_DIR = REPO_ROOT / "brands"
+
+
+@pytest.fixture()
+def heuristic_metrics(monkeypatch):
+    """Force the heuristic (non-real-metrics) code path for the duration of the
+    test, regardless of which fonts happen to be installed on this machine.
+    Clears resolution caches before yielding and again on teardown so no
+    warm-cache state leaks between tests.
+    """
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    _measure.clear_caches()
+    yield
+    _measure.clear_caches()
 
 
 def _fresh_slide(canvas_w: float = 1920.0, canvas_h: float = 1080.0):
@@ -42,14 +59,19 @@ def _only_textbox(slide):
 # 1. No opt-in flags → unchanged output
 # ---------------------------------------------------------------------------
 
-def test_text_without_optins_is_unchanged():
+def test_text_without_optins_is_unchanged(heuristic_metrics):
     """A plain `text` node (no autoshrink, no lang) emits the same shape as
     before: original text intact, font size = style.size_px → pt."""
     slide, ctx = _fresh_slide()
+    # maxwidth 900, not 800: fit budgets are inset-aware (default text-frame
+    # insets eat ~29 design-px of wrap width), and at 800 the always-on
+    # orphan control would correctly predict a wrap and NBSP-glue the last
+    # word pair. This test is about the OPT-IN features staying off, so give
+    # the line room to fit without any wrap.
     node = DSLNode(
         kind="text",
         pos_args=["100,100"],
-        kw_args={"style": "body", "maxwidth": "800", "maxheight": "40"},
+        kw_args={"style": "body", "maxwidth": "900", "maxheight": "40"},
         label="Donaudampfschifffahrtsgesellschaft is a long compound word.",
         line_no=1,
     )
@@ -71,7 +93,7 @@ def test_text_without_optins_is_unchanged():
 # 2. autoshrink:true on overflow → font shrinks below requested size
 # ---------------------------------------------------------------------------
 
-def test_autoshrink_shrinks_font_when_text_overflows():
+def test_autoshrink_shrinks_font_when_text_overflows(heuristic_metrics):
     """A deliberately oversized title in a thin/short box should shrink. The
     emitted run's pt size must drop below the input size_px → pt."""
     slide, ctx = _fresh_slide()
@@ -110,7 +132,7 @@ def test_autoshrink_shrinks_font_when_text_overflows():
 # 3. lang:de_DE inserts U+00AD soft hyphens into long German compounds
 # ---------------------------------------------------------------------------
 
-def test_lang_de_inserts_soft_hyphens():
+def test_lang_de_inserts_soft_hyphens(heuristic_metrics):
     """`lang:de_DE` should produce a hyphenated string containing U+00AD."""
     slide, ctx = _fresh_slide()
     node = DSLNode(
@@ -139,11 +161,10 @@ def test_lang_de_inserts_soft_hyphens():
 # 4. prevent_orphan: NBSP retry to keep the last two words on one line
 # ---------------------------------------------------------------------------
 
-def test_prevent_orphan_replaces_space_with_nbsp():
+def test_prevent_orphan_replaces_space_with_nbsp(heuristic_metrics):
     """Given text that would wrap to a final line containing one word, the
     space between the last two words is replaced with U+00A0 (NBSP) so the
     pair wraps together."""
-    from feinschliff import textfit
     text = "This is a sentence that ends with one orphan word"
     # Narrow box → "word" gets pushed alone onto the final line.
     width_emu = 5_200_000
@@ -161,8 +182,7 @@ def test_prevent_orphan_replaces_space_with_nbsp():
     assert "orphan word" not in result
 
 
-def test_prevent_orphan_returns_original_when_no_orphan():
-    from feinschliff import textfit
+def test_prevent_orphan_returns_original_when_no_orphan(heuristic_metrics):
     short = "Two words"
     width_emu = 20_000_000
     out = textfit.prevent_orphan(
@@ -171,11 +191,91 @@ def test_prevent_orphan_returns_original_when_no_orphan():
     assert out == short
 
 
-def test_prevent_orphan_idempotent():
+def test_prevent_orphan_idempotent(heuristic_metrics):
     """Re-applying produces the same string (already-NBSP'd text doesn't re-loop)."""
-    from feinschliff import textfit
     text = "This is a sentence that ends with one orphan word"
     width_emu = 5_200_000
     once = textfit.prevent_orphan(text, font="Open Sans", size_pt=18, bold=False, width_emu=width_emu)
     twice = textfit.prevent_orphan(once, font="Open Sans", size_pt=18, bold=False, width_emu=width_emu)
     assert once == twice
+
+
+# ---------------------------------------------------------------------------
+# 5. Real font metrics (feinschmiede.text.measure) wired into textfit
+# ---------------------------------------------------------------------------
+
+def _real_face(face="DejaVu Sans"):
+    if shutil.which("fc-match") is None or _measure.find_font_file(face) is None:
+        pytest.skip(f"{face} not resolvable")
+    return face
+
+
+def test_real_metrics_beat_default_table():
+    face = _real_face()
+    ratio = _measure.avg_char_width_ratio(face)
+    w = textfit._avg_char_width_emu(face, 18, False)
+    assert abs(w - ratio * 18 * 12700) < 1.0     # measured, not table default 0.52
+
+
+def test_registered_metrics_win_over_measurement():
+    face = _real_face()
+    # Snapshot any builtin table entry so cleanup can restore (never delete) it.
+    builtin = textfit._FONT_WIDTH_RATIO.get(face)
+    textfit.register_font_metrics(face, normal=0.99, bold=0.99)
+    try:
+        w = textfit._avg_char_width_emu(face, 18, False)
+        assert abs(w - 0.99 * 18 * 12700) < 1.0
+    finally:
+        if builtin is None:
+            textfit._FONT_WIDTH_RATIO.pop(face, None)
+        else:
+            textfit._FONT_WIDTH_RATIO[face] = builtin
+        textfit._REGISTERED.discard(face)
+
+
+def test_measure_height_real_wrap_counts_lines():
+    face = _real_face()
+    one_line_pt = _measure.line_width_pt("hello world", face, 18)
+    h1 = textfit.measure_height_emu("hello world", font=face, size_pt=18,
+                                    width_emu=int(one_line_pt * 12700) + 200)
+    h2 = textfit.measure_height_emu("hello world", font=face, size_pt=18,
+                                    width_emu=int(one_line_pt * 12700 * 0.6))
+    assert h2 == 2 * h1
+
+
+def test_real_wrap_counts_overwide_word_as_multiple_lines():
+    face = _real_face()
+    word = "Donaudampfschifffahrtsgesellschaftskapitaen"
+    w_pt = _measure.line_width_pt(word, face, 18)
+    half = int(w_pt * 12700 * 0.5)
+    h_half = textfit.measure_height_emu(word, font=face, size_pt=18, width_emu=half)
+    h_full = textfit.measure_height_emu(word, font=face, size_pt=18,
+                                        width_emu=int(w_pt * 12700) + 200)
+    assert h_half >= 2 * h_full      # mid-word breaking modeled, not 1 line
+
+
+def test_has_real_metrics_false_for_unknown():
+    assert textfit.has_real_metrics("No Such Font Family XYZ") is False
+
+
+def test_has_real_metrics_false_when_registered():
+    """Registered ratios override measurement, so predictions for a registered
+    family are NOT based on real metrics — even when the font resolves."""
+    face = _real_face()
+    textfit.register_font_metrics(face, normal=0.99, bold=0.99)
+    try:
+        assert textfit.has_real_metrics(face) is False
+    finally:
+        textfit._FONT_WIDTH_RATIO.pop(face, None)
+        textfit._REGISTERED.discard(face)
+    assert textfit.has_real_metrics(face) is True
+
+
+def test_kill_switch_forces_heuristics(monkeypatch):
+    face = _real_face()
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    _measure.clear_caches()
+    w = textfit._avg_char_width_emu(face, 18, False)
+    # falls back to the builtin/default table ratio
+    table = textfit._FONT_WIDTH_RATIO.get(face, textfit._FONT_WIDTH_RATIO["default"])
+    assert abs(w - table["normal"] * 18 * 12700) < 1.0

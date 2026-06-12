@@ -3,6 +3,7 @@ role: content-columns
 ideal_count: [3, 3]
 data_band: none
 comparison: true
+description: 'Three equal columns with hairline dividers: numbered heading and descriptive body paragraph each; headline above'
 ---
 # three-column — three parallel pillars. Stacked text in three columns
 # without card bg (unlike two-column-cards).

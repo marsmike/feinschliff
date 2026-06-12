@@ -433,8 +433,63 @@ def test_sanitize_chrome_removes_effect_lst():
 def test_sanitize_chrome_preserves_effect_when_allow():
     from lxml import etree
     from feinschliff.dsl.pptx_emit import sanitize_chrome
-    # The marker uses a flat attribute (no namespace) the emitter writes
+    # The marker uses the namespaced attribute the emitter writes
     # when a primitive opts in via effect:allow.
+    xml = b"""<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+                    xmlns:fs="urn:feinschliff:emit">
+      <p:cSld><p:spTree>
+        <p:sp fs:effect-allow="1">
+          <p:spPr>
+            <a:effectLst>
+              <a:outerShdw blurRad="50800"/>
+            </a:effectLst>
+          </p:spPr>
+        </p:sp>
+      </p:spTree></p:cSld>
+    </p:sld>"""
+    root = etree.fromstring(xml)
+    sanitize_chrome(root)
+    assert root.find(".//a:effectLst", _NS) is not None
+
+
+def test_effect_allow_marker_is_namespaced():
+    """The opt-in marker must be XML-namespaced — bare attributes on
+    <p:sp> are schema-invalid OOXML that strict validators flag."""
+    from lxml import etree
+
+    _FS_NS = "urn:feinschliff:emit"
+    dsl = (
+        "canvas 1920x1080\n"
+        "theme test\n"
+        "rect 100,100 400x200 "
+        "gradient:angle=90deg;0.00=accent;1.00=paper"
+    )
+    prs = _emit_one_slide(dsl)
+    slide_xml = prs.slides[0]._element
+    raw = etree.tostring(slide_xml)
+
+    # The bare (non-namespaced) attribute must NOT appear.
+    assert b' effect-allow=' not in raw, (
+        "bare 'effect-allow' attribute found — must use namespaced form"
+    )
+    # The namespaced marker MUST appear in Clark-notation form.
+    sp_elements = slide_xml.iter(f"{{{_NS['p']}}}sp")
+    found_ns_attr = any(
+        sp.get(f"{{{_FS_NS}}}effect-allow") == "1"
+        for sp in sp_elements
+    )
+    assert found_ns_attr, (
+        "{urn:feinschliff:emit}effect-allow='1' not found on any <p:sp>"
+    )
+
+
+def test_sanitize_chrome_legacy_bare_attr_honored():
+    """Old decks with bare effect-allow='1' must still survive sanitize_chrome
+    with their effectLst intact (backward-compat read path)."""
+    from lxml import etree
+    from feinschliff.dsl.pptx_emit import sanitize_chrome
+
     xml = b"""<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
                     xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
       <p:cSld><p:spTree>
@@ -449,7 +504,37 @@ def test_sanitize_chrome_preserves_effect_when_allow():
     </p:sld>"""
     root = etree.fromstring(xml)
     sanitize_chrome(root)
-    assert root.find(".//a:effectLst", _NS) is not None
+    assert root.find(".//a:effectLst", _NS) is not None, (
+        "legacy bare effect-allow='1' must preserve effectLst (backward compat)"
+    )
+
+
+def test_sanitize_chrome_legacy_bare_attr_honored_grad_fill():
+    """Old decks with bare effect-allow='1' must survive sanitize_chrome
+    with their gradFill intact (backward-compat read path)."""
+    from lxml import etree
+    from feinschliff.dsl.pptx_emit import sanitize_chrome
+
+    xml = b"""<p:sld xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+                    xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+      <p:cSld><p:spTree>
+        <p:sp effect-allow="1">
+          <p:spPr>
+            <a:gradFill>
+              <a:gsLst>
+                <a:gs pos="0"><a:srgbClr val="FF0000"/></a:gs>
+                <a:gs pos="100000"><a:srgbClr val="0000FF"/></a:gs>
+              </a:gsLst>
+            </a:gradFill>
+          </p:spPr>
+        </p:sp>
+      </p:spTree></p:cSld>
+    </p:sld>"""
+    root = etree.fromstring(xml)
+    sanitize_chrome(root)
+    assert root.find(".//a:gradFill", _NS) is not None, (
+        "legacy bare effect-allow='1' must preserve gradFill (backward compat)"
+    )
 
 
 def test_sanitize_chrome_replaces_grad_fill_with_solid():

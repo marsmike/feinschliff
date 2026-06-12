@@ -3,6 +3,8 @@ role: data-quantity
 ideal_count: [2, 4]
 data_band: kpi
 comparison: false
+description: 'Four KPI cells in a full-width hairline grid: jumbo number, unit superscript, metric label, and accent caption
+  each'
 ---
 # kpi-grid — 2–4 high-level quantitative figures, each with unit + label
 # + optional delta. Cells share a hairline grid border.

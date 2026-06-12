@@ -15,25 +15,19 @@ Primitives implemented:
   line X,Y X2,Y2 stroke:role stroke-width:N
   picture X,Y WxH path:PATH cover:true
   picture X,Y WxH query:"…" — resolve at build time via image_provider
+  picture X,Y WxH path:PATH query:"…" — layered: file if path resolves,
+                               else provider search with the explicit query
 """
 from __future__ import annotations
 
-import atexit
 import functools
-import hashlib
 import io
-import json
 import os
 import re
-import shutil
 import sys
 import tempfile
-import time
-import urllib.error
-import urllib.request
 import warnings
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -47,11 +41,16 @@ from pptx.util import Emu, Pt
 from .. import textfit
 from feinschmiede.dsl.tokens import Tokens
 
+# Provider search + asset-lock pinning + HTTP materialise live in
+# feinschliff.io.image_materialise. Accessed via module attributes
+# (`_img_mat._materialise(...)`) — NOT `from … import` — so tests can
+# patch `feinschliff.io.image_materialise.X` once and affect the emitter.
+from ..io import image_materialise as _img_mat
 from .parser import DSLNode, parse_xy, parse_wh
 from .polish import normalize_text
 
 if TYPE_CHECKING:
-    from ..io.image_provider import ImageHit, ImageProvider
+    from ..io.image_provider import ImageProvider
     from feinschmiede.brand import BrandPack
     from feinschmiede.dsl.ast import Document, Element
 
@@ -361,7 +360,7 @@ def _align_pp(name: str) -> PP_ALIGN:
 # ---------------------------------------------------------------------------
 
 def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
-    """text X,Y "label" style:S align:A maxwidth:W maxheight:H color:T autoshrink:true lang:de_DE
+    """text X,Y "label" style:S align:A maxwidth:W maxheight:H color:T autoshrink:true lang:de_DE italic:true
 
     `autoshrink:true` — shrink font from style size down to a 10pt floor until
         the label fits the `maxwidth × maxheight` box. Off by default; preserves
@@ -370,6 +369,19 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         into the label before emission so python-pptx can break long compound
         words at syllable boundaries. Applied BEFORE autoshrink so the shrink
         sees the hyphenated string.
+    `padding:L,T,R,B` / `padding:N` (px) — explicit text-frame insets that
+        mirror the source PPTX bodyPr lIns/tIns/rIns/bIns values. Affects
+        BOTH the rendered text-frame margins (tf.margin_*) AND the fit budgets
+        (autoshrink width/height clamp); omitting it uses PowerPoint's
+        built-in defaults (~19 px left/right, ~9 px top/bottom).
+    `bullet:true` / `bullet:"CHAR"` — add native PPTX bullets (`<a:buChar>`)
+        with a hanging indent to every paragraph in the text frame. `true`
+        uses the standard “•” bullet; any other string is used verbatim as the
+        bullet character (e.g. `bullet:"–"` for an en-dash list). Opt-in only:
+        omitting the kwarg leaves the output byte-identical. When using
+        `bullet:`, the label text MUST NOT start with a literal bullet glyph —
+        the `_leading_hang_offset_px` side-bearing hack is intentionally left
+        alone; since the label won’t start with “•” the hang logic no-ops naturally.
     """
     if not node.pos_args:
         raise ValueError(f"text at line {node.line_no}: expected 'X,Y' positional")
@@ -435,6 +447,9 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             size_px=new_size, weight=new_weight,
             color_hex=new_color_hex, color_role=new_color_role,
         )
+    if str(node.kw_args.get("italic", "")).lower() == "true":
+        from dataclasses import replace as _replace
+        style = _replace(style, italic=True)
     align = _align_pp(node.kw_args.get("align", "left"))
     # Default right margin = brand's slide.padding-x token; fall back to a
     # sensible canvas-relative inset if the brand omits it.
@@ -455,21 +470,51 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     if lang:
         label_text = textfit.hyphenate(label_text, lang=lang)
 
+    # Text-frame insets: source PPTX bodyPr carries `lIns/tIns/rIns/bIns`
+    # (EMU). When the decompiler captures them they ride through as
+    # `padding:` kwarg (px, applied to tf.margin_* once the frame exists
+    # below). Parsed here, before the fit math, because the insets eat into
+    # the wrap width/height — the fit predictor must see the same usable
+    # area the renderer sees. Without explicit padding, PowerPoint's
+    # defaults apply: lIns/rIns 91440 EMU, tIns/bIns 45720 EMU.
+    padding = node.kw_args.get("padding")
+    pad_left = pad_top = pad_right = pad_bottom = None
+    if padding is not None:
+        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
+        parts = [p.strip() for p in str(padding).split(",")]
+        if len(parts) == 1:
+            pad_left = pad_top = pad_right = pad_bottom = float(parts[0])
+        elif len(parts) == 4:
+            pad_left, pad_top, pad_right, pad_bottom = (float(p) for p in parts)
+        else:
+            pad_left = pad_top = pad_right = pad_bottom = 0.0
+    if pad_left is not None:
+        inset_w_emu = int(pad_left * _EMU_PER_PX) + int(pad_right * _EMU_PER_PX)
+        inset_h_emu = int(pad_top * _EMU_PER_PX) + int(pad_bottom * _EMU_PER_PX)
+    else:
+        # PowerPoint OOXML defaults, already in EMU — no scale conversion
+        inset_w_emu = 91440 + 91440
+        inset_h_emu = 45720 + 45720
+
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
+    # Resolve font face once for all fit/shrink paths (autoshrink, orphan
+    # control, autofit gating). style.weight and style.font_family are
+    # frozen at this point; only size_px changes below, which does not
+    # affect face selection. _style_run resolves its own face independently.
+    fit_face, fit_bold = _resolve_face(style.font_family[0], style.weight)
     if autoshrink and label_text:
         from dataclasses import replace as _replace
         # Use the longest single paragraph as the worst-case for width fit; the
         # height check below works on the joined text.
-        face, bold = _resolve_face(style.font_family[0], style.weight)
         max_pt = _px_to_pt(style.size_px)
         fitted_pt = textfit.autoshrink_size(
             label_text,
-            font=face,
+            font=fit_face,
             max_size_pt=max_pt,
             min_size_pt=10,
-            bold=bold,
-            width_emu=int(maxw * _EMU_PER_PX),
-            height_emu=int(h * _EMU_PER_PX),
+            bold=fit_bold,
+            width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
+            height_emu=max(1, int(h * _EMU_PER_PX) - inset_h_emu),
             line_height=style.line_height,
         )
         if fitted_pt < max_pt:
@@ -480,15 +525,14 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     # word on the final line, replace its preceding space with NBSP so
     # the pair wraps together. Use the final (post-autoshrink) size.
     if label_text:
-        face_for_fit, bold_for_fit = _resolve_face(style.font_family[0], style.weight)
         paragraphs = label_text.split("\n")
         paragraphs = [
             textfit.prevent_orphan(
                 p,
-                font=face_for_fit,
+                font=fit_face,
                 size_pt=_px_to_pt(style.size_px),
-                bold=bold_for_fit,
-                width_emu=int(maxw * _EMU_PER_PX),
+                bold=fit_bold,
+                width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             )
             for p in paragraphs
         ]
@@ -532,41 +576,37 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         box.name = f"feinschliff-title-{style_name}"
     tf = box.text_frame
     tf.word_wrap = True
-    # Text-frame insets: source PPTX bodyPr carries `lIns/tIns/rIns/bIns`
-    # (EMU). When the decompiler captures them they ride through as
-    # `padding:` kwarg. Zeroing here when nothing is set bakes "render at
-    # frame edge" which mismatches PowerPoint's default 91440/45720 insets
-    # (~19px / ~9px at the source slide scale) and shifts text by exactly
-    # those amounts versus source. Honour explicit padding; otherwise leave
-    # python-pptx defaults (which mirror PowerPoint's authoring defaults).
-    padding = node.kw_args.get("padding")
-    if padding is not None:
-        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
-        parts = [p.strip() for p in str(padding).split(",")]
-        if len(parts) == 1:
-            left = top = right = bottom = float(parts[0])
-        elif len(parts) == 4:
-            left, top, right, bottom = (float(p) for p in parts)
-        else:
-            left = top = right = bottom = 0.0
-        tf.margin_left = _px(left)
-        tf.margin_right = _px(right)
-        tf.margin_top = _px(top)
-        tf.margin_bottom = _px(bottom)
+    # Apply the explicit `padding:` (parsed above, before the fit math) to
+    # the text-frame margins. Zeroing when nothing is set would bake "render
+    # at frame edge" which mismatches PowerPoint's default 91440/45720
+    # insets (~19px / ~9px at the source slide scale) and shifts text by
+    # exactly those amounts versus source. Honour explicit padding;
+    # otherwise leave python-pptx defaults (which mirror PowerPoint's
+    # authoring defaults).
+    if pad_left is not None:
+        tf.margin_left = _px(pad_left)
+        tf.margin_right = _px(pad_right)
+        tf.margin_top = _px(pad_top)
+        tf.margin_bottom = _px(pad_bottom)
     valign = node.kw_args.get("valign", "top")
     if valign == "middle":
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
     elif valign == "bottom":
         tf.vertical_anchor = MSO_ANCHOR.BOTTOM
-    # When autoshrink:true is set, also enable PowerPoint's native
-    # shrink-text-to-fit autofit. The Python-side textfit estimate is
-    # rough — real font metrics in PPT can wrap a line earlier and
-    # overflow the bbox even after our pre-shrink. The native autofit
-    # uses PPT's true metrics as a last line of defense; it's a no-op
-    # when the (already-shrunk) text fits, but rescues edge cases that
-    # the heuristic underestimates.
     if autoshrink:
-        tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        if not textfit.has_real_metrics(fit_face, fit_bold):
+            # Heuristic pre-shrink only: keep PPT's native shrink-to-fit as
+            # the last line of defense. With real measured metrics the
+            # computed size is authoritative — writing scale-less autofit
+            # would let PowerPoint and LibreOffice re-derive different sizes.
+            tf.auto_size = MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE
+        else:
+            # Drop the new-textbox default <a:spAutoFit/> too: the box was
+            # sized for the computed fit; no renderer should regrow it.
+            # Trade-off: if real-metrics textfit ever over-estimates usable
+            # area, the box overflows visually — verify catches it post-render;
+            # there is no renderer-side fallback on this path.
+            tf.auto_size = None
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
     p0.alignment = align
@@ -580,6 +620,43 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
         # the visual gap matches CSS line-height applied across all lines.
         p.space_before = Pt(0)
         _style_run(p.add_run(), extra, style, tokens=ctx.tokens)
+
+    # Native bullets (opt-in: only when `bullet:` kwarg is present and not
+    # explicitly disabled). Adds <a:buChar> + hanging indent to every
+    # paragraph. Existing layouts that omit the kwarg are byte-identical
+    # (early return). `bullet:false` (case-insensitive) and empty string are
+    # treated as "no bullet" — mirrors the autoshrink idiom so that
+    # `bullet:false` in DSL source doesn't yield a literal "false" glyph.
+    bullet_raw = node.kw_args.get("bullet")
+    if bullet_raw and str(bullet_raw).lower() not in ("false", ""):
+        from pptx.oxml.ns import qn
+        char = "•" if str(bullet_raw).lower() == "true" else str(bullet_raw)
+        if len(char) != 1:
+            raise DSLError(
+                f"text at line {node.line_no}: bullet: value must be a single "
+                f"Unicode character, got {char!r}"
+            )
+        # Hanging indent ≈ 1.4em so wrapped lines align under the first
+        # character, not under the bullet. marL/indent are in EMU.
+        mar_l = int(_px_to_pt(style.size_px) * 1.4 * EMU_PER_PT)
+        for p in tf.paragraphs:
+            pPr = p._p.get_or_add_pPr()
+            pPr.set("marL", str(mar_l))
+            pPr.set("indent", str(-mar_l))
+            # CT_TextParagraphProperties child order: lnSpc, spcBef, spcAft,
+            # buClr*, buSz*, buFont, buChar/buNone/buAutoNum, tabLst, defRPr,
+            # extLst. Insert before defRPr/extLst when present, else append.
+            anchor = pPr.find(qn("a:defRPr"))
+            if anchor is None:
+                anchor = pPr.find(qn("a:extLst"))
+            bu_font = pPr.makeelement(qn("a:buFont"), {"typeface": fit_face})
+            bu_char = pPr.makeelement(qn("a:buChar"), {"char": char})
+            if anchor is not None:
+                anchor.addprevious(bu_font)
+                anchor.addprevious(bu_char)
+            else:
+                pPr.append(bu_font)
+                pPr.append(bu_char)
 
 
 def _is_numeric_run(text: str) -> bool:
@@ -623,11 +700,19 @@ def _style_run(run, text: str, style, *, tokens: Tokens | None = None) -> None:
     f.name = face
     f.size = Pt(_px_to_pt(style.size_px))
     f.bold = bold
+    if style.italic:
+        f.italic = True
     color = style.color_hex
     if style.opacity < 1.0:
         # python-pptx has no native alpha on text runs; approximate by
-        # blending toward white. Canonical .pgmeta opacity 0.7 on ink → ~#4A586F.
-        color = _blend_to_white(color, 1.0 - style.opacity)
+        # pre-blending toward the brand paper color. Canonical .pgmeta
+        # opacity 0.7 on ink over white paper → ~#4A586F; over dark paper
+        # the blend recedes toward the background (not toward white).
+        try:
+            paper = tokens.color("paper") if tokens is not None else "#FFFFFF"
+        except KeyError:
+            paper = "#FFFFFF"
+        color = _blend_toward(color, paper, 1.0 - style.opacity)
     f.color.rgb = _hex_to_rgb(color)
     # Tracking: per-style letter_spacing wins; if the style declares none,
     # fall back to the brand-level display_tracking_curve (step function).
@@ -667,14 +752,18 @@ def _resolve_face(family: str, weight: int) -> tuple[str, bool]:
     return family, False
 
 
-def _blend_to_white(hex_color: str, t: float) -> str:
-    """Linearly blend `hex_color` toward white by fraction `t` (0..1)."""
+def _blend_toward(hex_color: str, target_hex: str, t: float) -> str:
+    """Linearly blend `hex_color` toward `target_hex` by fraction `t` (0..1).
+    Approximates run alpha over a solid background — python-pptx has no
+    native alpha on text runs, so we pre-blend toward the slide paper."""
     h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    r = round(r + (255 - r) * t)
-    g = round(g + (255 - g) * t)
-    b = round(b + (255 - b) * t)
-    return f"#{r:02X}{g:02X}{b:02X}"
+    g = target_hex.lstrip("#")
+    out = []
+    for i in (0, 2, 4):
+        c = int(h[i:i+2], 16)
+        tg = int(g[i:i+2], 16)
+        out.append(round(c + (tg - c) * t))
+    return "#{:02X}{:02X}{:02X}".format(*out)
 
 
 def _px_to_pt(px: float) -> float:
@@ -957,390 +1046,6 @@ def _apply_picture_treatment(
     return pil_image
 
 
-# ---------------------------------------------------------------------------
-# Picture-query helpers (Task 7 — pluggable image provider)
-# ---------------------------------------------------------------------------
-
-# Stable slot-id derivation: lowercase, collapse non-alnum to single `_`,
-# trim leading/trailing `_`, truncate to 40 chars. Used so re-running a
-# build with the same DSL pins the same image again from asset_lock.json.
-_SLOT_SLUG_RE = re.compile(r"[^A-Za-z0-9]+")
-
-# MIME → file extension map for materialised cache filenames. Defaults to
-# `.bin` for unknown/missing — the renderer falls back to PIL's auto-format
-# detection which usually still works.
-#
-# ``image/jpg`` is the wrong-but-common variant of ``image/jpeg`` — some CDNs
-# emit it; tolerating both keeps the extension chain honest.
-_MIME_TO_EXT = {
-    "image/jpeg": ".jpg",
-    "image/jpg":  ".jpg",
-    "image/png":  ".png",
-    "image/webp": ".webp",
-    "image/gif":  ".gif",
-    "image/avif": ".avif",
-    "image/svg+xml": ".svg",
-    "image/bmp":  ".bmp",
-    "image/tiff": ".tiff",
-}
-
-# Image mimes we accept as authoritative when read from a response's
-# ``Content-Type`` header at download time (Findings #2 + #3). Provider hits
-# carry a best-effort mime hint, but the actual bytes' type is determined
-# by what the server returned — trusting Content-Type here kills both the
-# Unsplash-hardcoded-mime fragility AND the ``.bin`` fallback risk for
-# servers that swap the body's encoding via content negotiation.
-_AUTHORITATIVE_IMAGE_MIMES = frozenset(_MIME_TO_EXT)
-
-# HTTP materialise timing knobs — mirror the constants used in
-# lib/providers/unsplash.py so the math is comprehensible. Two attempts
-# at 14 s each plus a 1 s backoff between = 14 + 1 + 14 = 29 s worst case,
-# safely under the 30 s wall budget the spec promises.
-_PER_ATTEMPT_TIMEOUT_S = 14
-_BACKOFF_S = 1.0
-
-
-def _pick_ext_from_content_type(content_type: str) -> str:
-    """Return a cache-file extension from an HTTP ``Content-Type`` header,
-    or ``""`` if the header is missing, unparseable, or names a mime we
-    don't recognise as an image.
-
-    The header may carry a ``; charset=…`` or ``; boundary=…`` suffix;
-    we strip everything after the first ``;`` and lowercase before
-    looking the mime up. Whitespace either side of the mime token is
-    tolerated. An empty / non-image / unknown mime returns ``""`` so
-    the caller falls back to ``hit.mime`` → URL-path-suffix → ``.bin``.
-    """
-    if not content_type:
-        return ""
-    mime = content_type.split(";", 1)[0].strip().lower()
-    if mime in _AUTHORITATIVE_IMAGE_MIMES:
-        return _MIME_TO_EXT[mime]
-    return ""
-
-
-# Throwaway-cache cleanup (Finding #1).
-#
-# When ``_emit_picture`` is invoked without ``ctx.deck_dir`` (library-mode
-# callers who forgot to wire it) and a ``query:`` slot needs HTTP
-# materialise, we fall back to a ``tempfile.mkdtemp`` directory. The
-# RuntimeWarning at the call site prompts the operator to fix the wiring,
-# but repeated library invocations across a long-running process would
-# otherwise leak one tempdir per build.
-#
-# We register a single ``atexit`` handler the first time the fallback
-# fires, and the handler ``shutil.rmtree``s every dir we've created. The
-# ``_THROWAWAY_CLEANUP_REGISTERED`` guard ensures we only register once
-# even across many fallback invocations.
-_THROWAWAY_CACHE_DIRS: list[Path] = []
-_THROWAWAY_CLEANUP_REGISTERED = False
-
-
-def _cleanup_throwaway_caches() -> None:
-    """Remove every throwaway cache dir we created during this process.
-
-    Uses ``ignore_errors=True`` because any of these dirs may already have
-    been cleaned by another path (a previous explicit teardown, the OS
-    wiping ``/tmp``, etc.), and a process-exit handler must never raise.
-    """
-    for d in _THROWAWAY_CACHE_DIRS:
-        shutil.rmtree(d, ignore_errors=True)
-
-
-def _register_throwaway_cache_cleanup() -> None:
-    """Register ``_cleanup_throwaway_caches`` with ``atexit`` exactly once.
-
-    Subsequent calls are no-ops — the cleanup walks the full registry,
-    so we don't need a separate atexit entry per dir.
-    """
-    global _THROWAWAY_CLEANUP_REGISTERED
-    if _THROWAWAY_CLEANUP_REGISTERED:
-        return
-    _THROWAWAY_CLEANUP_REGISTERED = True
-    atexit.register(_cleanup_throwaway_caches)
-
-
-def _slot_id_from_query(query: str) -> str:
-    """Derive a stable, deterministic slot id from a query string.
-
-    "Kitchen morning light!" → "kitchen_morning_light".
-    Empty/non-alnum-only inputs collapse to "asset" so the lock file
-    never gets an empty key.
-    """
-    slug = _SLOT_SLUG_RE.sub("_", query.lower()).strip("_")
-    if not slug:
-        slug = "asset"
-    return slug[:40]
-
-
-def _read_lock(deck_dir: Path | None) -> dict:
-    """Read ``<deck_dir>/asset_lock.json`` or return a fresh empty lock."""
-    if deck_dir is None:
-        return {"version": 1, "provider": None, "slots": {}}
-    lock_path = deck_dir / "asset_lock.json"
-    if not lock_path.is_file():
-        return {"version": 1, "provider": None, "slots": {}}
-    try:
-        data = json.loads(lock_path.read_text())
-    except (OSError, json.JSONDecodeError):
-        return {"version": 1, "provider": None, "slots": {}}
-    if not isinstance(data, dict):
-        return {"version": 1, "provider": None, "slots": {}}
-    data.setdefault("version", 1)
-    data.setdefault("provider", None)
-    data.setdefault("slots", {})
-    return data
-
-
-def _write_lock(deck_dir: Path | None, lock: dict) -> None:
-    """Persist the lock as pretty-printed JSON. No-op if deck_dir is None.
-
-    The write is done via tmp-file + ``os.replace`` so a crashed or
-    interrupted build can't leave a half-written ``asset_lock.json`` that
-    future runs fail to parse. The tmp file is created in the same
-    directory as the lock so the rename is atomic on POSIX (cross-
-    filesystem renames aren't atomic).
-    """
-    if deck_dir is None:
-        return
-    deck_dir.mkdir(parents=True, exist_ok=True)
-    lock_path = deck_dir / "asset_lock.json"
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        dir=lock_path.parent,
-        prefix=".asset_lock.",
-        suffix=".tmp",
-        delete=False,
-    ) as tmp:
-        json.dump(lock, tmp, indent=2, sort_keys=True)
-        tmp.write("\n")
-        tmp_path = Path(tmp.name)
-    os.replace(tmp_path, lock_path)
-
-
-def _hit_from_lock_entry(entry: dict) -> "ImageHit | None":
-    """Reconstruct an ``ImageHit`` from a lock-file slot dict. Returns None
-    if the entry is missing required fields."""
-    from ..io.image_provider import ImageHit
-    try:
-        return ImageHit(
-            url=entry["url"],
-            license=entry.get("license", ""),
-            attribution=entry.get("attribution", ""),
-            width=entry.get("width"),
-            height=entry.get("height"),
-            mime=entry.get("mime", ""),
-        )
-    except KeyError:
-        return None
-
-
-def _url_is_resolvable(url: str) -> bool:
-    """For ``file://`` URLs, verify the path exists on disk. For
-    ``http(s)://`` URLs we trust the pin — pre-flighting every HEAD on
-    every build would defeat the point of the lock cache."""
-    if url.startswith("file://"):
-        return Path(url[len("file://"):]).is_file()
-    if url.startswith(("http://", "https://")):
-        return True
-    # Bare path — treat as filesystem; resolvable if it exists.
-    return Path(url).is_file()
-
-
-def _utc_now_iso_seconds() -> str:
-    """ISO 8601 timestamp in UTC, truncated to seconds, with `Z` suffix.
-
-    `datetime.now(timezone.utc).isoformat()` produces `+00:00` — we
-    replace it with `Z` to match the spec example.
-    """
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-
-def _entry_from_hit(hit: "ImageHit", query: str) -> dict:
-    """Serialise an ImageHit + query into a lock-slot dict."""
-    entry: dict = {
-        "query": query,
-        "url": hit.url,
-        "license": hit.license,
-        "attribution": hit.attribution,
-        "mime": hit.mime,
-        "pinned_at": _utc_now_iso_seconds(),
-    }
-    if hit.width is not None:
-        entry["width"] = hit.width
-    if hit.height is not None:
-        entry["height"] = hit.height
-    return entry
-
-
-class _SearchError:
-    """Sentinel returned by ``_lookup_lock_then_search`` when
-    ``provider.search`` raised.
-
-    Distinct from ``None`` (legitimate empty-result miss) so the caller
-    can mark the ``missing_assets`` entry as ``kind="search-error"``
-    rather than ``kind="no-hit"``. Carries the exception type so the
-    caller can surface a useful diagnostic without re-raising.
-    """
-    __slots__ = ("exc_type",)
-
-    def __init__(self, exc_type: type):
-        self.exc_type = exc_type
-
-
-def _lookup_lock_then_search(
-    ctx: EmitContext, slot_id: str, query: str,
-) -> "ImageHit | _SearchError | None":
-    """Return a pinned hit for `slot_id` if available + valid; otherwise
-    call ``ctx.image_provider.search(query, count=1)``, pin the first
-    result, and return it. Returns ``None`` if the provider returns ``[]``.
-    Returns a ``_SearchError`` sentinel if the provider raises — callers
-    differentiate provider-crash from legitimate-no-hit on this signal.
-
-    Failed searches are NOT pinned — a stale "no results" entry would
-    block the slot from ever resolving, even after the provider's
-    backing data improves.
-    """
-    provider = ctx.image_provider
-    assert provider is not None  # caller guards this
-    lock = _read_lock(ctx.deck_dir)
-
-    # Lock is scoped to a provider name; a brand switch invalidates the
-    # whole file (different URL schemes, different licensing).
-    if lock.get("provider") == provider.name:
-        slot_entry = lock["slots"].get(slot_id)
-        if slot_entry and slot_entry.get("query") == query:
-            pinned_url = slot_entry.get("url", "")
-            if _url_is_resolvable(pinned_url):
-                hit = _hit_from_lock_entry(slot_entry)
-                if hit is not None:
-                    return hit
-            # Stale — fall through to re-search and overwrite below.
-
-    # Either no lock entry for this slot, or it's stale, or the lock
-    # belongs to a different provider. Re-search.
-    try:
-        hits = provider.search(query, count=1)
-    except Exception as exc:
-        # Provider crashed (network, library bug, bad token, …). Surface
-        # via warning + sentinel so the caller writes a search-error
-        # entry to missing_assets; the build still completes with a
-        # placeholder rect so a single bad slot doesn't block delivery.
-        warnings.warn(
-            f"image provider {provider.name!r} raised on search({query!r}): "
-            f"{type(exc).__name__}: {exc}",
-            RuntimeWarning,
-            stacklevel=3,
-        )
-        return _SearchError(type(exc))
-    if not hits:
-        return None
-    hit = hits[0]
-
-    # If the lock belongs to a different provider, blow it away rather
-    # than mixing pin sources in one file.
-    if lock.get("provider") != provider.name:
-        lock = {"version": 1, "provider": provider.name, "slots": {}}
-    lock["slots"][slot_id] = _entry_from_hit(hit, query)
-    lock["provider"] = provider.name
-    _write_lock(ctx.deck_dir, lock)
-    return hit
-
-
-def _materialise(
-    hit: "ImageHit", cache_dir: Path,
-) -> tuple[Path | None, Exception | None]:
-    """Resolve an ``ImageHit`` URL to a local Path.
-
-    - ``file://`` → just check the file exists.
-    - ``http(s)://`` → download to ``<cache_dir>/<sha1(url)>.<ext>`` if
-      not already present. Two attempts at ``_PER_ATTEMPT_TIMEOUT_S`` s
-      each with a ``_BACKOFF_S`` s pause between (worst case 29 s,
-      under the 30 s spec ceiling). Returns ``(None, last_err)`` on
-      persistent failure.
-    - Bare path → treat as a filesystem path.
-
-    Returns ``(path, None)`` on success and ``(None, err_or_None)`` on
-    failure. The second element carries the last exception raised on the
-    HTTP path so the caller can include error diagnostics in
-    ``missing_assets`` entries; it is ``None`` for non-HTTP misses where
-    no exception was involved (e.g. a missing ``file://`` target).
-
-    The sha1+ext naming keeps re-runs cheap: repeated builds against the
-    same URL skip the network entirely after the first successful fetch.
-    """
-    url = hit.url
-    if url.startswith("file://"):
-        p = Path(url[len("file://"):])
-        return (p, None) if p.is_file() else (None, None)
-    if url.startswith(("http://", "https://")):
-        cache_dir.mkdir(parents=True, exist_ok=True)
-        # Pre-compute fallback extension from the hit's mime hint or the URL
-        # path. The response's ``Content-Type`` may override this at
-        # download time (Findings #2 + #3).
-        ext = _MIME_TO_EXT.get(hit.mime.lower(), "")
-        if not ext:
-            from urllib.parse import urlparse
-            url_path = urlparse(url).path
-            url_ext = Path(url_path).suffix.lower()
-            ext = url_ext if url_ext else ".bin"
-        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()
-        # Fast-path: a prior run already cached this URL with the
-        # fallback extension. Re-use without hitting the network. We
-        # deliberately accept a small risk of staleness (Content-Type
-        # might have flipped server-side) in exchange for not re-paying
-        # the HTTP round trip on every rebuild.
-        target = cache_dir / f"{digest}{ext}"
-        if target.is_file():
-            return (target, None)
-        # Two-attempt budget mirrors lib/providers/unsplash.py:
-        #   _PER_ATTEMPT_TIMEOUT_S (14) + _BACKOFF_S (1) + _PER_ATTEMPT_TIMEOUT_S (14)
-        #   = 29 s worst case, safely under the 30 s spec ceiling.
-        # urllib.request.urlretrieve uses the default socket timeout —
-        # override per call by passing `timeout=` to urlopen explicitly.
-        last_err: Exception | None = None
-        for attempt in range(2):
-            try:
-                with urllib.request.urlopen(  # noqa: S310
-                    url, timeout=_PER_ATTEMPT_TIMEOUT_S,
-                ) as resp:
-                    # Trust the response's ``Content-Type`` over ``hit.mime``
-                    # when it names a known image mime (Findings #2 + #3).
-                    # This protects against servers that content-negotiate
-                    # (e.g. Unsplash → webp) and against ``hit.mime`` hints
-                    # that were never set authoritatively in the first place.
-                    # ``resp.headers`` is always present on a real
-                    # ``http.client.HTTPResponse``; ``getattr`` keeps us
-                    # safe against test fakes / unusual urlopen returns.
-                    response_headers = getattr(resp, "headers", None)
-                    response_ct = ""
-                    if response_headers is not None:
-                        # Both ``email.message.Message`` and ``dict`` support .get.
-                        response_ct = response_headers.get("Content-Type", "") or ""
-                    ct_ext = _pick_ext_from_content_type(response_ct)
-                    if ct_ext:
-                        ext = ct_ext
-                    data = resp.read()
-                # Re-derive target after the Content-Type override.
-                target = cache_dir / f"{digest}{ext}"
-                if target.is_file():
-                    # Another build raced ahead and cached this URL with
-                    # the same extension — re-use rather than re-write.
-                    return (target, None)
-                target.write_bytes(data)
-                return (target, None)
-            except (urllib.error.URLError, TimeoutError, OSError) as exc:
-                last_err = exc
-                # Backoff only between attempts, never after the last.
-                if attempt == 0:
-                    time.sleep(_BACKOFF_S)
-                continue
-        return (None, last_err)
-    # Bare path fallback.
-    p = Path(url)
-    return (p, None) if p.is_file() else (None, None)
-
-
 # Shared gem illustration used as the fallback when a picture asset can't be
 # resolved. Lives at the feinschliff project root `assets/illustrations/`
 # (parents[2] of this module: dsl -> feinschliff pkg -> project).
@@ -1418,17 +1123,19 @@ def _resolve_provider_image(
     return the local Path.  On any failure appends to ctx.missing_assets,
     emits a placeholder rect, and returns None.  Caller must not emit a
     further placeholder when None is returned."""
-    hit = _lookup_lock_then_search(ctx, slot_id, query)
-    if hit is None or isinstance(hit, _SearchError):
+    hit = _img_mat.lookup_lock_then_search(
+        ctx.image_provider, ctx.deck_dir, slot_id, query,
+    )
+    if hit is None or isinstance(hit, _img_mat._SearchError):
         entry: dict = {
-            "kind": "search-error" if isinstance(hit, _SearchError) else "no-hit",
+            "kind": "search-error" if isinstance(hit, _img_mat._SearchError) else "no-hit",
             "query": query,
             "slot_id": slot_id,
             "provider": ctx.image_provider.name,  # type: ignore[union-attr]
             "line_no": node.line_no,
             "source": node.source,
         }
-        if isinstance(hit, _SearchError):
+        if isinstance(hit, _img_mat._SearchError):
             entry["exc_type"] = hit.exc_type.__name__
         ctx.missing_assets.append(entry)
         _emit_picture_placeholder(slide, pos_xy=pos_xy, pos_wh=pos_wh, node=node, ctx=ctx)
@@ -1436,8 +1143,8 @@ def _resolve_provider_image(
     cache_dir = (ctx.deck_dir / ".cache") if ctx.deck_dir else None
     if cache_dir is None:
         cache_dir = Path(tempfile.mkdtemp(prefix="feinschliff-imgcache-"))
-        _THROWAWAY_CACHE_DIRS.append(cache_dir)
-        _register_throwaway_cache_cleanup()
+        _img_mat._THROWAWAY_CACHE_DIRS.append(cache_dir)
+        _img_mat._register_throwaway_cache_cleanup()
         warnings.warn(
             "EmitContext.deck_dir is unset; HTTP image materialise will "
             "use a throwaway tempdir cache (no rebuild reuse). Wire "
@@ -1447,7 +1154,7 @@ def _resolve_provider_image(
             RuntimeWarning,
             stacklevel=2,
         )
-    materialised, fetch_err = _materialise(hit, cache_dir)
+    materialised, fetch_err = _img_mat._materialise(hit, cache_dir)
     if materialised is None:
         fail_entry: dict = {
             "kind": "fetch-failed",
@@ -1466,15 +1173,37 @@ def _resolve_provider_image(
     return materialised
 
 
+def _contain_geometry(
+    img_w: int, img_h: int, x: float, y: float, w: float, h: float,
+) -> tuple[float, float, float, float]:
+    """Scale img to fit w×h preserving aspect; center in the box. Design-px in/out."""
+    if img_w <= 0 or img_h <= 0:
+        return x, y, w, h
+    if w <= 0 or h <= 0:
+        return x, y, w, h
+    src_aspect = img_w / img_h
+    box_aspect = w / h
+    if abs(src_aspect - box_aspect) < 1e-3:
+        return x, y, w, h
+    if src_aspect > box_aspect:
+        new_h = w / src_aspect
+        return x, y + (h - new_h) / 2.0, w, new_h
+    new_w = h * src_aspect
+    return x + (w - new_w) / 2.0, y, new_w, h
+
+
 def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
     """picture X,Y WxH path:PATH cover:true
 
     `path` is the resolved image location — either a literal in the layout
     or interpolated from a `{{ slot }}` placeholder by the expander. If
     `path` is missing, the node is skipped silently. If `path` does not
-    resolve to a local file but an image provider is active, the value is
-    treated as a provider search query (e.g. Unsplash) so plan authors can
-    write ``image: "regensburg medieval bridge"`` without changing layouts.
+    resolve to a local file but an image provider is active, the node falls
+    back to a provider search: an explicit ``query:`` kwarg takes
+    precedence, otherwise the unresolved path value itself is used as the
+    query (e.g. Unsplash) so plan authors can write
+    ``image: "regensburg medieval bridge"`` without changing layouts. A
+    ``query:`` is ignored whenever the path resolves to a real file.
     `cover:true` center-crops the source image to the box aspect ratio
     (default behaviour is contain).
 
@@ -1502,17 +1231,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         _pos_xy = node.pos_args[0]
         _pos_wh = node.pos_args[1]
 
-    # `query:` and `path:` are mutually exclusive — a brand author who
-    # set both has either copy-pasted half a migration or doesn't know
-    # which mode they meant. Fail loud at emit time so the mistake
-    # surfaces before the deck ships.
-    if query and path:
-        raise DSLError(
-            f"picture at line {node.line_no}: `query:` and `path:` are "
-            f"mutually exclusive (got query={query!r}, path={path!r})"
-        )
-
-    if query:
+    # `query:` alongside `path:` is a layered fallback: the file wins when
+    # `path` resolves; the explicit `query:` is consulted only when the
+    # path misses (see the provider branch below), taking precedence over
+    # the synthesized use-the-path-as-query fallback. A bare `query:`
+    # (no path) resolves through the provider directly — and fails loud
+    # below when no provider is wired, because that combination can never
+    # produce an image.
+    if query and not path:
         if not ctx.image_provider:
             # The brand author wrote `query:` in a layout but forgot to
             # wire `$image_provider` in tokens.json. Silent-fallback to a
@@ -1524,7 +1250,7 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                 f"is None. Add `$image_provider` to your brand's tokens.json "
                 f"(or your `extends` ancestor) so the build can resolve it."
             )
-        slot_id = node.label or _slot_id_from_query(query)
+        slot_id = node.label or _img_mat._slot_id_from_query(query)
         materialised = _resolve_provider_image(
             ctx, query, slot_id,
             slide=slide, node=node, pos_xy=_pos_xy, pos_wh=_pos_wh,
@@ -1564,14 +1290,17 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         else:
             p = primary
     if not p.is_file():
-        # When an image provider is active, treat the unresolved path value as
-        # a search query instead of failing. This lets plan authors write
-        # image: "regensburg aerial" and have it resolve through e.g. Unsplash
-        # without requiring query: in every layout DSL file.
+        # When an image provider is active, fall back to a provider search
+        # instead of failing. An explicit `query:` kwarg takes precedence;
+        # otherwise the unresolved path value itself is treated as the
+        # search query. This lets plan authors write
+        # image: "regensburg aerial" and have it resolve through e.g.
+        # Unsplash without requiring query: in every layout DSL file.
         if ctx.image_provider:
-            slot_id = node.label or _slot_id_from_query(path)
+            provider_query = query or path
+            slot_id = node.label or _img_mat._slot_id_from_query(provider_query)
             materialised = _resolve_provider_image(
-                ctx, path, slot_id,
+                ctx, provider_query, slot_id,
                 slide=slide, node=node, pos_xy=_pos_xy, pos_wh=_pos_wh,
             )
             if materialised is None:
@@ -1600,15 +1329,31 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         if endpoints is not None:
             treatment = "duotone"
             duotone_dark, duotone_light = endpoints
-    if cover or treatment != "none":
-        bytes_io = _prepare_picture_bytes(p, target_aspect=(w / h) if cover else None,
+    if cover:
+        bytes_io = _prepare_picture_bytes(p, target_aspect=(w / h),
                                           treatment=treatment,
                                           duotone_dark=duotone_dark,
                                           duotone_light=duotone_light)
         slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
     else:
-        # Fast path: no crop, no treatment — let python-pptx read the file.
-        slide.shapes.add_picture(str(p), _px(x), _px(y), width=_px(w), height=_px(h))
+        # Contain: scale to fit the box preserving aspect ratio, center in the slot.
+        try:
+            # Header-only open — PIL defers pixel decode, so this costs a stat+header read
+            # even though _prepare_picture_bytes opens the file again.
+            with Image.open(p) as _im:
+                img_w, img_h = _im.size
+            cx, cy, cw, ch = _contain_geometry(img_w, img_h, x, y, w, h)
+        except Exception:
+            cx, cy, cw, ch = x, y, w, h
+        if treatment != "none":
+            bytes_io = _prepare_picture_bytes(p, target_aspect=None,
+                                              treatment=treatment,
+                                              duotone_dark=duotone_dark,
+                                              duotone_light=duotone_light)
+            slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+        else:
+            # Fast path: no treatment — let python-pptx read the file directly.
+            slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
 
 
 def _prepare_picture_bytes(
@@ -1739,12 +1484,31 @@ _NS_P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
 # Custom attribute the emitter writes on a <p:sp> when its source DSL used
 # `effect:allow` to opt out of sanitation.
-_EFFECT_ALLOW_ATTR = "effect-allow"
+# Namespaced form (Clark notation for lxml) — the sanctioned OOXML extension
+# mechanism. Writers always use this; readers also accept the legacy bare form.
+_FS_NS = "urn:feinschliff:emit"
+_EFFECT_ALLOW_ATTR = f"{{{_FS_NS}}}effect-allow"   # Clark notation for lxml
+_EFFECT_ALLOW_LEGACY = "effect-allow"              # accepted on read (old files)
 
 # Outline clamp: hairline at 0.5pt = 6350 EMU; anything above 1pt (12700 EMU)
 # is clamped down to hairline.
 _OUTLINE_CLAMP_THRESHOLD_EMU = 12700
 _OUTLINE_CLAMP_TARGET_EMU = 6350
+
+
+def _effect_allowed(sp) -> bool:
+    """Return True if a <p:sp> element carries the effect opt-in marker.
+
+    The caller is responsible for passing the ``<p:sp>`` element itself —
+    no ancestor walk is performed inside this helper.  Accepts both the
+    current namespaced form (``{urn:feinschliff:emit}effect-allow``) and
+    the legacy bare attribute so that old decks keep their opt-in after
+    upgrading.
+    """
+    return (
+        sp.get(_EFFECT_ALLOW_ATTR) == "1"
+        or sp.get(_EFFECT_ALLOW_LEGACY) == "1"
+    )
 
 
 def sanitize_chrome(slide_xml) -> None:
@@ -1766,20 +1530,21 @@ def sanitize_chrome(slide_xml) -> None:
         parent = effect_lst.getparent()
         while parent is not None and not parent.tag.endswith("}sp"):
             parent = parent.getparent()
-        if parent is not None and parent.get(_EFFECT_ALLOW_ATTR) == "1":
+        if parent is not None and _effect_allowed(parent):
             continue
         effect_lst.getparent().remove(effect_lst)
 
     # 2. gradFill → solidFill (with the first stop's color), unless the
-    #    parent <p:sp> opts in via _EFFECT_ALLOW_ATTR (same gate as the
-    #    effectLst case above — used by decompile-derived shapes that
-    #    deliberately carry a source-faithful gradient).
+    #    parent <p:sp> opts in via _effect_allowed() (same gate as the
+    #    effectLst case above; accepts both namespaced and legacy bare
+    #    forms — used by decompile-derived shapes that deliberately carry
+    #    a source-faithful gradient).
     ns = {"a": _NS_A}
     for grad in list(sptree.iter(f"{{{_NS_A}}}gradFill")):
         sp_anc = grad.getparent()
         while sp_anc is not None and not sp_anc.tag.endswith("}sp"):
             sp_anc = sp_anc.getparent()
-        if sp_anc is not None and sp_anc.get(_EFFECT_ALLOW_ATTR) == "1":
+        if sp_anc is not None and _effect_allowed(sp_anc):
             continue
         grad_parent = grad.getparent()
         first_clr = grad.find(".//a:gs[1]/a:srgbClr", ns)
@@ -2517,8 +2282,23 @@ def build_multi_slide(
         _min = None
     _set_theme_fonts(prs, _maj, _min)
     missing: list[dict] = []
+    try:
+        first_w_emu = first_tokens.slide("width_emu")
+    except Exception:
+        first_w_emu = 0
     for slide_idx, entry in enumerate(slides, start=1):
         nodes, tokens, asset_root, notes = _unpack_slide_payload(entry)
+        try:
+            slide_w_emu = tokens.slide("width_emu")
+        except Exception:
+            slide_w_emu = 0
+        if slide_w_emu and first_w_emu and slide_w_emu != first_w_emu:
+            print(
+                f"WARN: build_multi_slide: slide {slide_idx} tokens declare "
+                f"width_emu={slide_w_emu} but the deck renders at "
+                f"{first_w_emu} (first slide wins; geometry will be scaled "
+                f"to the deck size)", file=sys.stderr,
+            )
         per_slide: list[dict] = []
         _append_slide(prs, nodes, tokens, asset_root=asset_root,
                       asset_root_fallback=asset_root_fallback,

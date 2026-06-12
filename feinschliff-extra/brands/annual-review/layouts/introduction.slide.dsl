@@ -1,3 +1,20 @@
+---
+role: content-columns
+ideal_count: [1, 1]
+data_band: none
+comparison: false
+family: organizational
+description: 'Two-column intro: left has title, rule, body paragraph; right has rectangular content photo'
+slide_index: 3
+slots:
+  text_1: {role: title, chars: 30, default: Introduction}
+  text_2: {role: body, chars: 1406, default: 'Profits are up, and losses are down! We are very proud of the progress our te…'}
+  text_3: {role: footer, chars: 26, default: Annual Review}
+  text_4: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_5: {role: page-number, chars: 11, default: '3'}
+  image: {role: image, class: replace}
+image_queries: {image: introduction}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: introduction
 canvas 1920x1080

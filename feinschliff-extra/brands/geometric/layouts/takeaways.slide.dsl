@@ -1,3 +1,20 @@
+---
+role: content-columns
+ideal_count: [2, 2]
+data_band: none
+comparison: false
+family: organizational
+description: 'Cream two-column takeaways: large bold title top, hierarchical bullets left, plain items right; concentric arc
+  top-left and dots'
+chrome_subject: concentric cream arc lines on olive strip top-left, small navy dot; brand-neutral
+chrome_note: 'carries native source chrome verbatim: 5 illustration'
+slide_index: 11
+slots:
+  text_1: {role: page-number, chars: 44, default: '11'}
+  text_2: {role: title, chars: 126, default: FINAL TIPS & TAKEAWAYS}
+  text_3: {role: body, chars: 1425, default: Consistent rehearsal\nStrengthen your familiarity\nRefine delivery style\nPac…}
+  text_4: {role: body, chars: 931, default: Seek feedback\nReflect on performance\nExplore new techniques\nSet personal g…}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: takeaways
 canvas 1920x1080

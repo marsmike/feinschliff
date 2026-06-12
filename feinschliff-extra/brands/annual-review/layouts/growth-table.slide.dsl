@@ -1,3 +1,18 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+description: 'Yellow panel: bold title, black rule, data table with 3 rows x 4 columns (quarterly series)'
+chrome_note: 'carries native source chrome verbatim: 1 table'
+slide_index: 6
+slots:
+  text_1: {role: title, chars: 54, default: Growth by sector table}
+  text_2: {role: footer, chars: 26, default: Annual Review}
+  text_3: {role: footer, chars: 84, default: 'September 3, 20XX'}
+  text_4: {role: page-number, chars: 11, default: '6'}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: growth-table
 canvas 1920x1080

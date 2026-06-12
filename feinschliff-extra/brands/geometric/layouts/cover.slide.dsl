@@ -1,3 +1,19 @@
+---
+role: title-primary
+ideal_count: [1, 2]
+data_band: none
+comparison: false
+variety_exempt: true
+when_not_to_use: [role=content-columns, role=data-quantity, role=data-comparison, role=data-timeline, role=concept-diagram]
+family: framing
+fixed_chrome: true
+description: 'Cover: blue/cream arch split with title centred in cream panel; blue and pink vertical flanking bars as chrome'
+chrome_subject: bold blue arch and intersecting pink/blue geometric band; brand-neutral Bauhaus-style shapes
+chrome_note: 'carries native source chrome verbatim: 3 illustration'
+slide_index: 1
+slots:
+  text_1: {role: title, chars: 440, default: BASIC\nPRESENTATION}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: cover
 canvas 1920x1080

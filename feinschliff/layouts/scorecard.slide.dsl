@@ -3,6 +3,7 @@ role: data-comparison
 ideal_count: [3, 5]
 data_band: table
 comparison: true
+description: 'Workstream × period scorecard table: four rows, four phase columns, plain text status cells, hairline separators'
 ---
 # scorecard — grid of workstreams × periods with status cells.
 #

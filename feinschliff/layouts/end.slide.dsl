@@ -4,6 +4,7 @@ ideal_count: [1, 1]
 data_band: none
 comparison: false
 variety_exempt: true
+description: Full-bleed accent background, centered jumbo closing phrase with rule above and version line below
 ---
 # end — closer slide. Centered "Thank you." block on the brand's accent
 # (gold) background. Sole "orange" slide in the canonical deck.

@@ -36,7 +36,7 @@ the marketplace once, then install only the plugins you need.
 | [`feinbild`](feinbild/) | `feinbild@feinschmiede` | **Image & 2D** — AI images (Replicate/Gemini), SVG, Excalidraw diagrams. `/imagine`, `/svg`, `/excalidraw`. |
 | [`feinklang`](feinklang/) | `feinklang@feinschmiede` | **Audio** — ElevenLabs voiceover. `/tts`. |
 | [`feinschnitt`](feinschnitt/) | `feinschnitt@feinschmiede` | **Video** — programmatic Remotion videos + CLI session recordings. `/video`, `/record`. Composes feinbild + feinklang. |
-| [`feinschliff-extra`](feinschliff-extra/) | `feinschliff-extra@feinschmiede` | 10 extra brand packs (data only). Requires `feinschliff`. |
+| [`feinschliff-extra`](feinschliff-extra/) | `feinschliff-extra@feinschmiede` | 14 extra brand packs (data only). Requires `feinschliff`. |
 | [`feinschliff-builder`](feinschliff-builder/) | `feinschliff-builder@feinschmiede` | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). Requires `feinschliff`. |
 
 Most users want one product plugin (e.g. `feinschliff` for decks). `feinschliff`

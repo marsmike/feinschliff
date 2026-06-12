@@ -280,9 +280,13 @@ a family that renders larger; see the
 ## Known floors & limitations
 
 - **Font-substitution edge floor** — without the source's theme fonts installed,
-  source and brand renders substitute differently; layouts get size-compensated to
-  match the *render*, leaving an irreducible `edge_diff_ratio`. Install/bundle the
-  theme fonts (or normalise font resolution) to remove it.
+  source and brand renders substitute differently, leaving an irreducible
+  `edge_diff_ratio`. Two mitigations now exist: (1) **real-metrics textfit**
+  (`feinschmiede.text.measure`) — when the font *is* installed, predictions match
+  the installed face so the renders agree; (2) **`--embed-fonts`** — embeds the
+  brand fonts in the `.pptx` so recipients render with the correct face even
+  without a local install. The floor is still present when fonts are both missing
+  locally *and* not embedded.
 - **Picture-coverage bias** — when `picture_coverage` is high, `struct_diff_ratio`
   is unreliable; cross-check `ssim` + absolute pixel count.
 - **Stroke-width metric trap** — thinning a stroke can improve the metric while

@@ -1,3 +1,15 @@
+---
+role: reference
+ideal_count: [1, 1]
+data_band: table
+comparison: false
+family: organizational
+description: 'Metrics table: large title top, full-width data table with blue header row and four data rows spanning page'
+chrome_note: 'carries native source chrome verbatim: 1 table'
+slide_index: 12
+slots:
+  text_1: {role: title, chars: 110, default: Speaking engagement metrics}
+---
 # auto-derived from PPTX+SVG hybrid — review before use
 # layout: metrics
 canvas 1920x1080

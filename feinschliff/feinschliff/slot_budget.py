@@ -38,7 +38,9 @@ from feinschmiede.dsl.tokens import Tokens
 from feinschliff.textfit import chars_per_line as _cpl, supported_fonts as _supported_fonts
 
 
-# Design-px → EMU and pt conversion constants (must match pptx_emit.py).
+# Design-px → EMU and pt legacy defaults (1920px / 13.33in baseline).
+# When tokens declare slide.width_emu, compute_slot_budgets derives per-budget
+# scale from that value instead — see SlotBudget.emu_per_px / px_to_pt fields.
 _EMU_PER_PX: float = 6350.0
 _PX_TO_PT: float = 0.5
 
@@ -63,19 +65,21 @@ class SlotBudget:
     height_px: float        # maxheight in design-px (0 = unconstrained)
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
+    emu_per_px: float = 6350.0  # design-px → EMU scale (derived from tokens slide.width_emu)
+    px_to_pt: float = 0.5       # design-px → pt scale (emu_per_px / 12700)
 
     # ── derived geometry ──────────────────────────────────────────────────
     @property
     def size_pt(self) -> float:
-        return self.size_px * _PX_TO_PT
+        return self.size_px * self.px_to_pt
 
     @property
     def width_emu(self) -> int:
-        return int(self.width_px * _EMU_PER_PX)
+        return int(self.width_px * self.emu_per_px)
 
     @property
     def height_emu(self) -> int:
-        return int(self.height_px * _EMU_PER_PX)
+        return int(self.height_px * self.emu_per_px)
 
     @property
     def chars_per_line(self) -> int:
@@ -191,6 +195,24 @@ def compute_slot_budgets(
         from feinschliff.dsl.expander import expand_compounds  # local import; avoid cycle
         nodes, _ = expand_compounds(list(nodes), compounds)
 
+    # Derive px→EMU/pt scale from the canvas width and tokens slide.width_emu.
+    # Decompiled brand packs write width_emu to tokens.json; without it we fall
+    # back to the 1920px/13.33in legacy baseline so existing layouts are unchanged.
+    canvas_w = 1920.0
+    for n in nodes:
+        if n.kind == "canvas" and n.pos_args:
+            try:
+                canvas_w = float(str(n.pos_args[0]).lower().split("x")[0])
+            except ValueError:
+                pass
+            break
+    try:
+        width_emu_token = tokens.slide("width_emu")
+    except Exception:
+        width_emu_token = 0
+    emu_per_px = (width_emu_token / canvas_w) if width_emu_token else _EMU_PER_PX
+    px_to_pt = emu_per_px / 12700.0
+
     for node in nodes:
         if node.kind != "text":
             continue
@@ -240,6 +262,8 @@ def compute_slot_budgets(
             height_px=height_px,
             font_family=font_name,
             bold=_bold_for_weight(resolved.weight),
+            emu_per_px=emu_per_px,
+            px_to_pt=px_to_pt,
         )
         candidates.setdefault(slot, []).append(budget)
 

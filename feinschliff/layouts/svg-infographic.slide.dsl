@@ -5,6 +5,7 @@ data_band: chart
 comparison: true
 narrative_role: custom-viz
 diagram_complexity: simple
+description: Title and eyebrow top-left, SVG infographic occupying central body area, so-what and source lines below
 ---
 # svg-infographic — custom data viz (bars, axes, legends, stat cards) that
 # doesn't fit bar-chart / stacked-bar / kpi-grid / scorecard / funnel.
