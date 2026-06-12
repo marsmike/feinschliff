@@ -98,6 +98,7 @@ import yaml
 from feinschliff.dsl.parser import split_frontmatter
 from feinschmiede.dsl.tokens import load_tokens
 from feinschmiede.geometry import units
+from feinschmiede.text.measure import avg_char_width_ratio
 
 # --- DSL line patterns ------------------------------------------------------
 # In the FILE the slot's inner quotes are backslash-escaped:
@@ -453,6 +454,10 @@ def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
 _MIN_CHARS_PER_LINE = 8
 _FALLBACK_CHAR_RATIO = 0.55
 
+# Roles that legitimately hold a digit or fixed short string — exempt from
+# the NARROW_BOX chars-per-line lint.
+_NARROW_BOX_EXEMPT_ROLES = frozenset({"page-number", "footer", "source-note"})
+
 
 def _style_metrics(style_name: str, tokens) -> tuple[float, str | None]:
     """(line_height, primary_face) for a style bundle; (1.2, None) when the
@@ -468,7 +473,6 @@ def _style_metrics(style_name: str, tokens) -> tuple[float, str | None]:
 
 
 def _char_ratio(face: str | None) -> float:
-    from feinschmiede.text.measure import avg_char_width_ratio
     if face:
         measured = avg_char_width_ratio(face)
         if measured:
@@ -504,10 +508,6 @@ def _slot_warnings(
 
     def _add(name: str, msg: str) -> None:
         out.setdefault(name, []).append(msg)
-
-    # Roles whose NARROW_BOX warnings are suppressed — these slots hold a digit
-    # or a fixed short string by design; 7 chars/line is intentional.
-    _NARROW_BOX_EXEMPT_ROLES = {"page-number", "footer", "source-note"}
 
     for t in texts:
         size_px = t["pt"] * px_per_pt

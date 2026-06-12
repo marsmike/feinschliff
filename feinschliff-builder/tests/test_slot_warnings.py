@@ -136,14 +136,11 @@ def test_impossible_box_exempts_decorative_glyph(tmp_path):
 
 def test_impossible_box_grace_tolerates_borderline(tmp_path):
     """A box a few % tighter than one line (native-bbox artifact) is silent;
-    44pt line = 105.6px in a 102px box (3.5% over) must NOT fire."""
+    44pt line ≈ 117px in a 124px box (≈5% under the 10% grace) must NOT fire."""
     brand = _brand(tmp_path)
     dsl = ('canvas 1920x1080\n'
-           'text 100,100 size:44pt maxwidth:900 maxheight:102 '
+           'text 100,100 size:44pt maxwidth:900 maxheight:124 '
            '"{{ text_1 | default(\\"Title line\\") }}"\n')
-    profile = classify_layout(
-        dsl, layout_name="synth", slide_index=1, total_slides=10,
-        asset_root=brand / "assets",  # no brand_dir → legacy 2px/pt scale
-    )
+    profile = _classify(dsl, brand)
     assert not any(w.startswith("IMPOSSIBLE_BOX")
                    for w in profile.get("slot_warnings", {}).get("text_1", []))
