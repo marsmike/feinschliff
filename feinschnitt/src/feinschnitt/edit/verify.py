@@ -38,11 +38,11 @@ def _audio_md5(video: Path) -> str:
 def run(source: Path, output: Path, scored: bool = False) -> None:
     if not output.exists():
         raise EditError(f"output not found: {output}")
+    out_meta = ffprobe_meta(output)
     problems = check_durations(ffprobe_meta(source)["duration"],
-                               ffprobe_meta(output)["duration"])
+                               out_meta["duration"])
     if scored:
         # D-M4-8: scored mode — audio stream presence + voice-relative loudness.
-        out_meta = ffprobe_meta(output)
         if not out_meta["has_audio"]:
             problems.append("scored output has no audio stream")
         else:

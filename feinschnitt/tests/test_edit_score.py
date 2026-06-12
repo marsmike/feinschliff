@@ -992,3 +992,67 @@ def test_score_accepts_pre_resolved_track_and_cues(monkeypatch, tmp_path):
         track=track, cues=[],
     )
     assert scored is True
+
+
+# ===========================================================================
+# Review fixes: verify single-ffprobe, score degrade, sfx warnings
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# verify.run calls ffprobe_meta(output) exactly once in scored mode
+# ---------------------------------------------------------------------------
+
+def test_verify_scored_single_ffprobe_on_output(monkeypatch, tmp_path):
+    """verify.run must call ffprobe_meta(output) only once even in scored mode."""
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    call_count: dict[str, int] = {}
+
+    def counting_ffprobe(p):
+        key = p.name
+        call_count[key] = call_count.get(key, 0) + 1
+        return {"duration": 10.0, "width": 1080, "height": 1920, "has_audio": True}
+
+    monkeypatch.setattr(verifymod, "ffprobe_meta", counting_ffprobe)
+    monkeypatch.setattr(verifymod, "measure_lufs", lambda p: -22.0)
+
+    verifymod.run(source, output, scored=True)
+
+    assert call_count.get("out.mp4", 0) == 1, (
+        f"ffprobe_meta called {call_count.get('out.mp4', 0)}x on output — expected 1"
+    )
+    # source is probed exactly once too (for duration comparison)
+    assert call_count.get("source.mp4", 0) == 1
+
+
+# ---------------------------------------------------------------------------
+# score() pre-resolved path no longer re-calls pick_track for warnings
+# ---------------------------------------------------------------------------
+
+def test_score_pre_resolved_does_not_call_pick_track(monkeypatch, tmp_path):
+    """With pre-resolved track+cues the score() function must not call pick_track."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"")
+    out = tmp_path / "out.mp4"
+    track = tmp_path / "track.mp3"
+    track.write_bytes(b"")
+
+    def _must_not_call(*a, **kw):
+        raise AssertionError("pick_track should not be called when pre-resolved")
+
+    monkeypatch.setattr(scoremod, "pick_track", _must_not_call)
+    monkeypatch.setattr(scoremod, "measure_lufs", lambda p: -23.0)
+    monkeypatch.setattr(scoremod, "find_climax", lambda beats: None)
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+
+    scored, warnings = scoremod.score(
+        video, out, beats=[], captions=[], config=None, duration=30.0,
+        track=track, cues=[],
+    )
+    assert scored is True
+    assert warnings == []

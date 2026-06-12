@@ -360,11 +360,8 @@ def score(
         cues, cue_warnings = sfx.plan_cues(beats, captions)
         warnings.extend(cue_warnings)
     else:
-        # Caller pre-resolved; collect any warnings by re-running resolution
-        # in warning-only mode — we still want sfx/music warnings surfaced.
-        if track is None:
-            _, pick_warnings = pick_track(config)
-            warnings.extend(pick_warnings)
+        # Caller pre-resolved (render.py path) — warnings were already printed
+        # to stderr by render.py before fingerprinting.  Nothing extra to do.
         if cues is None:
             cues = []
 

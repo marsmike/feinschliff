@@ -324,7 +324,11 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
     resolved_cues: "list[dict] | None" = None
     if scoring_active:
         resolved_track, _tw = scoremod.pick_track(score_config)
+        for w in _tw:
+            print(f"score warning: {w}", file=sys.stderr)
         resolved_cues, _cw = sfxmod.plan_cues(aligned["beats"], caps)
+        for w in _cw:
+            print(f"score warning: {w}", file=sys.stderr)
         # Append score-signature entries to asset_stats for the fingerprint.
         asset_stats = list(asset_stats)
         asset_stats.append((
@@ -359,18 +363,31 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
         _remux_source_audio(raw, video, out)
         if scoring_active:
             score_tmp = wd / "score.tmp.mp4"
-            scored, score_warnings = scoremod.score(
-                out, score_tmp,
-                aligned["beats"], caps, score_config, meta["duration"],
-                track=resolved_track,
-                cues=resolved_cues,
-            )
-            for sw in score_warnings:
-                print(f"score warning: {sw}", file=sys.stderr)
-            if scored:
-                os.replace(score_tmp, out)
-                scored_sidecar.write_text("1")
-            else:
+            try:
+                scored, score_warnings = scoremod.score(
+                    out, score_tmp,
+                    aligned["beats"], caps, score_config, meta["duration"],
+                    track=resolved_track,
+                    cues=resolved_cues,
+                )
+                for sw in score_warnings:
+                    print(f"score warning: {sw}", file=sys.stderr)
+                if scored:
+                    os.replace(score_tmp, out)
+                    scored_sidecar.write_text("1")
+                else:
+                    score_tmp.unlink(missing_ok=True)
+                    scored_sidecar.unlink(missing_ok=True)
+            except EditError as exc:
+                # Corrupt or missing asset — degrade gracefully: keep the
+                # voice-only remux already written to `out`.  A fixed asset
+                # changes its mtime → new fingerprint → re-render+rescore on
+                # the next run.  The render must never fail over audio.
+                print(
+                    f"score warning: scoring failed ({exc}) — "
+                    "keeping the voice-only final",
+                    file=sys.stderr,
+                )
                 score_tmp.unlink(missing_ok=True)
                 scored_sidecar.unlink(missing_ok=True)
         else:
