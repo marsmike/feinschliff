@@ -110,3 +110,40 @@ def test_apply_profile_writes_slot_warnings(tmp_path):
     assert "slot_warnings" in profile, "test pre-condition: profile must have warnings"
     result = apply_profile(dsl, profile)
     assert "slot_warnings:" in result
+
+
+def test_narrow_box_exempts_page_number_role(tmp_path):
+    """A page-number slot legitimately holds 1-3 chars — no NARROW_BOX."""
+    brand = _brand(tmp_path)
+    dsl = ('canvas 1920x1080\n'
+           'text 100,1005 size:12pt maxwidth:100 maxheight:200 '
+           '"{{ text_1 | default(\\"2\\") }}"\n')
+    profile = _classify(dsl, brand)
+    assert not any(w.startswith("NARROW_BOX")
+                   for w in profile.get("slot_warnings", {}).get("text_1", []))
+
+
+def test_impossible_box_exempts_decorative_glyph(tmp_path):
+    """An oversized 1-char display glyph overflows by design — no warning."""
+    brand = _brand(tmp_path)
+    dsl = ('canvas 1920x1080\n'
+           'text 100,200 size:200pt maxwidth:400 maxheight:209 '
+           '"{{ text_1 | default(\\"”\\") }}"\n')
+    profile = _classify(dsl, brand)
+    assert not any(w.startswith("IMPOSSIBLE_BOX")
+                   for w in profile.get("slot_warnings", {}).get("text_1", []))
+
+
+def test_impossible_box_grace_tolerates_borderline(tmp_path):
+    """A box a few % tighter than one line (native-bbox artifact) is silent;
+    44pt line = 105.6px in a 102px box (3.5% over) must NOT fire."""
+    brand = _brand(tmp_path)
+    dsl = ('canvas 1920x1080\n'
+           'text 100,100 size:44pt maxwidth:900 maxheight:102 '
+           '"{{ text_1 | default(\\"Title line\\") }}"\n')
+    profile = classify_layout(
+        dsl, layout_name="synth", slide_index=1, total_slides=10,
+        asset_root=brand / "assets",  # no brand_dir → legacy 2px/pt scale
+    )
+    assert not any(w.startswith("IMPOSSIBLE_BOX")
+                   for w in profile.get("slot_warnings", {}).get("text_1", []))

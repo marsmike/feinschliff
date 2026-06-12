@@ -481,15 +481,33 @@ def _boxes_overlap(a: dict, b: dict) -> bool:
             and a["y"] < b["y"] + b["maxh"] and b["y"] < a["y"] + a["maxh"])
 
 
-def _slot_warnings(texts: list[dict], *, px_per_pt: float, tokens=None) -> dict[str, list[str]]:
+def _slot_warnings(
+    texts: list[dict],
+    *,
+    px_per_pt: float,
+    tokens=None,
+    slot_roles: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
     """Static box-sanity lint over slotified text nodes — content-free, only
     declared geometry and resolved type size. Results land in frontmatter
     `slot_warnings:` (planning LLMs and /improve-brand read them) and in the
-    slotify summary print."""
+    slotify summary print.
+
+    ``slot_roles`` is used to suppress false positives for intentionally
+    compact chrome slots:
+    - NARROW_BOX is skipped for page-number / footer / source-note roles
+      (these hold a digit or a short fixed string — 7 chars/line is fine).
+    - IMPOSSIBLE_BOX is skipped when the default is 1-2 chars (decorative
+      display glyphs such as oversized quotation marks).
+    """
     out: dict[str, list[str]] = {}
 
     def _add(name: str, msg: str) -> None:
         out.setdefault(name, []).append(msg)
+
+    # Roles whose NARROW_BOX warnings are suppressed — these slots hold a digit
+    # or a fixed short string by design; 7 chars/line is intentional.
+    _NARROW_BOX_EXEMPT_ROLES = {"page-number", "footer", "source-note"}
 
     for t in texts:
         size_px = t["pt"] * px_per_pt
@@ -497,13 +515,24 @@ def _slot_warnings(texts: list[dict], *, px_per_pt: float, tokens=None) -> dict[
             continue
         line_height, face = _style_metrics(t["style"], tokens)
         line_h_px = size_px * line_height
-        if t["maxh"] > 0 and line_h_px > t["maxh"] + 0.5:
+        # 1-2 char defaults are decorative display glyphs (oversized quote marks
+        # etc.) — overflow is the design.
+        is_decorative_glyph = len(t["default"].strip()) <= 2
+        # 10% grace: native bboxes run a few % tighter than the line; PPT
+        # soft-clips that much without visual damage. The incident class
+        # (16pt in 27px = 59% over) still fires.
+        if (t["maxh"] > 0 and line_h_px > t["maxh"] * 1.10 + 0.5
+                and not is_decorative_glyph):
             _add(t["name"], (
                 f"IMPOSSIBLE_BOX: one line at {t['pt']:g}pt is ~{line_h_px:.0f}px "
                 f"tall but the box is {t['maxh']:g}px"
             ))
+        role = (slot_roles or {}).get(t["name"], "body")
         cols = math.floor(t["maxw"] / (_char_ratio(face) * size_px))
-        if 0 < cols < _MIN_CHARS_PER_LINE:
+        # Skip NARROW_BOX for slots whose role is page-number / footer /
+        # source-note — these hold a digit or a fixed short string by design.
+        if (0 < cols < _MIN_CHARS_PER_LINE
+                and role not in _NARROW_BOX_EXEMPT_ROLES):
             _add(t["name"], (
                 f"NARROW_BOX: ~{cols} chars/line at {t['pt']:g}pt in a "
                 f"{t['maxw']:g}px-wide box"
@@ -750,7 +779,8 @@ def classify_layout(
                 "role": "image",
                 "class": _image_class(i, canvas_w, canvas_h),
             }
-        warnings = _slot_warnings(texts, px_per_pt=px_per_pt, tokens=tokens)
+        warnings = _slot_warnings(
+            texts, px_per_pt=px_per_pt, tokens=tokens, slot_roles=slot_roles)
         if warnings:
             profile["slot_warnings"] = warnings
     if images:
