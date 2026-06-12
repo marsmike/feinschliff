@@ -67,9 +67,15 @@ from ._dsl_common import (
     parse_xy as _parse_xy,
     scaled_int as _sz,
 )
-from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, resolve_fonts, strip_brand_directive
+from .brand_bridge import (
+    font_fallback_resolvable as _font_fallback_resolvable,
+    label_color_for as _label_color_for,
+    resolve,
+    resolve_brand_dir,
+    resolve_fonts,
+    strip_brand_directive,
+)
 from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
-from feinschmiede.text.measure import find_font_file as _find_font_file
 
 
 # SVG path `d` attribute allowlist. Letters allow the canonical command set
@@ -81,26 +87,18 @@ _PATH_D_ALLOWED = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE\s,\.\+\-]*$")
 _MAX_POLY_POINTS = 64
 _POINT_RE = re.compile(r"^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
 
-# One WARN per (brand, face) per process — fallback never breaks a render.
-_warned_font_fallback: set[tuple[str, str]] = set()
-
 
 def _font_stack(brand_dir: Path, *, mono: bool = False) -> str:
     """Brand CSS font stack for SVG text. cairosvg resolves it via fontconfig
     at render time; the trailing generic keeps unresolvable faces harmless
-    (F5: WARN once, never fail)."""
+    (F5: WARN once, never fail). Delegates font-availability check to the
+    shared brand_bridge.font_fallback_resolvable guard (F4)."""
     fonts = resolve_fonts(brand_dir)
     primary = fonts.primary_mono if mono else fonts.primary_body
-    if primary is not None:
-        key = (brand_dir.name, primary)
-        if key not in _warned_font_fallback and _find_font_file(primary) is None:
-            _warned_font_fallback.add(key)
-            print(
-                f"feinschmiede: WARN: diagram-font-fallback — brand face "
-                f"'{primary}' not fontconfig-resolvable; diagrams render with "
-                f"the next family in the stack.",
-                file=sys.stderr,
-            )
+    _font_fallback_resolvable(
+        brand_dir, primary,
+        detail="diagrams render with the next family in the stack.",
+    )
     return fonts.svg_mono if mono else fonts.svg_body
 
 

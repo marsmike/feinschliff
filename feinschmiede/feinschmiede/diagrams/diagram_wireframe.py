@@ -22,10 +22,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ._dsl_common import canvas_scale as _canvas_scale, parse_xy, parse_wh
+from .brand_bridge import resolve_fonts as _resolve_fonts
 from .text_metrics import (
     SVG_TEXT_SIZES as _SVG_TEXT_SIZES,
     EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES,
     CHAR_WIDTH_EM as _CHAR_WIDTH_EM,
+    char_width_em_for as _char_width_em_for,
 )
 
 
@@ -44,6 +46,10 @@ class Primitive:
 
 def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None = None) -> list[Primitive]:
     scale = _canvas_scale(canvas_w)
+    # Refined char-width ratio: use the brand body face's measured ratio when
+    # available, else the 0.62em heuristic (F4).
+    _primary_body = _resolve_fonts(brand_dir).primary_body if brand_dir is not None else None
+    char_em = _char_width_em_for(_primary_body)
     prims: list[Primitive] = []
     for raw in dsl.splitlines():
         line = raw.strip()
@@ -73,7 +79,7 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
             max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
                 id=_id, kind="text",
-                x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
+                x=x, y=int(y - size), w=int(size * char_em * max_line_len), h=int(size + 4),
                 label=content, role=level, font_size=float(size),
             ))
         elif head == "axis":
@@ -156,6 +162,10 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
 
 def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None = None) -> list[Primitive]:
     scale = _canvas_scale(canvas_w)
+    # Refined char-width ratio: use the brand body face's measured ratio when
+    # available, else the 0.62em heuristic (F4).
+    _primary_body = _resolve_fonts(brand_dir).primary_body if brand_dir is not None else None
+    char_em = _char_width_em_for(_primary_body)
     prims: list[Primitive] = []
     nodes: dict[str, Primitive] = {}
     for raw in dsl.splitlines():
@@ -212,7 +222,7 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
             size = base_size * scale
             max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
-                id=_id, kind="text", x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
+                id=_id, kind="text", x=x, y=int(y - size), w=int(size * char_em * max_line_len), h=int(size + 4),
                 label=content, role=("title" if base_size >= 20 else "body"), font_size=float(size),
             ))
     return prims

@@ -16,6 +16,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+import sys
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -317,6 +318,36 @@ def label_color_for(fill_hex: str, brand_dir: Path) -> str:
     invisible labels — see fill:ink boxes in the dark-theme showcase).
     """
     return resolve("off-white", brand_dir) if relative_luminance(fill_hex) < 128 else resolve("chapter-slab", brand_dir)
+
+
+# ---------------------------------------------------------------------------
+# Shared font-fallback guard (F4)
+# ---------------------------------------------------------------------------
+
+# One WARN per (brand, face) per process — fallback never breaks a render.
+_warned_font_fallback: set[tuple[str, str]] = set()
+
+
+def font_fallback_resolvable(brand_dir: Path, face: str | None, *, detail: str) -> bool:
+    """True when *face* is fontconfig-resolvable. When it isn't, print ONE
+    ``diagram-font-fallback`` WARN per (brand, face) per process — *detail*
+    names the consumer's fallback behavior — and return False.
+    None face → True (nothing to resolve; generic stacks are always safe)."""
+    if face is None:
+        return True
+    from feinschmiede.text.measure import find_font_file
+    if find_font_file(face) is not None:
+        return True
+    # Unresolvable face — warn once per (brand, face).
+    key = (brand_dir.name, face)
+    if key not in _warned_font_fallback:
+        _warned_font_fallback.add(key)
+        print(
+            f"feinschmiede: WARN: diagram-font-fallback — brand face '{face}' "
+            f"not fontconfig-resolvable; {detail}",
+            file=sys.stderr,
+        )
+    return False
 
 
 def strip_brand_directive(dsl: str) -> tuple[str, str | None]:

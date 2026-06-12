@@ -134,9 +134,9 @@ def test_unresolvable_brand_font_warns_but_renders(monkeypatch, capsys):
     one diagram-font-fallback WARN when the primary face isn't installed."""
     monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
     from feinschmiede.text import measure
+    import feinschmiede.diagrams.brand_bridge as brand_bridge
     measure.clear_caches()
-    import feinschmiede.diagrams.svg_expand as sx
-    sx._warned_font_fallback.clear()
+    brand_bridge._warned_font_fallback.clear()
     dsl = """
 canvas 400x300
 text t1 200,150 body "Hello"
@@ -146,4 +146,4 @@ text t1 200,150 body "Hello"
     err = capsys.readouterr().err
     assert "diagram-font-fallback" in err
     measure.clear_caches()
-    sx._warned_font_fallback.clear()
+    brand_bridge._warned_font_fallback.clear()

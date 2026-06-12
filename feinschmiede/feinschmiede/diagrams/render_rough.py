@@ -24,14 +24,11 @@ from typing import TYPE_CHECKING
 
 import rough
 
-from .brand_bridge import resolve_fonts
-from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from .brand_bridge import font_fallback_resolvable, resolve_fonts
+from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM, char_width_em_for as _char_width_em_for
 
 if TYPE_CHECKING:
     from .brand_bridge import BrandFonts
-
-# One WARN per (brand, face) per process — fallback never breaks a render.
-_warned_font_fallback: set[tuple[str, str]] = set()
 
 
 def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
@@ -54,18 +51,14 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
     fonts: BrandFonts | None = None
     if brand_dir is not None:
         fonts = resolve_fonts(brand_dir)
-        if fonts.primary_body is not None:
-            from feinschmiede.text.measure import find_font_file
-            key = (brand_dir.name, fonts.primary_body)
-            if key not in _warned_font_fallback and find_font_file(fonts.primary_body) is None:
-                _warned_font_fallback.add(key)
-                print(
-                    f"feinschmiede: WARN: diagram-font-fallback — brand face "
-                    f"'{fonts.primary_body}' not fontconfig-resolvable; the rough "
-                    f"render keeps Excalidraw's default faces.",
-                    file=sys.stderr,
-                )
-                fonts = None  # true fallback: render exactly as today
+        body_ok = font_fallback_resolvable(
+            brand_dir, fonts.primary_body,
+            detail="the rough render keeps Excalidraw's default faces.")
+        mono_ok = font_fallback_resolvable(
+            brand_dir, fonts.primary_mono,
+            detail="the rough render keeps Excalidraw's default code face.")
+        if not (body_ok and mono_ok):
+            fonts = None  # true fallback: render exactly as today
 
     data = json.loads(src.read_text(encoding="utf-8"))
     elements = [e for e in data.get("elements", []) if not e.get("isDeleted")]
@@ -76,7 +69,7 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
     app_state = data.get("appState", {})
     bg = app_state.get("viewBackgroundColor") or "#ffffff"
     pad = 40
-    mn_x, mn_y, mx_x, mx_y = _bbox(elements)
+    mn_x, mn_y, mx_x, mx_y = _bbox(elements, fonts)
     canvas_w = int(mx_x - mn_x + pad * 2)
     canvas_h = int(mx_y - mn_y + pad * 2)
     # Shift everything into positive space.
@@ -90,9 +83,12 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
     return out
 
 
-def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
+def _bbox(elements: list[dict], fonts: "BrandFonts | None" = None) -> tuple[float, float, float, float]:
     mn_x = mn_y = float("inf")
     mx_x = mx_y = float("-inf")
+    # Refined char-width ratio: use the brand face's measured ratio when
+    # available, else the 0.62em heuristic (F4).
+    char_em = _char_width_em_for(fonts.primary_body if fonts is not None else None)
     for e in elements:
         x, y = e.get("x", 0), e.get("y", 0)
         w, h = e.get("width", 0), e.get("height", 0)
@@ -110,9 +106,9 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
                 lh = float(e.get("lineHeight", 1.25))
                 lines = max(1, e.get("text", "").count("\n") + 1)
                 h = fs * lh * lines
-                # rough estimate of text width — 0.62em per char (shared with
-                # the overflow validator via text_metrics.CHAR_WIDTH_EM)
-                w = fs * _CHAR_WIDTH_EM * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
+                # char-width estimate: measured brand-face ratio (F4) or
+                # 0.62em heuristic (shared with text_metrics.CHAR_WIDTH_EM)
+                w = fs * char_em * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
             mn_x, mn_y = min(mn_x, x), min(mn_y, y)
             mx_x, mx_y = max(mx_x, x + abs(w)), max(mx_y, y + abs(h))
     if mn_x == float("inf"):
