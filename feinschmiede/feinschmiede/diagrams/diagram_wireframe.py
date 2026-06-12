@@ -26,7 +26,6 @@ from .brand_bridge import resolve_fonts as _resolve_fonts
 from .text_metrics import (
     SVG_TEXT_SIZES as _SVG_TEXT_SIZES,
     EXCALIDRAW_TEXT_SIZES as _EXCALIDRAW_TEXT_SIZES,
-    CHAR_WIDTH_EM as _CHAR_WIDTH_EM,
     char_width_em_for as _char_width_em_for,
 )
 

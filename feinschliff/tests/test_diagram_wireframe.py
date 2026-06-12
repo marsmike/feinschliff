@@ -151,3 +151,31 @@ def test_svg_text_multiline_uses_longest_line():
         f"SVG multiline text width {text_prim.w} != expected {expected_w} "
         f"(longest_line=5, size={size}, char_em={char_em})"
     )
+
+
+def test_text_width_constant_under_kill_switch(monkeypatch):
+    """With real metrics disabled the width formula is fully deterministic:
+    int(size * 0.62 * maxlinelen) — an absolute pin that cannot go circular
+    through char_width_em_for.
+
+    SVG title size = 22 px (SVG_TEXT_SIZES["title"]), text = "Hello" (len=5).
+    Expected: int(22 * 0.62 * 5) == 68  (0.62 = CHAR_WIDTH_EM fallback constant)
+    """
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    from feinschmiede.text import measure
+    measure.clear_caches()
+    try:
+        text = "Hello"
+        level = "title"
+        size = SVG_TEXT_SIZES[level]  # 22
+        # hand-computed: int(22 * 0.62 * 5) = int(68.2) = 68
+        expected_w = 68
+        dsl = f'text t1 100,100 {level} "{text}"'
+        prims = primitives_from_svg_dsl(dsl, _brand_dir())
+        text_prim = next(p for p in prims if p.kind == "text")
+        assert text_prim.w == expected_w, (
+            f"Kill-switch width {text_prim.w} != 68 "
+            f"(expected int(22 * 0.62 * 5) with FEINSCHMIEDE_NO_REAL_METRICS=1)"
+        )
+    finally:
+        measure.clear_caches()

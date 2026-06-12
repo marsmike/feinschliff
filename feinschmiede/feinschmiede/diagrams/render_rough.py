@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING
 import rough
 
 from .brand_bridge import font_fallback_resolvable, resolve_fonts
-from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM, char_width_em_for as _char_width_em_for
+from .text_metrics import char_width_em_for as _char_width_em_for
 
 if TYPE_CHECKING:
     from .brand_bridge import BrandFonts
@@ -107,7 +107,7 @@ def _bbox(elements: list[dict], fonts: "BrandFonts | None" = None) -> tuple[floa
                 lines = max(1, e.get("text", "").count("\n") + 1)
                 h = fs * lh * lines
                 # char-width estimate: measured brand-face ratio (F4) or
-                # 0.62em heuristic (shared with text_metrics.CHAR_WIDTH_EM)
+                # 0.62em heuristic (text_metrics.CHAR_WIDTH_EM fallback)
                 w = fs * char_em * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
             mn_x, mn_y = min(mn_x, x), min(mn_y, y)
             mx_x, mx_y = max(mx_x, x + abs(w)), max(mx_y, y + abs(h))
