@@ -261,6 +261,7 @@ class BrandFonts:
 
     @property
     def primary_mono(self) -> str | None:
+        """First concrete (non-generic) mono face, or None."""
         return next((f for f in self.mono if f.lower() not in _GENERIC_FAMILIES), None)
 
 
@@ -272,6 +273,7 @@ def _css_stack(families: tuple[str, ...], generic: str) -> str:
 
 
 def _font_family_values(tokens: dict, key: str) -> tuple[str, ...]:
+    """Extract the font-family list for *key* (e.g. 'body', 'mono') from raw tokens."""
     raw = (tokens.get("font-family") or {}).get(key)
     if isinstance(raw, dict):
         raw = raw.get("$value")
@@ -283,7 +285,11 @@ def _font_family_values(tokens: dict, key: str) -> tuple[str, ...]:
 def resolve_fonts(brand_dir: Path) -> BrandFonts:
     """Resolve the brand's diagram typography from tokens ``font-family.body``
     (fallback ``.display``) and ``.mono``. Missing keys/tokens degrade to the
-    bare generic family — a diagram never fails to render over fonts."""
+    bare generic family — a diagram never fails to render over fonts.
+
+    Returns a BrandFonts — svg_body/svg_mono for SVG stacks, primary_body/primary_mono
+    for the first concrete face (None when the brand has none).
+    """
     try:
         tokens = _load_tokens_with_extends(brand_dir)
     except BrandBridgeError:

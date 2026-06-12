@@ -94,3 +94,55 @@ def test_chart_renders_across_brands(brand_name):
     assert svg.count("<rect") >= 5  # bg + 4 bars + 4 legend chips
     assert svg.count("<text") >= 9  # title + values + axis labels + legend labels
     assert "</svg>" in svg
+
+
+# ---------------------------------------------------------------------------
+# F2 / F5: brand font stack tests
+# ---------------------------------------------------------------------------
+
+def test_text_emits_brand_font_stack():
+    dsl = """
+canvas 400x300
+text t1 200,150 body "Hello"
+"""
+    svg = expand(dsl, brand_dir=_brand_dir())
+    assert "font-family=\"'Noto Sans', 'Helvetica Neue', Arial, sans-serif\"" in svg
+    assert 'font-family="sans-serif"' not in svg
+
+
+def test_rect_label_emits_brand_font_stack():
+    dsl = """
+canvas 400x300
+rect bg 0,0 400x300 paper label:"Hero"
+"""
+    svg = expand(dsl, brand_dir=_brand_dir())
+    assert "'Noto Sans'" in svg
+    assert 'font-family="sans-serif"' not in svg
+
+
+def test_mono_text_emits_mono_stack():
+    dsl = """
+canvas 400x300
+text t1 200,150 mono "let x = 1"
+"""
+    svg = expand(dsl, brand_dir=_brand_dir())
+    assert "'Noto Sans Mono'" in svg
+
+
+def test_unresolvable_brand_font_warns_but_renders(monkeypatch, capsys):
+    """F5: never break a render — emit the stack (CSS self-falls-back) plus
+    one diagram-font-fallback WARN when the primary face isn't installed."""
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    from feinschmiede.text import measure
+    measure.clear_caches()
+    import feinschmiede.diagrams.svg_expand as sx
+    sx._warned_font_fallback.clear()
+    dsl = """
+canvas 400x300
+text t1 200,150 body "Hello"
+"""
+    svg = expand(dsl, brand_dir=_brand_dir())
+    assert "<text" in svg
+    err = capsys.readouterr().err
+    assert "diagram-font-fallback" in err
+    measure.clear_caches()
