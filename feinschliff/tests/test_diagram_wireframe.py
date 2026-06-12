@@ -118,7 +118,7 @@ def test_svg_text_multiline_uses_longest_line():
     # After shlex.split this yields the Python string r'Hi\nthere'.
     raw_label = r"Hi\nthere"  # repr: 'Hi\\nthere'
     lines = raw_label.split("\\n")  # ['Hi', 'there']
-    longest = max(len(l) for l in lines)  # 5
+    longest = max(len(line) for line in lines)  # 5
     expected_w = int(size * CHAR_WIDTH_EM * longest)  # int(43.4) = 43
     # Embed raw label in DSL (the shlex string keeps the backslash).
     dsl = r'text t1 100,100 body "Hi\nthere"'
