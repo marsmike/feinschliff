@@ -382,10 +382,19 @@ def _n(v: float) -> str:
     return str(int(v)) if float(v).is_integer() else f"{v:g}"
 
 
+def _element_tree_scale(canvas_w: float, width_emu: float) -> float:
+    """EMU→canvas-px for native geometry: the pack's REAL slide width when
+    known — the 13.33in default constant mis-places natives on 12in decks
+    (a 0.9x drift that broke overlay/exclusion geometry downstream)."""
+    return canvas_w / (width_emu or _EMU_SLIDE_W)
+
+
 def _element_tree(
     texts: list[dict],
     images: list[dict],
     natives: list[tuple[str, str | None]],
+    *,
+    width_emu: float = 0.0,
     slot_roles: dict[str, str],
     image_classes: dict[str, str],
     canvas_w: float,
@@ -401,7 +410,7 @@ def _element_tree(
     Natives whose root geometry cannot be decoded sort last and carry no
     `@x,y wxh` part. Purely mechanical — regenerated on every run.
     """
-    scale = canvas_w / _EMU_SLIDE_W
+    scale = _element_tree_scale(canvas_w, width_emu)
     entries: list[tuple[float, float, str]] = []
     for kind, xml in natives:
         line = f"native {kind}"
@@ -864,7 +873,9 @@ def classify_layout(
         profile["chrome_bboxes"] = bboxes
     if texts or images or natives:
         profile["element_tree"] = _element_tree(
-            texts, images, natives, slot_roles, image_classes, canvas_w)
+            texts, images, natives, width_emu=width_emu,
+            slot_roles=slot_roles, image_classes=image_classes,
+            canvas_w=canvas_w)
     return profile
 
 
