@@ -102,6 +102,23 @@ def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
     return f"{(native_rel or 'native').rstrip('/')}/{name}"
 
 
+def _rasterize_svg(svg_path: Path) -> Path | None:
+    """soffice-rasterize an extracted SVG to a sibling PNG; None on failure."""
+    import subprocess
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory() as profile:
+            subprocess.run(
+                ["soffice", f"-env:UserInstallation=file://{profile}",
+                 "--headless", "--convert-to", "png", str(svg_path),
+                 "--outdir", str(svg_path.parent)],
+                check=True, capture_output=True, timeout=120)
+        png = svg_path.with_suffix(".png")
+        return png if png.is_file() else None
+    except Exception:
+        return None
+
+
 def _media_ext(blob: bytes) -> str:
     if blob.startswith(b"\x89PNG"):
         return "png"
@@ -1992,6 +2009,13 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     blip = ch.find(".//a:blip", NS)
     if blip is not None:
         rid = blip.get(f"{{{NS['r']}}}embed")
+        if rid is None:
+            # SVG-only pictures: PowerPoint may leave <a:blip> bare and put
+            # the reference solely in the <asvg:svgBlip> extension.
+            _svg = ch.find(
+                ".//{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip")
+            if _svg is not None:
+                rid = _svg.get(f"{{{NS['r']}}}embed")
         # Resolve the related part NOW against the source object that
         # actually owns the rId (the slide, layout, or master `slide`
         # param of this call). Storing only the rId and re-resolving on
@@ -4134,6 +4158,14 @@ def derive(
             stem = "image" if len(pics) == 1 else f"image{i}"
             out_name = f"{stem}.{ext}"
             (image_extract_dir / out_name).write_bytes(blob or b"")
+            if ext == "svg":
+                # The build's picture path needs a raster (PIL cannot read
+                # SVG) — rasterize next to the carried vector; on failure
+                # the DSL keeps the svg path and the build falls back to
+                # the brand placeholder.
+                png = _rasterize_svg(image_extract_dir / out_name)
+                if png is not None:
+                    out_name = png.name
             p.media_path = f"{image_extract_rel.rstrip('/')}/{out_name}"
 
     # Background artwork needs a file on disk — only materialisable when the
