@@ -39,3 +39,11 @@ def test_punctuation_is_preserved_around_replacement():
 def test_leading_whitespace_tokens_still_match():
     words = [w(" cloud", 0.0, 0.4)]
     assert apply_corrections(words)[0]["w"] == "claude"
+
+
+def test_camelcase_brand_tokens_from_real_whisper_run():
+    # 2026-06-12 real run: Whisper emits "FineSchnitt"/"FineSchmieder" as
+    # single tokens; canonical stylized-lowercase brands come back verbatim.
+    words = [w("FineSchnitt,", 0.0, 0.5), w("FineSchmieder", 0.6, 1.2)]
+    out = apply_corrections(words)
+    assert [x["w"] for x in out] == ["feinschnitt,", "feinschmiede"]

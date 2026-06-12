@@ -19,12 +19,23 @@ BRAND_WORDS: dict[str, str] = {
 # Multi-token runs → replacement tokens. Timing of the run is preserved:
 # the replacement tokens split the original [first.s, last.e] span evenly.
 # List longer phrases before any entry that is their prefix (first match wins).
+# Single-token tuples are the right mechanism for stylized-lowercase brands:
+# unlike BRAND_WORDS, the canonical token is emitted verbatim (no case-match).
 PHRASE_CORRECTIONS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (("fine", "schnitt"), ("feinschnitt",)),
     (("fine", "schliff"), ("feinschliff",)),
     (("fine", "schmiede"), ("feinschmiede",)),
     (("fine", "klang"), ("feinklang",)),
     (("fine", "bild"), ("feinbild",)),
+    # 2026-06-12: real ElevenLabs-Mike-voice run — Whisper (small) hears the
+    # brands as single CamelCase tokens, not two-token splits.
+    (("fineschnitt",), ("feinschnitt",)),
+    (("fineschliff",), ("feinschliff",)),
+    (("fineschmieder",), ("feinschmiede",)),
+    (("fineschmiede",), ("feinschmiede",)),
+    (("feinschmieder",), ("feinschmiede",)),
+    (("fineklang",), ("feinklang",)),
+    (("finebild",), ("feinbild",)),
 ]
 
 def fingerprint() -> str:
