@@ -385,3 +385,32 @@ def lint_beats(
                 )
 
     return errors, warnings
+
+
+def lint_captions_config(config) -> list[str]:
+    """Validate the optional top-level 'captions' block in an edit plan.
+
+    Returns a list of error strings (empty → valid).  Does NOT check beat-level
+    suppression classification — that lives in captions.py (import-time assert).
+    """
+    errs: list[str] = []
+    if not isinstance(config, dict):
+        errs.append("captions config must be a dict/object")
+        return errs
+    _ALLOWED_CAPTIONS_KEYS = {"enabled", "emphasis"}
+    for k in config:
+        if k not in _ALLOWED_CAPTIONS_KEYS:
+            errs.append(
+                f"captions config: unknown key {k!r} "
+                f"(allowed: {', '.join(sorted(_ALLOWED_CAPTIONS_KEYS))})"
+            )
+    enabled = config.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        errs.append("captions.enabled must be a boolean when present")
+    emphasis = config.get("emphasis")
+    if emphasis is not None:
+        if not isinstance(emphasis, list):
+            errs.append("captions.emphasis must be a list of strings when present")
+        elif not all(isinstance(p, str) for p in emphasis):
+            errs.append("captions.emphasis must be a list of strings when present")
+    return errs

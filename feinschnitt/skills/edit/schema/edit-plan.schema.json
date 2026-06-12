@@ -6,6 +6,17 @@
   "required": ["beats"],
   "properties": {
     "video": {"type": "string"},
+    "captions": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "emphasis": {
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      },
+      "additionalProperties": false
+    },
     "beats": {
       "type": "array",
       "items": {
