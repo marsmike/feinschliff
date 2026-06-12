@@ -380,6 +380,73 @@ def interpolate_nodes(nodes: list[DSLNode], ctx: dict) -> list[DSLNode]:
 
 
 # ---------------------------------------------------------------------------
+# Native-payload slot interpolation
+# ---------------------------------------------------------------------------
+
+# Text runs inside a native payload's carried PPTX XML. DOTALL: a run may
+# legally contain newlines after XML unescaping (it cannot contain `<`).
+_NATIVE_T_RE = re.compile(r"(<a:t>)(.*?)(</a:t>)", re.S)
+
+
+def interpolate_native_text(
+    nodes: list[DSLNode], ctx: dict, *, asset_root: Path | None = None
+) -> list[DSLNode]:
+    """Resolve `{{ slot }}` templates inside `native` payloads' text runs.
+
+    The slotify pass (feinschliff-builder) rewrites placeholder `<a:t>` runs in
+    carried tables / grouped shapes / custGeom chrome to
+    `{{ text_N | default("…") }}` templates. Those live inside the base64
+    `b64:` blob (or a sidecar `xml_file:`), so `interpolate_nodes` cannot see
+    them — this pass decodes each payload, interpolates every text run via
+    the same `_interp` slot grammar, and re-inlines the result as `b64:` so
+    the emitter stays payload-agnostic.
+
+    Sidecar payloads are read from `asset_root / xml_file` and inlined for
+    THIS build only — the pack's sidecar file (the template) is never
+    rewritten. Payloads without a `{{` marker pass through untouched, and a
+    sidecar without markers keeps its `xml_file:` reference. Interpolated
+    values are XML-escaped; newlines flatten to spaces (an `<a:t>` run cannot
+    span paragraphs).
+    """
+    import base64
+    from xml.sax.saxutils import escape as _xml_escape
+    from xml.sax.saxutils import unescape as _xml_unescape
+
+    for n in nodes:
+        if n.kind != "native":
+            continue
+        xml: str | None = None
+        blob = n.kw_args.get("b64")
+        if blob:
+            try:
+                xml = base64.b64decode(blob).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                continue  # undecodable payload — emitter will report it
+        elif n.kw_args.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / n.kw_args["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8")
+        if xml is None or "{{" not in xml:
+            continue
+
+        def repl(m: re.Match) -> str:
+            # saxutils.unescape covers &amp;/&lt;/&gt; only — quote entities
+            # must be listed, else default("…") templates never match the
+            # slot grammar's ASCII-quote filter.
+            inner = _xml_unescape(m.group(2),
+                                  {"&quot;": '"', "&apos;": "'"})
+            if "{{" not in inner:
+                return m.group(0)
+            resolved = _interp(inner, ctx).replace("\n", " ")
+            return m.group(1) + _xml_escape(resolved) + m.group(3)
+
+        new_xml = _NATIVE_T_RE.sub(repl, xml)
+        n.kw_args["b64"] = base64.b64encode(new_xml.encode("utf-8")).decode("ascii")
+        n.kw_args.pop("xml_file", None)
+    return nodes
+
+
+# ---------------------------------------------------------------------------
 # Compound resolution
 # ---------------------------------------------------------------------------
 

@@ -36,8 +36,38 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from feinschliff_builder.decompile.cleanup import cleanup_dsl, unslotified_text_report
 from feinschliff_builder.decompile.pptx_svg_decompile import derive
+from feinschliff_builder.decompile.slotify import slotify_dsl, slotify_native_text
 from feinschliff_builder.verify.verify_map import load_verify_map
+
+
+def _cleanup_and_slotify_loop(dsl: str, *, asset_root, layout_name: str,
+                              max_rounds: int = 4) -> tuple[str, list[str]]:
+    """Per-slide decompile loop: cleanup -> slotify (text lines + native
+    payloads) -> re-check, until the unslotified-text report stops shrinking.
+
+    Every pass is idempotent, so the loop normally converges in one round;
+    the cap is a safety net. Returns ``(dsl, leftover report)`` — leftovers
+    are texts that CANNOT be slotified (chart/SmartArt part labels, labels
+    with braces), surfaced as warnings for the operator.
+    """
+    dsl, stats = cleanup_dsl(dsl)
+    noise = {k: v for k, v in stats.items() if v}
+    if noise:
+        print(f"    cleanup {layout_name}: " +
+              ", ".join(f"{k}={v}" for k, v in noise.items()))
+    prev = None
+    for _ in range(max_rounds):
+        dsl, _slots = slotify_dsl(dsl)
+        dsl, native_slots, logs = slotify_native_text(dsl, asset_root)
+        for line in logs:
+            print(f"    native-slotify {layout_name}: {line}")
+        report = unslotified_text_report(dsl, asset_root)
+        if prev is not None and len(report) >= len(prev):
+            break
+        prev = report
+    return dsl, prev or []
 
 
 def main() -> int:
@@ -52,6 +82,13 @@ def main() -> int:
                     help="Print the layouts that would be derived, don't write")
     ap.add_argument("--only", nargs="*",
                     help="Restrict to a subset of layout names")
+    ap.add_argument("--raw", action="store_true",
+                    help="Skip the per-slide cleanup + slotify loop and emit the "
+                         "decompiler's raw first pass (for fidelity debugging). "
+                         "Default: each slide is cleaned (dup text lines, prompt "
+                         "copies, helper captions, stacked native pics), slotified "
+                         "(text lines AND native payload text runs), and checked "
+                         "until no bindable placeholder text is left unslotified.")
     ap.add_argument("--carry-images", action="store_true",
                     help="Pipeline-optimization mode: extract every <p:pic> "
                          "binary from the source slide into "
@@ -219,6 +256,11 @@ def main() -> int:
             native_extract_dir=brand_pack / "assets" / "native",
             native_extract_rel="native",
         )
+        if not args.raw:
+            dsl, leftovers = _cleanup_and_slotify_loop(
+                dsl, asset_root=brand_pack / "assets", layout_name=layout_name)
+            for msg in leftovers:
+                print(f"    ⚠ {layout_name}: unslotified {msg}")
         target.write_text(dsl, encoding="utf-8")
         size = target.stat().st_size
         print(f"  ✓ {layout_name} ← p{slide_no} ({size} bytes)")

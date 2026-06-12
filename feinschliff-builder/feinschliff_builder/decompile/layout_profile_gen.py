@@ -283,8 +283,27 @@ def _has_baked_text(xml: str) -> bool:
     """True when the payload carries non-whitespace `<a:t>` runs — chrome
     with its own labels baked in (a chevron flow with STEP texts). Binding
     the layout's text slots overprints those labels, so the profile flags
-    it (`chrome_text`) for the picker's baked-text guard."""
-    return any(t.strip() for t in _BAKED_TEXT_RE.findall(xml))
+    it (`chrome_text`) for the picker's baked-text guard. Runs that the
+    native slotify pass already rewrote to `{{ text_N | default(…) }}`
+    templates are NOT baked — they bind like any other slot."""
+    return any(t.strip() and "{{" not in t for t in _BAKED_TEXT_RE.findall(xml))
+
+
+_NATIVE_SLOT_RE = re.compile(r'\{\{\s*(text_\d+)\s*\|\s*default\("([^"]*)"\)\s*\}\}')
+
+
+def _parse_native_slots(natives: list[tuple[str, str | None]]) -> list[dict]:
+    """Slot templates the native slotify pass planted inside payload XML.
+
+    Each -> {name, default}. The geometry is the carrying native's box, so
+    these get no per-slot rect (and no slot_warnings entry)."""
+    slots: list[dict] = []
+    for _kind, xml in natives:
+        if not xml:
+            continue
+        for m in _NATIVE_SLOT_RE.finditer(xml):
+            slots.append({"name": m.group(1), "default": m.group(2)})
+    return slots
 
 
 def _parse_natives(body: str, asset_root: Path | None) -> list[tuple[str, str | None]]:
@@ -680,6 +699,7 @@ def classify_layout(
     images = _parse_image_slots(body)
     natives = _demote_marks(_parse_natives(body, asset_root), canvas_w, canvas_h)
     native_kinds = [k for k, _xml in natives]
+    native_slots = _parse_native_slots(natives)
     slot_roles = _assign_slot_roles(texts, canvas_h)
 
     title_slot = next((t for t in texts if slot_roles[t["name"]] == "title"), None)
@@ -804,7 +824,7 @@ def classify_layout(
             + ("; baked text" if chrome_text else "")
         )
     profile["slide_index"] = slide_index
-    if texts or images:
+    if texts or images or native_slots:
         profile["slots"] = {
             t["name"]: {
                 "role": slot_roles[t["name"]],
@@ -820,6 +840,13 @@ def classify_layout(
             profile["slots"][i["name"]] = {
                 "role": "image",
                 "class": _image_class(i, canvas_w, canvas_h),
+            }
+        for ns in native_slots:
+            profile["slots"][ns["name"]] = {
+                "role": "native-text",
+                "chars": len(ns["default"]),
+                "default": (ns["default"][:77] + "…"
+                            if len(ns["default"]) > 78 else ns["default"]),
             }
         warnings = _slot_warnings(
             texts, px_per_pt=px_per_pt, tokens=tokens, slot_roles=slot_roles,

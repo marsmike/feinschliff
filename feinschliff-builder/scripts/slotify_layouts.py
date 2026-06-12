@@ -39,6 +39,7 @@ from feinschliff_builder.decompile.slotify import (
     clip_text_to_images,
     clip_to_images_enabled,
     slotify_dsl,
+    slotify_native_text,
 )
 from feinschliff_builder.verify.verify_map import load_verify_map
 
@@ -87,6 +88,15 @@ def main() -> int:
     for path in sorted(layouts_dir.glob("*.slide.dsl")):
         text = path.read_text(encoding="utf-8")
         new_text, slots = slotify_dsl(text)
+        if not args.dry_run:
+            # Native payloads (carried tables / grouped shapes): rewrite
+            # placeholder <a:t> runs to {{ text_N }} slots too. Sidecar
+            # payloads rewrite on disk, so this pass is skipped on dry runs.
+            new_text, native_slots, native_logs = slotify_native_text(
+                new_text, brand_pack / "assets")
+            for line in native_logs:
+                print(f"  {path.name}: {line}")
+            slots = slots + [ns["name"] for ns in native_slots]
         if clip_enabled:
             new_text, clips = clip_text_to_images(new_text)
             if clips:
@@ -104,7 +114,7 @@ def main() -> int:
         if bare_pics:
             flag += f"  [{len(bare_pics)} picture without slot]"
         print(f"  {path.name}: {len(slots)} text slots{flag}")
-        if not args.dry_run and slots:
+        if not args.dry_run and new_text != text:
             path.write_text(new_text, encoding="utf-8")
         slotified[path.name[: -len(".slide.dsl")]] = new_text
 

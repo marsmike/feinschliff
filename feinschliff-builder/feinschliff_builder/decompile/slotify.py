@@ -361,3 +361,112 @@ def add_autoshrink(dsl_text: str, slot_roles: dict[str, str]) -> str:
         new_body = f"{m.group(1)} autoshrink:true {m.group(2)}"
         out_lines.append(new_body + ("\n" if line.endswith("\n") else ""))
     return "".join(out_lines)
+
+
+# ---------------------------------------------------------------------------
+# Native-payload text slotification
+# ---------------------------------------------------------------------------
+
+# A `native` line and its kwargs. Payload may be inline (`b64:"…"`) or a
+# sidecar reference (`xml_file:"…"` under the brand pack's assets dir).
+_NATIVE_LINE_RE = re.compile(r"^native\s+(\w+)\s+(.*)$")
+_NATIVE_KW_RE = re.compile(r'(\w+):"([^"]*)"')
+_NATIVE_T_RE = re.compile(r"(<a:t>)([^<]+)(</a:t>)")
+
+# Chart / SmartArt payloads keep their text native for now: their labels live
+# in external parts (`parts:`/`parts_file:`), not in the frame XML — a future
+# pass can extend slotification into the part graph.
+_NATIVE_SKIP_MARKERS = ("<c:chart", "<dgm:", "relIds")
+
+
+def _slotify_native_xml(
+    xml: str, next_idx: int
+) -> tuple[str, list[dict]]:
+    """Replace literal `<a:t>` runs with `{{ text_N | default("…") }}`.
+
+    Returns ``(new_xml, slot_dicts)``; each slot dict is
+    ``{"name", "default"}`` with the default already XML-unescaped (the DSL
+    frontmatter wants the human literal, the XML keeps the escaped form).
+    Runs that are whitespace-only, already slotified, or contain braces /
+    ASCII quotes that cannot ride the slot grammar stay literal.
+    """
+    from xml.sax.saxutils import escape as _xml_escape
+    from xml.sax.saxutils import unescape as _xml_unescape
+
+    slots: list[dict] = []
+
+    def repl(m: re.Match) -> str:
+        literal = _xml_unescape(m.group(2))
+        if not literal.strip() or "{" in literal or "}" in literal:
+            return m.group(0)
+        if '"' in literal:
+            literal = _curlify(literal.replace('"', '\\"'))
+        name = f"text_{next_idx + len(slots)}"
+        slots.append({"name": name, "default": literal})
+        template = f'{{{{ {name} | default("{literal}") }}}}'
+        return m.group(1) + _xml_escape(template) + m.group(3)
+
+    return _NATIVE_T_RE.sub(repl, xml), slots
+
+
+def slotify_native_text(
+    dsl_text: str, asset_root: Path | None
+) -> tuple[str, list[dict], list[str]]:
+    """Slotify the text runs of every `native` payload in one layout's DSL.
+
+    Inline payloads are rewritten in place (re-encoded `b64:`); sidecar
+    payloads (`xml_file:`) are rewritten on disk under ``asset_root``. Slot
+    numbering continues after the highest existing ``text_N`` in the DSL.
+    Charts and SmartArt are skipped (labels live in external parts).
+
+    Returns ``(new_dsl, slot_dicts, log_lines)`` where slot dicts carry
+    ``{"name", "default", "native_id"}``.
+    """
+    import base64
+
+    existing = [int(m.group(1)) for m in re.finditer(r"\btext_(\d+)\b", dsl_text)]
+    next_idx = max(existing, default=0) + 1
+
+    out_lines: list[str] = []
+    all_slots: list[dict] = []
+    logs: list[str] = []
+    for line in dsl_text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        m = _NATIVE_LINE_RE.match(body)
+        if m is None:
+            out_lines.append(line)
+            continue
+        native_id, rest = m.group(1), m.group(2)
+        kwargs = dict(_NATIVE_KW_RE.findall(rest))
+        xml: str | None = None
+        sidecar: Path | None = None
+        if kwargs.get("b64"):
+            try:
+                xml = base64.b64decode(kwargs["b64"]).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                xml = None
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / kwargs["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8")
+        if xml is None or any(s in xml for s in _NATIVE_SKIP_MARKERS):
+            out_lines.append(line)
+            continue
+        new_xml, slots = _slotify_native_xml(xml, next_idx)
+        if not slots:
+            out_lines.append(line)
+            continue
+        next_idx += len(slots)
+        for s in slots:
+            s["native_id"] = native_id
+        all_slots.extend(slots)
+        logs.append(f"{native_id}: {len(slots)} text run(s) slotified "
+                    f"({', '.join(s['name'] for s in slots)})")
+        if sidecar is not None:
+            sidecar.write_text(new_xml, encoding="utf-8")
+            out_lines.append(line)
+        else:
+            new_b64 = base64.b64encode(new_xml.encode("utf-8")).decode("ascii")
+            new_body = body.replace(kwargs["b64"], new_b64, 1)
+            out_lines.append(new_body + ("\n" if line.endswith("\n") else ""))
+    return "".join(out_lines), all_slots, logs

@@ -33,6 +33,7 @@ from feinschliff.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,
     interpolate_nodes,
+    interpolate_native_text,
     load_compounds_for_brand,
 )
 from feinschliff.dsl.parser import parse_file
@@ -87,6 +88,10 @@ def compile_slide(
         compounds[cd.name] = cd
 
     interp = interpolate_nodes(layout_nodes, ctx)
+    # Resolve {{ slot }} templates that the slotify pass planted INSIDE native
+    # payloads (carried tables / grouped shapes) — they ride in the b64 blob /
+    # sidecar XML and are invisible to interpolate_nodes above.
+    interp = interpolate_native_text(interp, ctx, asset_root=brand_dir / "assets")
     interp = expand_diagram_blocks(
         interp,
         brand_dir=brand_dir,
