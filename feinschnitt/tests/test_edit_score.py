@@ -565,9 +565,9 @@ def test_build_filtergraph_bed_two_cues():
     assert "atrim=0:60" in fg
     # sidechain — must have [bedlvl][sc] before sidechaincompress
     assert "[bedlvl][sc]sidechaincompress=" in fg
-    # SFX cues from input index 2 and 3
-    assert "[2:a]volume=-18dB,adelay=0|0[fx0];" in fg
-    assert "[3:a]volume=-18dB,adelay=5000|5000[fx1];" in fg
+    # SFX cues from input index 2 and 3 (flat SFX_GAIN_DB without cue_gains_db)
+    assert "[2:a]volume=-18.00dB,adelay=0|0[fx0];" in fg
+    assert "[3:a]volume=-18.00dB,adelay=5000|5000[fx1];" in fg
     # amix with voice+duck+2 cues = 4 inputs
     assert "amix=inputs=4" in fg
     assert "normalize=0" in fg
@@ -586,7 +586,7 @@ def test_build_filtergraph_no_bed_one_cue():
     assert "asplit" not in fg
     assert "sidechaincompress" not in fg
     # cue at input index 1
-    assert "[1:a]volume=-18dB,adelay=2000|2000[fx0];" in fg
+    assert "[1:a]volume=-18.00dB,adelay=2000|2000[fx0];" in fg
     # amix with voice + 1 cue = 2 inputs
     assert "[0:a][fx0]amix=inputs=2" in fg
     assert "normalize=0" in fg
@@ -635,6 +635,103 @@ def test_build_filtergraph_swell_included_when_provided():
     )
     assert swell in fg
     assert "volume=eval=frame" in fg
+
+
+def test_build_filtergraph_per_cue_gains():
+    """Per-cue gains (peak normalization) land in each cue's volume filter."""
+    fg = scoremod.build_filtergraph(
+        bed=False, bed_gain_db=0.0, swell=None,
+        cue_delays_ms=[0, 5000], duration=30.0,
+        cue_gains_db=[-9.34, 6.08],
+    )
+    assert "[1:a]volume=-9.34dB,adelay=0|0[fx0];" in fg
+    assert "[2:a]volume=6.08dB,adelay=5000|5000[fx1];" in fg
+
+
+# ---------------------------------------------------------------------------
+# measure_peak_db: monkeypatched _run
+# ---------------------------------------------------------------------------
+
+_ASTATS_STDERR = """\
+[Parsed_astats_0 @ 0x...] Overall
+[Parsed_astats_0 @ 0x...] Peak level dB: -8.657334
+"""
+
+
+def test_measure_peak_db_parses_value(monkeypatch, tmp_path):
+    fake_audio = tmp_path / "whoosh.wav"
+    fake_audio.write_bytes(b"")
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr=_ASTATS_STDERR)
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+    assert scoremod.measure_peak_db(fake_audio) == pytest.approx(-8.657334)
+
+
+def test_measure_peak_db_inf_for_silence(monkeypatch, tmp_path):
+    fake_audio = tmp_path / "silent.wav"
+    fake_audio.write_bytes(b"")
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(
+            cmd, 0, stdout="", stderr="Peak level dB: -inf\n")
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+    assert scoremod.measure_peak_db(fake_audio) == float("-inf")
+
+
+def test_measure_peak_db_garbage_raises(monkeypatch, tmp_path):
+    fake_audio = tmp_path / "x.wav"
+    fake_audio.write_bytes(b"")
+
+    def fake_run(cmd, **kw):
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="nope")
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+    with pytest.raises(EditError, match="peak analysis failed"):
+        scoremod.measure_peak_db(fake_audio)
+
+
+def test_score_peak_normalizes_cues(monkeypatch, tmp_path):
+    """score() gains each cue by SFX_GAIN_DB − measured peak (D-M4-4:
+    cues LAND at −18 dBFS peak; a flat attenuation would bury quiet assets).
+    Silent cues (-inf peak) fall back to the flat gain."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"")
+    out = tmp_path / "out.mp4"
+
+    quiet = tmp_path / "whoosh.wav"   # peak −24 dBFS → gain +6
+    hot = tmp_path / "pop.wav"        # peak −1 dBFS  → gain −17
+    silent = tmp_path / "stroke.wav"  # −inf → flat −18 fallback
+    for f in (quiet, hot, silent):
+        f.write_bytes(b"")
+    peaks = {str(quiet): -24.0, str(hot): -1.0, str(silent): float("-inf")}
+    monkeypatch.setattr(scoremod, "measure_peak_db",
+                        lambda p: peaks[str(p)])
+
+    captured = {}
+
+    def fake_run(cmd, **kw):
+        captured["cmd"] = cmd
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+
+    cues = [
+        {"kind": "whoosh", "at": 0.0, "path": str(quiet)},
+        {"kind": "pop", "at": 5.0, "path": str(hot)},
+        {"kind": "stroke", "at": 9.0, "path": str(silent)},
+    ]
+    scored, _ = scoremod.score(
+        video, out, beats=[], captions=[], config=None, duration=30.0,
+        track=None, cues=cues,
+    )
+    assert scored is True
+    fg = captured["cmd"][captured["cmd"].index("-filter_complex") + 1]
+    assert "volume=6.00dB,adelay=0|0" in fg       # −18 − (−24)
+    assert "volume=-17.00dB,adelay=5000|5000" in fg  # −18 − (−1)
+    assert "volume=-18.00dB,adelay=9000|9000" in fg  # silent → flat fallback
 
 
 # ---------------------------------------------------------------------------
@@ -775,7 +872,11 @@ def test_verify_scored_in_window_passes(monkeypatch, tmp_path):
     monkeypatch.setattr(verifymod, "ffprobe_meta",
                         lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
                                    "has_audio": True})
-    monkeypatch.setattr(verifymod, "measure_lufs", lambda p: -16.0)
+    # mix +0.5 dB vs the voice — well inside MIX_DELTA_WINDOW. The window
+    # is voice-relative, so a quiet −22 voice with a −21.5 mix passes too.
+    monkeypatch.setattr(
+        verifymod, "measure_lufs",
+        lambda p: -21.5 if p == output else -22.0)
 
     # Should not raise
     verifymod.run(source, output, scored=True)
@@ -788,10 +889,29 @@ def test_verify_scored_out_of_window_fails_with_value(monkeypatch, tmp_path):
     monkeypatch.setattr(verifymod, "ffprobe_meta",
                         lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
                                    "has_audio": True})
-    # -8 LUFS is outside [-20, -12]
-    monkeypatch.setattr(verifymod, "measure_lufs", lambda p: -8.0)
+    # mix −8 vs voice −22 → delta +14 dB, above the +6 ceiling (bed swamping)
+    monkeypatch.setattr(
+        verifymod, "measure_lufs",
+        lambda p: -8.0 if p == output else -22.0)
 
-    with pytest.raises(EditError, match="-8.0 LUFS"):
+    with pytest.raises(EditError, match=r"-8\.0 LUFS is \+14\.0 dB"):
+        verifymod.run(source, output, scored=True)
+
+
+def test_verify_scored_attenuated_voice_fails(monkeypatch, tmp_path):
+    """The amix-normalize bug class: mix far QUIETER than the voice."""
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    monkeypatch.setattr(verifymod, "ffprobe_meta",
+                        lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
+                                   "has_audio": True})
+    # mix −36 vs voice −22 → delta −14 dB (five-input normalize attenuation)
+    monkeypatch.setattr(
+        verifymod, "measure_lufs",
+        lambda p: -36.0 if p == output else -22.0)
+
+    with pytest.raises(EditError, match=r"-14\.0 dB"):
         verifymod.run(source, output, scored=True)
 
 

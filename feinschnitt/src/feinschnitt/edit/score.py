@@ -4,10 +4,14 @@ Levels doctrine (D-M4-4):
   voice     — untouched reference (mixed from source, bit-identical via remux).
   music bed — gained to BED_TARGET_LUFS (−26 integrated) measured per track,
               then sidechain-compressed under the voice.
-  SFX cues  — each cue at SFX_GAIN_DB (−18 dBFS) via per-cue volume filter.
+  SFX cues  — each cue peak-normalized to LAND at SFX_GAIN_DB (−18 dBFS
+              peak): per-cue volume = SFX_GAIN_DB − measured peak.
   swell arc — bed volume trapezoid rising to SWELL_PEAK (×1.6 ≈ +4 dB) at
               the plan's climax beat, held 2s, fallen 3s back to ×1.
-  final mix — amix normalize=0 (mandatory; default would attenuate the voice).
+  final mix — amix normalize=0 (mandatory; default would attenuate the voice);
+              verify holds the mix within MIX_DELTA_WINDOW of the SOURCE
+              voice loudness (the untouched voice is the reference — an
+              absolute LUFS target would fail quiet recordings).
 
 "The plan is the cue sheet" — cues come from sfx.plan_cues, never hand-authored.
 This module only runs for --quality final; preview stays voice-pure and fast.
@@ -15,6 +19,7 @@ This module only runs for --quality final; preview stays voice-pure and fast.
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 from pathlib import Path
@@ -30,7 +35,16 @@ DEFAULT_MUSIC_DIR = Path.home() / ".local" / "share" / "feinschnitt" / "music"
 BED_TARGET_LUFS: float = -26.0
 SFX_GAIN_DB: float = -18.0
 SWELL_PEAK: float = 1.6
-MIX_LUFS_WINDOW: tuple[float, float] = (-20.0, -12.0)
+# Verify window for the scored mix, RELATIVE to the source voice loudness
+# (mix LUFS − voice LUFS). The voice is untouched in the mix, so the mix
+# tracks it: a quiet recording yields a quiet (but correct) mix — the real
+# fixture's ElevenLabs VO measures −22 LUFS, not the −16 a fixed window
+# would assume. The floor catches amix attenuating the voice (the
+# normalize-default bug class: −14 dB at five inputs); the ceiling catches
+# a bed/SFX gain bug swamping it. −2 dB slack on the floor because gated
+# integrated loudness can dip slightly when the bed fills speech gaps
+# with low-level blocks.
+MIX_DELTA_WINDOW: tuple[float, float] = (-2.0, 6.0)
 
 _AUDIO_EXTENSIONS = {".mp3", ".wav", ".m4a", ".ogg", ".flac", ".aac", ".opus"}
 
@@ -66,6 +80,27 @@ def measure_lufs(path: Path) -> float:
         return float(data["input_i"])
     except (json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
         raise EditError(f"loudness analysis failed for {path}") from exc
+
+
+def measure_peak_db(path: Path) -> float:
+    """Return the peak level (dBFS) of *path* via astats.
+
+    Raises EditError when the output cannot be parsed. A silent file
+    reports -inf — callers must guard non-finite values.
+    """
+    result = _run([
+        "ffmpeg", "-hide_banner", "-nostats",
+        "-i", str(path),
+        "-af", "astats=measure_overall=Peak_level:measure_perchannel=none",
+        "-f", "null", "-",
+    ])
+    match = re.search(r"Peak level dB:\s*(-?[\d.]+|-inf|inf)", result.stderr)
+    if match is None:
+        raise EditError(f"peak analysis failed for {path}")
+    try:
+        return float(match.group(1))
+    except ValueError as exc:
+        raise EditError(f"peak analysis failed for {path}") from exc
 
 
 def find_climax(beats: list[dict]) -> float | None:
@@ -224,6 +259,7 @@ def build_filtergraph(
     swell: str | None,
     cue_delays_ms: list[int],
     duration: float,
+    cue_gains_db: list[float] | None = None,
 ) -> str:
     """Build the ffmpeg -filter_complex string (pure — no I/O).
 
@@ -231,6 +267,10 @@ def build_filtergraph(
       0  — video_with_voice (audio = the pristine voice mix)
       1  — music bed track (only when bed=True; looped with -stream_loop -1)
       1+ — SFX cues (index = 1 + i when no bed; 2 + i when bed)
+
+    cue_gains_db carries one per-cue gain (peak-normalized so each cue LANDS
+    at SFX_GAIN_DB peak — see score()); None falls back to a flat SFX_GAIN_DB
+    attenuation for every cue.
 
     Returns the filter_complex string.
     normalize=0 is mandatory — default amix attenuates the voice.
@@ -261,10 +301,12 @@ def build_filtergraph(
         mix_inputs_list = ["[0:a]"]
 
     # SFX cue chains.
-    for i, ms in enumerate(cue_delays_ms):
+    if cue_gains_db is None:
+        cue_gains_db = [SFX_GAIN_DB] * len(cue_delays_ms)
+    for i, (ms, gain_db) in enumerate(zip(cue_delays_ms, cue_gains_db)):
         idx = cue_base_idx + i
         parts.append(
-            f"[{idx}:a]volume={SFX_GAIN_DB:.0f}dB,"
+            f"[{idx}:a]volume={gain_db:.2f}dB,"
             f"adelay={ms}|{ms}[fx{i}];"
         )
         mix_inputs_list.append(f"[fx{i}]")
@@ -342,12 +384,30 @@ def score(
     # Cue delays (convert float seconds → integer milliseconds).
     cue_delays_ms = [int(round(c["at"] * 1000)) for c in cues]
 
+    # Per-cue gain: peak-normalize so every cue LANDS at SFX_GAIN_DB peak
+    # (D-M4-4 says "at −18 dBFS peak", not "attenuated by 18 dB" — a flat
+    # attenuation buries cues mastered below full scale). Peaks are measured
+    # once per unique file; non-finite peaks (silent file) fall back to the
+    # flat attenuation — a silent cue stays silent either way.
+    peak_cache: dict[str, float] = {}
+    cue_gains_db: list[float] = []
+    for c in cues:
+        p = c["path"]
+        if p not in peak_cache:
+            peak_cache[p] = measure_peak_db(Path(p))
+        peak = peak_cache[p]
+        if math.isfinite(peak):
+            cue_gains_db.append(SFX_GAIN_DB - peak)
+        else:
+            cue_gains_db.append(SFX_GAIN_DB)
+
     filtergraph = build_filtergraph(
         bed=track is not None,
         bed_gain_db=bed_gain_db,
         swell=swell,
         cue_delays_ms=cue_delays_ms,
         duration=duration,
+        cue_gains_db=cue_gains_db,
     )
 
     # Build ffmpeg command.

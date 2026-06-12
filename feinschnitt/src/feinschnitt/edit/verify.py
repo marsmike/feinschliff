@@ -3,8 +3,13 @@
 Checks: output duration == source duration (we never cut), and either:
   - unscored: audio stream is bit-identical to the source (D6 — voice
     untouched until the M4 scoring phase replaces the mix deliberately).
-  - scored:   audio stream present + integrated loudness within MIX_LUFS_WINDOW
-    (D-M4-8 — voice is no longer bit-identical after the score mix).
+  - scored:   audio stream present + the mix's integrated loudness within
+    MIX_DELTA_WINDOW of the SOURCE voice loudness (D-M4-8, voice-relative).
+    The voice is untouched in the mix, so the mix must track it: an absolute
+    LUFS target would fail every honest mix of a quiet recording, while the
+    relative window catches the real failure modes at any input level —
+    amix attenuating the voice (delta below the floor) or a bed/SFX gain bug
+    swamping it (delta above the ceiling).
 """
 from __future__ import annotations
 
@@ -12,7 +17,7 @@ from pathlib import Path
 
 from feinschnitt.edit import EditError
 from feinschnitt.edit.render import _run, ffprobe_meta
-from feinschnitt.edit.score import MIX_LUFS_WINDOW, measure_lufs
+from feinschnitt.edit.score import MIX_DELTA_WINDOW, measure_lufs
 
 DURATION_TOLERANCE = 0.2
 
@@ -36,17 +41,21 @@ def run(source: Path, output: Path, scored: bool = False) -> None:
     problems = check_durations(ffprobe_meta(source)["duration"],
                                ffprobe_meta(output)["duration"])
     if scored:
-        # D-M4-8: scored mode — check audio stream presence + loudness window.
+        # D-M4-8: scored mode — audio stream presence + voice-relative loudness.
         out_meta = ffprobe_meta(output)
         if not out_meta["has_audio"]:
             problems.append("scored output has no audio stream")
         else:
-            lufs = measure_lufs(output)
-            lo, hi = MIX_LUFS_WINDOW
-            if not (lo <= lufs <= hi):
+            mix_lufs = measure_lufs(output)
+            voice_lufs = measure_lufs(source)
+            delta = mix_lufs - voice_lufs
+            lo, hi = MIX_DELTA_WINDOW
+            if not (lo <= delta <= hi):
                 problems.append(
-                    f"scored loudness {lufs:.1f} LUFS outside window "
-                    f"[{lo:.0f}, {hi:.0f}] LUFS"
+                    f"scored mix {mix_lufs:.1f} LUFS is {delta:+.1f} dB vs the "
+                    f"source voice {voice_lufs:.1f} LUFS — outside window "
+                    f"[{lo:+.0f}, {hi:+.0f}] dB (the mix must track the "
+                    "untouched voice)"
                 )
     else:
         if _audio_md5(source) != _audio_md5(output):
