@@ -76,8 +76,11 @@ def test_bent_connector_becomes_axis_aligned_segments():
     for x1, y1, x2, y2 in segs:
         assert x1 == x2 or y1 == y2, f"segment not axis-aligned: {(x1, y1, x2, y2)}"
 
-    px = lambda emu: round(emu * 1920 / 12192000)
-    py = lambda emu: round(emu * 1080 / 6858000)
+    def px(emu):
+        return round(emu * 1920 / 12192000)
+
+    def py(emu):
+        return round(emu * 1080 / 6858000)
     expected = {
         (px(5_750_000), py(2_500_000), px(5_750_000), py(2_750_000)),  # trunk stub
         (px(2_750_000), py(2_500_000), px(5_750_000), py(2_500_000)),  # crossbar
