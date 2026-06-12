@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from feinschliff.dsl.parser import DSLNode
     from feinschmiede.dsl.tokens import ResolvedStyle, Tokens
 
-HIERARCHY_COLOR_WALK = ["ink", "graphite", "fog"]
+HIERARCHY_COLOR_WALK = ("ink", "graphite", "fog")
 
 
 def step_hierarchy(
@@ -56,8 +56,9 @@ def resolve_node_style(
     budget gate passes its per-budget derivation — both come from
     `feinschmiede.geometry.units`, so they cannot drift.
 
-    Raises KeyError/ValueError exactly where the inline emitter code did
-    (unknown style bundle, unknown color/weight/size token).
+    Raises KeyError/ValueError where the inline emitter code did
+    (unknown style bundle, unknown color/weight/size token); an unknown color role
+    during indent stepping falls back silently to the pre-step color.
     """
     style_name = node.kw_args.get("style", "body")
     style = tokens.resolve_style(style_name)

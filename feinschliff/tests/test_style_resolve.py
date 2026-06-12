@@ -65,7 +65,9 @@ def test_indent_steps_hierarchy():
     t = _tokens()
     base = resolve_node_style(_node('text 0,0 "x" style:body'), t)
     stepped = resolve_node_style(_node('text 0,0 "x" style:body indent:1'), t)
-    exp_size, exp_weight, _ = step_hierarchy(
+    exp_size, exp_weight, exp_color = step_hierarchy(
         base.size_px, base.weight, base.color_role, level=1)
     assert stepped.size_px == exp_size
     assert stepped.weight == exp_weight
+    assert exp_color == "graphite"
+    assert stepped.color_role == "graphite"

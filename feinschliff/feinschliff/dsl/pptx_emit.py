@@ -374,7 +374,7 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     if not node.pos_args:
         raise ValueError(f"text at line {node.line_no}: expected 'X,Y' positional")
     x, y = parse_xy(node.pos_args[0])
-    style_name = node.kw_args.get("style", "body")
+    style_name = node.kw_args.get("style", "body")  # kept for the shape name below; style resolution re-reads it
     style = resolve_node_style(node, ctx.tokens, px_to_pt=_PX_TO_PT)
     align = _align_pp(node.kw_args.get("align", "left"))
     # Default right margin = brand's slide.padding-x token; fall back to a
