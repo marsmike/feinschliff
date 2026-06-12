@@ -7,11 +7,12 @@ variety_exempt: true
 family: framing
 description: 'White background agenda: large blue circle left bearing section title; five plain agenda items right; teal dash
   arc top-right'
+when_to_use: Opening agenda — section title in the circle, up to five plain items.
 slide_index: 2
 slots:
-  text_1: {role: body, chars: 1008, default: Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal
-      …}
-  text_2: {role: title, chars: 200, default: Agenda}
+  text_1: {role: body, chars: 495, default: Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal …}
+  text_2: {role: title, chars: 84, default: Agenda}
+element_tree: ['text text_1 role=body @914,87 874x908 24pt', 'text text_2 role=title @96,176 691x728 44pt']
 chrome_subject: scattered teal dashes and small circles as accent marks; brand-neutral abstract
 ---
 # auto-derived from PPTX+SVG hybrid — review before use
@@ -21,6 +22,8 @@ theme shapes
 
 shape 77,176 728x728 kind:oval fill:theme-accent2
 shape 143,753 86x86 kind:oval fill:theme-accent5
+shape 77,176 728x728 kind:oval fill:theme-accent2
+shape 143,753 86x86 kind:oval fill:theme-accent5
 
-text 914,87 style:body color:black size:24pt autoshrink:true valign:middle padding:14,7,14,7 maxwidth:996 maxheight:908 "{{ text_1 | default(\"Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal tips & takeaways\") }}"
-text 96,176 style:sub color:paper size:44pt autoshrink:true valign:middle padding:14,7,14,7 maxwidth:808 maxheight:728 "{{ text_2 | default(\"Agenda\") }}"
+text 914,87 style:body color:black size:24pt autoshrink:true linespacing:0.9 valign:middle padding:14,7,14,7 maxwidth:874 maxheight:908 "{{ text_1 | default(\"Introduction\nBuilding confidence\nEngaging the audience\nVisual aids\nFinal tips & takeaways\") }}"
+text 96,176 style:sub color:paper size:44pt autoshrink:true linespacing:0.9 valign:middle padding:14,7,14,7 maxwidth:691 maxheight:728 "{{ text_2 | default(\"Agenda\") }}"
