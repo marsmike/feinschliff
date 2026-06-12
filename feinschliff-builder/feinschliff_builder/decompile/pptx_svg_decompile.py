@@ -97,8 +97,11 @@ def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
     name = f"{hashlib.sha1(payload).hexdigest()[:12]}.{ext}"
     native_dir.mkdir(parents=True, exist_ok=True)
     target = native_dir / name
-    if not target.exists():
-        target.write_bytes(payload)
+    # Unconditional write: the slotify pass REWRITES sidecars in place
+    # (planting {{ text_N }} templates), so an exists-skip would freeze a
+    # previous run's slotified state under the fresh payload's hash name —
+    # re-derives could never refresh it.
+    target.write_bytes(payload)
     return f"{(native_rel or 'native').rstrip('/')}/{name}"
 
 

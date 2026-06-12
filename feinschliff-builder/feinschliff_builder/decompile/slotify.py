@@ -433,7 +433,15 @@ def _coalesce_runs(xml: str) -> str:
                 prev = None
                 continue
             rpr = run.find(f"{{{_A_NS}}}rPr")
-            sig = etree.tostring(rpr) if rpr is not None else b""
+            if rpr is not None:
+                # proofing/edit artifacts (spellcheck err, dirty, smtClean,
+                # noProof) split visually identical runs — ignore them
+                _clean = etree.fromstring(etree.tostring(rpr))
+                for _attr in ("err", "dirty", "smtClean", "noProof"):
+                    _clean.attrib.pop(_attr, None)
+                sig = etree.tostring(_clean)
+            else:
+                sig = b""
             if prev is not None and prev[1] == sig:
                 pt = prev[0].find(f"{{{_A_NS}}}t")
                 pt.text = (pt.text or "") + (t.text or "")
