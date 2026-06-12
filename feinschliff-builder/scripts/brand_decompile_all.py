@@ -129,9 +129,9 @@ def main() -> int:
                     help="Brand pack root (must contain verify-map.yaml and tokens.json)")
     ap.add_argument("--source-pptx", required=True, type=Path,
                     help="Source PPTX deck to decompile")
-    ap.add_argument("--workers", type=int, default=0,
-                    help="Parallel derive workers (0 = auto: min(8, cpu/2); "
-                         "1 = sequential)")
+    ap.add_argument("--workers", type=int, default=16,
+                    help="Parallel derive workers (default 16; 0 = auto: "
+                         "min(8, cpu/2); 1 = sequential)")
     ap.add_argument("--canvas", default="1920x1080",
                     help="Target DSL canvas size (default: 1920x1080)")
     ap.add_argument("--dry-run", action="store_true",

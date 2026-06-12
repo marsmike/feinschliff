@@ -229,10 +229,10 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_build.add_argument(
         "--workers",
         type=int,
-        default=1,
+        default=16,
         help="Parallel slide-compile workers (DSL expand + diagram render "
              "fan out across processes; the final PPTX assembly stays "
-             "serial). 0 = auto (min(8, cpu/2)); default 1 = sequential.",
+             "serial). Default 16; 0 = auto (min(8, cpu/2)); 1 = sequential.",
     )
     p_build.set_defaults(func=cmd_build)
 
