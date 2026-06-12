@@ -1,8 +1,10 @@
 """Post-render verification — evidence before 'done'.
 
-Checks: output duration == source duration (we never cut), and the audio
-stream is bit-identical to the source (D6 — voice untouched until the M4
-scoring phase replaces the mix deliberately).
+Checks: output duration == source duration (we never cut), and either:
+  - unscored: audio stream is bit-identical to the source (D6 — voice
+    untouched until the M4 scoring phase replaces the mix deliberately).
+  - scored:   audio stream present + integrated loudness within MIX_LUFS_WINDOW
+    (D-M4-8 — voice is no longer bit-identical after the score mix).
 """
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ from pathlib import Path
 
 from feinschnitt.edit import EditError
 from feinschnitt.edit.render import _run, ffprobe_meta
+from feinschnitt.edit.score import MIX_LUFS_WINDOW, measure_lufs
 
 DURATION_TOLERANCE = 0.2
 
@@ -27,14 +30,28 @@ def _audio_md5(video: Path) -> str:
     return proc.stdout.strip()
 
 
-def run(source: Path, output: Path) -> None:
+def run(source: Path, output: Path, scored: bool = False) -> None:
     if not output.exists():
         raise EditError(f"output not found: {output}")
     problems = check_durations(ffprobe_meta(source)["duration"],
                                ffprobe_meta(output)["duration"])
-    if _audio_md5(source) != _audio_md5(output):
-        problems.append("audio stream differs from source — the voice track "
-                        "must be untouched (pre-scoring)")
+    if scored:
+        # D-M4-8: scored mode — check audio stream presence + loudness window.
+        out_meta = ffprobe_meta(output)
+        if not out_meta["has_audio"]:
+            problems.append("scored output has no audio stream")
+        else:
+            lufs = measure_lufs(output)
+            lo, hi = MIX_LUFS_WINDOW
+            if not (lo <= lufs <= hi):
+                problems.append(
+                    f"scored loudness {lufs:.1f} LUFS outside window "
+                    f"[{lo:.0f}, {hi:.0f}] LUFS"
+                )
+    else:
+        if _audio_md5(source) != _audio_md5(output):
+            problems.append("audio stream differs from source — the voice track "
+                            "must be untouched (pre-scoring)")
     if problems:
         raise EditError("verify failed:\n  " + "\n  ".join(problems))
     print(f"verify OK — {output}")

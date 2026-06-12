@@ -409,6 +409,9 @@ def lint_score_config(config) -> list[str]:
     music = config.get("music")
     if music is not None and not isinstance(music, str):
         errs.append("score.music must be a string when present")
+    elif isinstance(music, str) and not music:
+        errs.append("score.music must not be empty — omit the key to use the "
+                    "signature track (alphabetically first in the music dir)")
     return errs
 
 

@@ -1,6 +1,7 @@
 """M4 audio-score tests — Task 1: SFX cue derivation + lint_score_config.
 
-Task 2 tests (score.py) are appended below."""
+Task 2 tests (score.py) are appended below.
+Task 3 tests (render wiring, verify scored mode, should_score) are appended below."""
 import subprocess
 import sys
 from pathlib import Path
@@ -10,8 +11,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from feinschnitt.edit import sfx as sfxmod  # noqa: E402
 from feinschnitt.edit import score as scoremod  # noqa: E402
+from feinschnitt.edit import verify as verifymod  # noqa: E402
 from feinschnitt.edit import EditError  # noqa: E402
 from feinschnitt.edit.lint import lint_score_config  # noqa: E402
+from feinschnitt.edit.render import should_score  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
@@ -549,7 +552,6 @@ def test_pick_track_missing_dir_warns(monkeypatch, tmp_path):
 def test_build_filtergraph_bed_two_cues():
     fg = scoremod.build_filtergraph(
         bed=True,
-        n_cues=2,
         bed_gain_db=-3.5,
         swell=None,
         cue_delays_ms=[0, 5000],
@@ -575,7 +577,6 @@ def test_build_filtergraph_bed_two_cues():
 def test_build_filtergraph_no_bed_one_cue():
     fg = scoremod.build_filtergraph(
         bed=False,
-        n_cues=1,
         bed_gain_db=0.0,
         swell=None,
         cue_delays_ms=[2000],
@@ -594,7 +595,6 @@ def test_build_filtergraph_no_bed_one_cue():
 def test_build_filtergraph_bed_zero_cues():
     fg = scoremod.build_filtergraph(
         bed=True,
-        n_cues=0,
         bed_gain_db=-5.0,
         swell=None,
         cue_delays_ms=[],
@@ -610,7 +610,7 @@ def test_build_filtergraph_bed_zero_cues():
 def test_build_filtergraph_normalize_zero_always_present():
     for bed in (True, False):
         fg = scoremod.build_filtergraph(
-            bed=bed, n_cues=0, bed_gain_db=0.0, swell=None,
+            bed=bed, bed_gain_db=0.0, swell=None,
             cue_delays_ms=[], duration=30.0,
         )
         assert "normalize=0" in fg
@@ -618,7 +618,7 @@ def test_build_filtergraph_normalize_zero_always_present():
 
 def test_build_filtergraph_sidechain_order():
     fg = scoremod.build_filtergraph(
-        bed=True, n_cues=0, bed_gain_db=0.0, swell=None,
+        bed=True, bed_gain_db=0.0, swell=None,
         cue_delays_ms=[], duration=30.0,
     )
     # [bedlvl] must appear BEFORE [sc] in the sidechain compress call
@@ -630,7 +630,7 @@ def test_build_filtergraph_sidechain_order():
 def test_build_filtergraph_swell_included_when_provided():
     swell = "if(lt(t,14),1,1.6)"
     fg = scoremod.build_filtergraph(
-        bed=True, n_cues=0, bed_gain_db=0.0,
+        bed=True, bed_gain_db=0.0,
         swell=swell, cue_delays_ms=[], duration=30.0,
     )
     assert swell in fg
@@ -663,3 +663,212 @@ def test_score_skips_when_no_track_and_no_cues(monkeypatch, tmp_path):
     )
     assert scored is False
     assert "no track" in warnings
+
+
+# ===========================================================================
+# Task 3: carried review items + wiring tests
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Carried item 1: swell string ↔ math parity
+# ---------------------------------------------------------------------------
+
+def _eval_swell_expr(expr: str, t: float) -> float:
+    """Evaluate a swell_expr string at time t using Python."""
+    # Transform ffmpeg if()/lt() into Python-callable forms.
+    safe_expr = expr.replace("if(", "_if(").replace("lt(", "_lt(")
+    _if = lambda c, a, b: a if c > 0.5 else b  # noqa: E731
+    _lt = lambda a, b: 1.0 if a < b else 0.0   # noqa: E731
+    return float(eval(safe_expr, {"__builtins__": {}}, {  # noqa: S307
+        "_if": _if, "_lt": _lt, "t": t,
+    }))
+
+
+def test_swell_expr_math_parity_standard(monkeypatch):
+    """swell_expr string evaluates to the same value as _swell_value at all sample points."""
+    climax = 20.0
+    duration = 30.0
+    expr = scoremod.swell_expr(climax, duration)
+
+    sample_ts = [14.0, 16.0, 20.0, 21.0, 22.0, 23.5, 25.0, 26.0]
+    for t in sample_ts:
+        expected = scoremod._swell_value(t, climax, duration)
+        actual = _eval_swell_expr(expr, t)
+        assert actual == pytest.approx(expected, rel=1e-5), (
+            f"t={t}: expr={actual:.6f} vs _swell_value={expected:.6f}"
+        )
+
+
+def test_swell_expr_math_parity_clamped_climax():
+    """Parity check for clamped climax=2 where r0=0."""
+    climax = 2.0
+    duration = 30.0
+    expr = scoremod.swell_expr(climax, duration)
+
+    sample_ts = [0.0, 1.0, 2.0, 3.0, 4.0, 5.5, 7.0, 10.0]
+    for t in sample_ts:
+        expected = scoremod._swell_value(t, climax, duration)
+        actual = _eval_swell_expr(expr, t)
+        assert actual == pytest.approx(expected, rel=1e-5), (
+            f"t={t}: expr={actual:.6f} vs _swell_value={expected:.6f}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Carried item 4: lint_score_config rejects empty music string
+# ---------------------------------------------------------------------------
+
+def test_lint_score_config_rejects_empty_music_string():
+    errs = lint_score_config({"music": ""})
+    assert len(errs) == 1
+    assert "empty" in errs[0] or "must not be empty" in errs[0]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: should_score four combinations
+# ---------------------------------------------------------------------------
+
+def test_should_score_final_default_true():
+    assert should_score("final", True, None) is True
+
+
+def test_should_score_preview_always_false():
+    assert should_score("preview", True, None) is False
+    assert should_score("preview", False, None) is False
+    assert should_score("preview", True, {"enabled": True}) is False
+
+
+def test_should_score_final_no_flag_false():
+    assert should_score("final", False, None) is False
+
+
+def test_should_score_final_config_disabled_false():
+    assert should_score("final", True, {"enabled": False}) is False
+
+
+def test_should_score_final_config_enabled_true():
+    # Explicit enabled=True should still return True.
+    assert should_score("final", True, {"enabled": True}) is True
+
+
+def test_should_score_final_empty_config_true():
+    # config={} (no enabled key) → True
+    assert should_score("final", True, {}) is True
+
+
+# ---------------------------------------------------------------------------
+# Task 3: verify scored mode — monkeypatched ffprobe_meta + measure_lufs
+# ---------------------------------------------------------------------------
+
+def _make_fake_video(tmp_path: Path, name: str = "out.mp4") -> Path:
+    """Write a stub video file that 'exists' for verify.run."""
+    p = tmp_path / name
+    p.write_bytes(b"stub")
+    return p
+
+
+def test_verify_scored_in_window_passes(monkeypatch, tmp_path):
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    # duration 10.0 for both — no duration mismatch
+    monkeypatch.setattr(verifymod, "ffprobe_meta",
+                        lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
+                                   "has_audio": True})
+    monkeypatch.setattr(verifymod, "measure_lufs", lambda p: -16.0)
+
+    # Should not raise
+    verifymod.run(source, output, scored=True)
+
+
+def test_verify_scored_out_of_window_fails_with_value(monkeypatch, tmp_path):
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    monkeypatch.setattr(verifymod, "ffprobe_meta",
+                        lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
+                                   "has_audio": True})
+    # -8 LUFS is outside [-20, -12]
+    monkeypatch.setattr(verifymod, "measure_lufs", lambda p: -8.0)
+
+    with pytest.raises(EditError, match="-8.0 LUFS"):
+        verifymod.run(source, output, scored=True)
+
+
+def test_verify_scored_no_audio_fails(monkeypatch, tmp_path):
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    monkeypatch.setattr(verifymod, "ffprobe_meta",
+                        lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
+                                   "has_audio": False})
+    # measure_lufs should not be called when no audio
+    def _lufs_must_not_be_called(p):
+        raise AssertionError("measure_lufs should not be called with no audio")
+    monkeypatch.setattr(verifymod, "measure_lufs", _lufs_must_not_be_called)
+
+    with pytest.raises(EditError, match="no audio"):
+        verifymod.run(source, output, scored=True)
+
+
+def test_verify_unscored_still_uses_audio_md5(monkeypatch, tmp_path):
+    source = _make_fake_video(tmp_path, "source.mp4")
+    output = _make_fake_video(tmp_path, "out.mp4")
+
+    monkeypatch.setattr(verifymod, "ffprobe_meta",
+                        lambda p: {"duration": 10.0, "width": 1080, "height": 1920,
+                                   "has_audio": True})
+
+    # Make _audio_md5 return different values so audio check fires
+    call_count = {"n": 0}
+    def fake_md5(p):
+        call_count["n"] += 1
+        return f"md5-{p.name}"
+    monkeypatch.setattr(verifymod, "_audio_md5", fake_md5)
+
+    with pytest.raises(EditError, match="audio stream differs"):
+        verifymod.run(source, output, scored=False)
+
+    assert call_count["n"] == 2  # called for both source and output
+
+
+# ---------------------------------------------------------------------------
+# Task 3: score() with pre-resolved track + cues kwargs
+# ---------------------------------------------------------------------------
+
+def test_score_accepts_pre_resolved_track_and_cues(monkeypatch, tmp_path):
+    """score() with pre-resolved kwargs skips internal pick_track/plan_cues."""
+    video = tmp_path / "video.mp4"
+    video.write_bytes(b"")
+    out = tmp_path / "out.mp4"
+    fake_out = tmp_path / "scored.mp4"
+    fake_out.write_bytes(b"scored")
+
+    track = tmp_path / "track.mp3"
+    track.write_bytes(b"")
+
+    # pick_track and plan_cues must NOT be called when kwargs are supplied
+    def _must_not_call(*a, **kw):
+        raise AssertionError("should not be called when pre-resolved")
+
+    monkeypatch.setattr(scoremod, "pick_track", _must_not_call)
+
+    import feinschnitt.edit.sfx as _sfx
+    monkeypatch.setattr(_sfx, "plan_cues", _must_not_call)
+
+    # Fake measure_lufs + _run to avoid real ffmpeg
+    monkeypatch.setattr(scoremod, "measure_lufs", lambda p: -23.0)
+
+    def fake_run(cmd, **kw):
+        fake_out.write_bytes(b"scored-output")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(scoremod, "_run", fake_run)
+    monkeypatch.setattr(scoremod, "find_climax", lambda beats: None)
+
+    scored, warnings = scoremod.score(
+        video, out,
+        beats=[], captions=[], config=None, duration=30.0,
+        track=track, cues=[],
+    )
+    assert scored is True

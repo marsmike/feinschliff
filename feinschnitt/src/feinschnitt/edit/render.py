@@ -32,12 +32,30 @@ from feinschnitt.edit import props as propsmod
 from feinschnitt.edit import theme as thememod
 from feinschnitt.edit import transcribe as transcribemod
 from feinschnitt.edit import zoom as zoommod
-from feinschnitt.edit.lint import IMAGE_KINDS, lint_beats, lint_captions_config
+from feinschnitt.edit.lint import IMAGE_KINDS, lint_beats, lint_captions_config, lint_score_config
 from feinschnitt.edit.workdir import (mark_stage_done, stage_is_fresh,
                                       stage_key, workdir_for)
 
 LOCK = Path.home() / ".cache" / "feinschnitt" / "edit" / ".render.lock"
 PROXY_PARAMS = "scale=-2:min(1280,ih)|libx264|veryfast|crf20|an"
+
+
+def should_score(quality: str, flag: bool, config: dict | None) -> bool:
+    """Return True when the score pipeline should run for this render.
+
+    Rules (D-M4-1):
+      - Preview ALWAYS returns False — the iteration loop must stay fast and
+        voice-pure regardless of flag or config.
+      - Final returns True when flag is True AND config doesn't disable scoring
+        (config None, or config without "enabled", or config with enabled=True).
+    """
+    if quality != "final":
+        return False
+    if not flag:
+        return False
+    if config is not None and config.get("enabled") is False:
+        return False
+    return True
 
 
 def engine_dir() -> Path:
@@ -193,7 +211,8 @@ def _remux_source_audio(rendered: Path, source: Path, out: Path) -> None:
 
 
 def render(video: Path, plan_path: Path, quality: str = "preview",
-           brand_dir: Path | None = None, force: bool = False) -> Path:
+           brand_dir: Path | None = None, force: bool = False,
+           score: bool = True) -> Path:  # noqa: A002  (shadows built-in fine here)
     if quality not in {"preview", "final"}:
         raise EditError(f"quality must be preview|final, got: {quality}")
     if not video.exists():
@@ -254,6 +273,13 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
         if "captions" in authored else []
     if cap_errors:
         raise EditError("captions config invalid:\n  " + "\n  ".join(cap_errors))
+
+    # 3c. score config validation (alongside captions block, before render)
+    score_config = authored.get("score")
+    sc_errors = lint_score_config(score_config) if score_config is not None else []
+    if sc_errors:
+        raise EditError("score config invalid:\n  " + "\n  ".join(sc_errors))
+
     caps, cap_warnings = captionsmod.build_captions(
         words, aligned["beats"], authored.get("captions"),
         meta["width"], meta["height"])
@@ -280,23 +306,76 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
     props_bytes = json.dumps(props, indent=2).encode()
     props_path.write_bytes(props_bytes)
 
-    # 4. fingerprint cache
+    # Deferred imports — score and sfx import _run from render at module level,
+    # which creates a circular import if we import them at module level too.
+    # Deferring to call-time breaks the cycle safely.
+    from feinschnitt.edit import score as scoremod  # noqa: PLC0415
+    from feinschnitt.edit import sfx as sfxmod      # noqa: PLC0415
+
+    # 4. fingerprint cache — extend with score signature (D-M4-7) when scoring
+    # will run.  Resolve track + cues here once so we can hash them AND pass
+    # them into score() to avoid double resolution.
     suffix = "preview" if quality == "preview" else "enhanced"
     out = video.with_name(f"{video.stem}.{suffix}.mp4")
     fp_marker = wd / f".render.fp.{quality}"
+
+    scoring_active = should_score(quality, score, score_config)
+    resolved_track: "Path | None" = None
+    resolved_cues: "list[dict] | None" = None
+    if scoring_active:
+        resolved_track, _tw = scoremod.pick_track(score_config)
+        resolved_cues, _cw = sfxmod.plan_cues(aligned["beats"], caps)
+        # Append score-signature entries to asset_stats for the fingerprint.
+        asset_stats = list(asset_stats)
+        asset_stats.append((
+            "score:" + json.dumps(score_config or {}, sort_keys=True),
+            0,
+        ))
+        if resolved_track is not None:
+            asset_stats.append((
+                f"score:{resolved_track}",
+                resolved_track.stat().st_mtime_ns,
+            ))
+        for cue in resolved_cues:
+            cue_path = Path(cue["path"])
+            asset_stats.append((
+                f"score:{cue_path}",
+                cue_path.stat().st_mtime_ns,
+            ))
+
     fp = render_fingerprint(props_bytes, quality, video.stat().st_mtime_ns,
                              asset_stats=asset_stats)
     if not force and stage_is_fresh(fp_marker, fp) and out.exists():
         print(f"render cache hit — {out}", file=sys.stderr)
         return out
 
-    # 5. render (locked) + voice remux; fingerprint written only on success
+    # 5. render (locked) + voice remux + optional score; fingerprint written only on success
     _acquire_lock()
     raw = wd / f"render.{quality}.raw.mp4"
+    scored_sidecar = wd / f".scored.{quality}"
     try:
         _run(["npx", "remotion", "render", "src/index.ts", "EditedVideo",
               str(raw), f"--props={props_path}"], cwd=engine)
         _remux_source_audio(raw, video, out)
+        if scoring_active:
+            score_tmp = wd / "score.tmp.mp4"
+            scored, score_warnings = scoremod.score(
+                out, score_tmp,
+                aligned["beats"], caps, score_config, meta["duration"],
+                track=resolved_track,
+                cues=resolved_cues,
+            )
+            for sw in score_warnings:
+                print(f"score warning: {sw}", file=sys.stderr)
+            if scored:
+                os.replace(score_tmp, out)
+                scored_sidecar.write_text("1")
+            else:
+                score_tmp.unlink(missing_ok=True)
+                scored_sidecar.unlink(missing_ok=True)
+        else:
+            # Preview or --no-score: clean up any stale sidecar.
+            scored_sidecar.unlink(missing_ok=True)
         mark_stage_done(fp_marker, fp)
     finally:
         raw.unlink(missing_ok=True)

@@ -220,7 +220,6 @@ def pick_track(config: dict | None) -> tuple[Path | None, list[str]]:
 
 def build_filtergraph(
     bed: bool,
-    n_cues: int,
     bed_gain_db: float,
     swell: str | None,
     cue_delays_ms: list[int],
@@ -287,14 +286,23 @@ def score(
     captions: list[dict],
     config: dict | None,
     duration: float,
+    *,
+    track: Path | None = None,
+    cues: list[dict] | None = None,
 ) -> tuple[bool, list[str]]:
     """Mix music bed + SFX cues into video_with_voice and write to out.
 
     Returns (True, warnings) when scoring ran; (False, warnings) when skipped
     (caller keeps the voice-only output unchanged).
 
+    Optional keyword-only args `track` and `cues` let the caller pre-resolve
+    the music track and SFX cue list (e.g. render.py resolves them once for
+    fingerprinting and passes them through to avoid double resolution).  When
+    omitted the function resolves them internally — standalone behaviour for
+    tests.
+
     Steps:
-      1. Resolve track + cues; skip if neither available.
+      1. Resolve track + cues (or accept pre-resolved); skip if neither available.
       2. Measure bed LUFS; compute gain to BED_TARGET_LUFS.
       3. Find climax → swell expression.
       4. Build filtergraph + single ffmpeg command.
@@ -302,11 +310,21 @@ def score(
     """
     warnings: list[str] = []
 
-    track, pick_warnings = pick_track(config)
-    warnings.extend(pick_warnings)
+    if track is None and cues is None:
+        # Internal resolution path (standalone / test usage).
+        track, pick_warnings = pick_track(config)
+        warnings.extend(pick_warnings)
 
-    cues, cue_warnings = sfx.plan_cues(beats, captions)
-    warnings.extend(cue_warnings)
+        cues, cue_warnings = sfx.plan_cues(beats, captions)
+        warnings.extend(cue_warnings)
+    else:
+        # Caller pre-resolved; collect any warnings by re-running resolution
+        # in warning-only mode — we still want sfx/music warnings surfaced.
+        if track is None:
+            _, pick_warnings = pick_track(config)
+            warnings.extend(pick_warnings)
+        if cues is None:
+            cues = []
 
     if track is None and not cues:
         return False, warnings
@@ -326,7 +344,6 @@ def score(
 
     filtergraph = build_filtergraph(
         bed=track is not None,
-        n_cues=len(cues),
         bed_gain_db=bed_gain_db,
         swell=swell,
         cue_delays_ms=cue_delays_ms,
@@ -344,7 +361,7 @@ def score(
         "-filter_complex", filtergraph,
         "-map", "0:v", "-c:v", "copy",
         "-map", "[mix]", "-c:a", "aac", "-b:a", "192k",
-        "-y", str(out),
+        str(out),
     ]
 
     _run(cmd)

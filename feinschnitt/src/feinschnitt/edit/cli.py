@@ -58,14 +58,17 @@ def _cmd_render(args) -> int:
     if not args.plan.exists():
         raise EditError(f"plan not found: {args.plan}")
     out = rendermod.render(args.video, args.plan, quality=args.quality,
-                           brand_dir=args.brand, force=args.force)
-    verifymod.run(args.video, out)
+                           brand_dir=args.brand, force=args.force,
+                           score=not args.no_score)
+    wd = workdir_for(args.video)
+    scored = (wd / f".scored.{args.quality}").exists()
+    verifymod.run(args.video, out, scored=scored)
     print(out)
     return 0
 
 
 def _cmd_verify(args) -> int:
-    verifymod.run(args.video, args.output)
+    verifymod.run(args.video, args.output, scored=args.scored)
     return 0
 
 
@@ -104,9 +107,13 @@ def add_parser(sub) -> None:
                     help="brand pack dir containing tokens.json")
     sp.add_argument("--force", action="store_true",
                     help="ignore the render fingerprint cache")
+    sp.add_argument("--no-score", action="store_true",
+                    help="skip the audio score step even for --quality final")
     sp.set_defaults(func=_cmd_render)
 
     sp = es.add_parser("verify", help="re-check an existing output")
     sp.add_argument("video", type=Path)
     sp.add_argument("output", type=Path)
+    sp.add_argument("--scored", action="store_true",
+                    help="use scored verify mode (loudness window instead of audio MD5)")
     sp.set_defaults(func=_cmd_verify)
