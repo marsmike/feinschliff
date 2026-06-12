@@ -26,12 +26,13 @@ from pathlib import Path
 
 from feinschnitt.edit import EditError
 from feinschnitt.edit import align as alignmod
+from feinschnitt.edit import captions as captionsmod
 from feinschnitt.edit import plan as planmod
 from feinschnitt.edit import props as propsmod
 from feinschnitt.edit import theme as thememod
 from feinschnitt.edit import transcribe as transcribemod
 from feinschnitt.edit import zoom as zoommod
-from feinschnitt.edit.lint import IMAGE_KINDS, lint_beats
+from feinschnitt.edit.lint import IMAGE_KINDS, lint_beats, lint_captions_config
 from feinschnitt.edit.workdir import (mark_stage_done, stage_is_fresh,
                                       stage_key, workdir_for)
 
@@ -240,12 +241,24 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
                         "outside doctrine; adjust anchors or timing:\n  "
                         + "\n  ".join(a_errors))
 
-    # 3. zoom + theme + props
+    # 3. zoom + captions + theme + props
     words = json.loads(words_path.read_text())["words"]
     zoom_path = wd / "zoom_plan.json"
     if not zoom_path.exists():  # hand-editable once generated
         zoom_path.write_text(json.dumps(zoommod.build_zoom_plan(words), indent=2))
     zoom = json.loads(zoom_path.read_text())
+
+    # 3b. captions — validate config, build chunks from aligned beats + words
+    # Use SOURCE meta dims for orientation (preview scaling doesn't change portrait/landscape).
+    cap_errors = lint_captions_config(authored.get("captions")) \
+        if "captions" in authored else []
+    if cap_errors:
+        raise EditError("captions config invalid:\n  " + "\n  ".join(cap_errors))
+    caps, cap_warnings = captionsmod.build_captions(
+        words, aligned["beats"], authored.get("captions"),
+        meta["width"], meta["height"])
+    for cw in cap_warnings:
+        print(f"captions warning: {cw}", file=sys.stderr)
 
     src_for_render = ensure_proxy(video, wd) if quality == "preview" else video
     render_meta = dict(meta)
@@ -261,7 +274,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
     aligned_for_props["beats"] = beats_for_props
 
     props = propsmod.build_props(staged_name, aligned_for_props, zoom,
-                                 thememod.resolve_theme(brand_dir), render_meta)
+                                 thememod.resolve_theme(brand_dir), render_meta,
+                                 captions=caps)
     props_path = wd / f"props.{quality}.json"
     props_bytes = json.dumps(props, indent=2).encode()
     props_path.write_bytes(props_bytes)

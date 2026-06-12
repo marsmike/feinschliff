@@ -5,7 +5,8 @@ from feinschnitt.edit.lint import DEFAULT_VERTICAL
 
 
 def build_props(source_path: str, aligned_plan: dict, zoom_plan: list[dict],
-                theme: dict, meta: dict, fps: int = 30) -> dict:
+                theme: dict, meta: dict, fps: int = 30,
+                captions: list[dict] | None = None) -> dict:
     beats = []
     for beat in aligned_plan["beats"]:
         b = dict(beat)
@@ -22,4 +23,5 @@ def build_props(source_path: str, aligned_plan: dict, zoom_plan: list[dict],
         "beats": beats,
         "zoom": zoom_plan,
         "theme": theme,
+        "captions": captions or [],
     }

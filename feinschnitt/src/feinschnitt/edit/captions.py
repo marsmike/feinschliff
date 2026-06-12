@@ -19,7 +19,10 @@ ECHO_PAD = 0.8           # semantic lead/tail pad around every beat
 CAPTION_SUPPRESSING_KINDS = {"stat_punch", "quote_pull", "static",
                              "vertical_timeline", "word_pop", "hook_title"}
 CAPTION_FRIENDLY_KINDS = {"image_card", "ratio_dots", "inline_chart"}
-assert CAPTION_SUPPRESSING_KINDS | CAPTION_FRIENDLY_KINDS == KNOWN_KINDS
+assert CAPTION_SUPPRESSING_KINDS | CAPTION_FRIENDLY_KINDS == KNOWN_KINDS, (
+    "new kind must be classified in CAPTION_SUPPRESSING_KINDS or "
+    "CAPTION_FRIENDLY_KINDS"
+)
 
 STOPWORDS = {  # en + de function words — meaningful-word overlap only
     "the", "a", "an", "and", "or", "but", "of", "in", "on", "at", "to", "for",
@@ -29,6 +32,14 @@ STOPWORDS = {  # en + de function words — meaningful-word overlap only
     "der", "die", "das", "ein", "eine", "und", "oder", "aber", "von", "im",
     "in", "an", "auf", "zu", "fur", "mit", "bei", "ist", "war", "sind", "es",
     "ich", "du", "wir", "sie", "nicht", "kein", "so", "als", "wenn", "dann",
+    # contraction norms (apostrophes stripped by _norm)
+    "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent",
+    "thats", "youre", "theyre", "weve", "ive", "whats",
+    # auxiliaries
+    "do", "does", "did", "have", "has", "had", "will", "would", "can",
+    "could", "should", "im", "am",
+    # German wh-words / conjunctions
+    "wie", "wer", "wo", "dass", "weil", "auch", "noch", "nur", "schon", "mal",
 }
 
 
@@ -85,6 +96,12 @@ def chunk_words(words: list[dict], max_words: int) -> list[dict]:
 
 
 def _overlaps(chunk: dict, lo: float, hi: float) -> bool:
+    """True when the chunk's DISPLAY window [s, e] intersects [lo, hi).
+
+    The display window includes the 0.4s tail, so a chunk whose tail pokes
+    into a takeover window is dropped whole — no caption lingering under a
+    takeover entrance.
+    """
     return chunk["s"] < hi and chunk["e"] > lo
 
 
@@ -111,19 +128,34 @@ def suppress(chunks: list[dict], beats: list[dict]) -> list[dict]:
                 if kind in CAPTION_SUPPRESSING_KINDS:
                     dead = True
                     break
+                # friendly kind — only drop on semantic echo
                 btokens = beat_text_tokens(b)
                 if ctokens & btokens:
                     dead = True
                     break
-            if _overlaps(chunk, start - ECHO_PAD, end + ECHO_PAD):
-                if btokens is None:
-                    btokens = beat_text_tokens(b)
+            elif _overlaps(chunk, start - ECHO_PAD, end + ECHO_PAD):
+                # pad window only (mutually exclusive from the literal window)
+                btokens = beat_text_tokens(b)
                 if ctokens & btokens:
                     dead = True
                     break
         if not dead:
             kept.append(chunk)
     return kept
+
+
+def _match_phrase_runs(chunks: list[dict], normalized: list[list[str]]) -> list[bool]:
+    """Return a matched[i] bool for each phrase in *normalized* against *chunks*."""
+    matched = [False] * len(normalized)
+    for chunk in chunks:
+        cnorm = [_norm(w["w"]) for w in chunk["words"]]
+        for pi, ptoks in enumerate(normalized):
+            if not ptoks:
+                continue
+            for i in range(len(cnorm) - len(ptoks) + 1):
+                if cnorm[i:i + len(ptoks)] == ptoks:
+                    matched[pi] = True
+    return matched
 
 
 def apply_emphasis(chunks: list[dict],
@@ -148,15 +180,54 @@ def apply_emphasis(chunks: list[dict],
 
 def build_captions(words: list[dict], beats: list[dict], config: dict | None,
                    width: int, height: int) -> tuple[list[dict], list[str]]:
-    """words.json + aligned beats + plan config -> (chunks, warnings)."""
+    """words.json + aligned beats + plan config -> (chunks, warnings).
+
+    Two-pass emphasis bookkeeping:
+      Pass 1 — match phrases against ALL chunks (pre-suppression) to learn
+               which phrases actually appear anywhere in the transcript.
+      Pass 2 — apply_emphasis only on the kept (post-suppression) chunks
+               and produces the accent flags; re-check which phrases still
+               match inside kept chunks to distinguish the two warning cases.
+
+    Warning messages:
+      "emphasis phrase not found in transcript: {p!r}"
+          — phrase never matched any word run, pre-suppression.
+      "emphasis phrase {p!r} only occurs in caption chunks suppressed by a
+       beat (or split across chunks) — it will not render"
+          — phrase WAS spoken (matched pre-suppression) but is absent from
+            every kept chunk (suppression swallowed every occurrence).
+    """
     cfg = config or {}
     if cfg.get("enabled", True) is False:
         return [], []
     max_words = MAX_WORDS_LANDSCAPE if width > height else MAX_WORDS_PORTRAIT
-    chunks = suppress(chunk_words(words, max_words), beats)
+    all_chunks = chunk_words(words, max_words)
+    kept_chunks = suppress(all_chunks, beats)
     phrases = cfg.get("emphasis") or []
     phrases = [p for p in phrases if isinstance(p, str)]
-    chunks, unmatched = apply_emphasis(chunks, phrases)
-    warnings = [f"captions: emphasis phrase not found in transcript: {p!r}"
-                for p in unmatched]
-    return chunks, warnings
+    if not phrases:
+        return kept_chunks, []
+
+    normalized = [[t for t in (_norm(p) for p in phrase.split()) if t]
+                  for phrase in phrases]
+
+    # Pass 1: did the phrase appear ANYWHERE in the transcript (pre-suppression)?
+    spoken = _match_phrase_runs(all_chunks, normalized)
+
+    # Pass 2: mark accents on kept chunks; learn which survive suppression.
+    kept_chunks, _ = apply_emphasis(kept_chunks, phrases)
+    surviving = _match_phrase_runs(kept_chunks, normalized)
+
+    warnings: list[str] = []
+    for pi, phrase in enumerate(phrases):
+        if not spoken[pi]:
+            warnings.append(
+                f"captions: emphasis phrase not found in transcript: {phrase!r}"
+            )
+        elif not surviving[pi]:
+            warnings.append(
+                f"captions: emphasis phrase {phrase!r} only occurs in caption "
+                "chunks suppressed by a beat (or split across chunks) — it "
+                "will not render"
+            )
+    return kept_chunks, warnings
