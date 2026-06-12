@@ -3852,6 +3852,57 @@ def _is_placeholder_line(line: str) -> bool:
     return False
 
 
+# Unambiguous master/outline prompts — imperative UI copy that is NEVER
+# legitimate slide-authored content (unlike "Headline"/"Welcome"/"Title",
+# which a deck may genuinely ship as example copy). These are suppressed even
+# when a shape looks slide-authored, because pptx_flatten_inherited.py
+# materialises inherited master/layout placeholders as slide-level shapes —
+# clearing the `from_chain` flag the normal placeholder suppression relies on,
+# so the outline prompt ("Add Text\nZweite Ebene\n…") would otherwise survive
+# and render on every flattened slide.
+_STRONG_PROMPT_EXACT: frozenset[str] = frozenset(map(str.lower, [
+    "add text", "add title", "add headline", "add subheadline",
+    "click to edit master title style", "click to edit master text styles",
+    "click here to add text", "click to add text",
+    "second level", "third level", "fourth level", "fifth level",
+    "text hinzufügen", "text hinzufuegen",
+    "zweite ebene", "dritte ebene", "vierte ebene", "fünfte ebene", "fuenfte ebene",
+    "klicken sie, um einen titel hinzuzufügen",
+    "klicken sie, um titel hinzuzufügen",
+    "insert photo", "insert picture", "insert image",
+    "your text here", "insert text here",
+]))
+_STRONG_PROMPT_PREFIXES: tuple[str, ...] = (
+    "click to edit master", "click here to add", "double-click to edit",
+)
+
+
+def _is_strong_prompt_line(line: str) -> bool:
+    norm = line.strip().lower().rstrip(".!?:;,")
+    if not norm:
+        return True   # blank line inside an otherwise all-prompt block is noise
+    if norm in _STRONG_PROMPT_EXACT:
+        return True
+    return any(norm.startswith(p) for p in _STRONG_PROMPT_PREFIXES)
+
+
+def _is_strong_prompt(text_runs: list["TextRun"]) -> bool:
+    """True iff every non-blank line is an unambiguous master/outline prompt.
+
+    Stricter than `_is_placeholder_text`: applied to slide-AUTHORED text too
+    (post-flatten placeholders), so it must only match copy that can never be
+    real content — outline levels, "Click to edit Master…", "Add Text",
+    "Insert photo". One real line spares the shape.
+    """
+    if not text_runs:
+        return False
+    raw = "".join(r.text or "" for r in text_runs)
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    return all(_is_strong_prompt_line(ln) for ln in lines)
+
+
 def _is_placeholder_text(text_runs: list["TextRun"]) -> bool:
     """Return True iff the concatenated run text is recognizable demo /
     template-prompt copy that should NOT survive the decompile round-trip.
@@ -3999,6 +4050,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # shows; string-matching it as a prompt wrongly deleted it. (MS-gallery prompts
         # are inherited and already blanked in walk_slide, so this doesn't regress them.)
         if not t.from_chain:
+            # pptx_flatten_inherited materialises inherited master/layout
+            # placeholders as slide-level shapes, clearing from_chain. Their
+            # outline-prompt copy ("Add Text\nZweite Ebene\n…") is never real
+            # content, so suppress it even though it now looks slide-authored.
+            # Genuine example copy is left untouched (strict matcher).
+            if _is_strong_prompt(t.text_runs):
+                continue
             filtered.append(t)
             continue
         if _is_placeholder_text(t.text_runs):
