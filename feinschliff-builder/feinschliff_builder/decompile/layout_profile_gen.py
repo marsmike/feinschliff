@@ -99,6 +99,7 @@ from feinschliff.dsl.parser import split_frontmatter
 from feinschmiede.dsl.tokens import load_tokens
 from feinschmiede.geometry import units
 from feinschmiede.text.measure import avg_char_width_ratio
+from feinschliff_builder.decompile.slotify import crosses_image_edge
 
 # --- DSL line patterns ------------------------------------------------------
 # In the FILE the slot's inner quotes are backslash-escaped:
@@ -515,6 +516,7 @@ def _slot_warnings(
     px_per_pt: float,
     tokens=None,
     slot_roles: dict[str, str] | None = None,
+    images: list[dict] | None = None,
 ) -> dict[str, list[str]]:
     """Static box-sanity lint over slotified text nodes — content-free, only
     declared geometry and resolved type size. Results land in frontmatter
@@ -527,6 +529,12 @@ def _slot_warnings(
       (these hold a digit or a short fixed string — 7 chars/line is fine).
     - IMPOSSIBLE_BOX is skipped when the default is 1-2 chars (decorative
       display glyphs such as oversized quotation marks).
+
+    ``images`` (image slot geometry dicts from ``_parse_image_slots``) is
+    used to detect TEXT_OVER_IMAGE: text boxes that partially cross a picture
+    slot's edge (decompile artifact — the bound copy wraps onto the photo).
+    Fully-contained overlays (intentional titles on full-bleed photos) are
+    skipped.
     """
     out: dict[str, list[str]] = {}
 
@@ -566,6 +574,18 @@ def _slot_warnings(
                        f"{b['name']} intersect")
                 _add(a["name"], msg)
                 _add(b["name"], msg)
+    # TEXT_OVER_IMAGE: text box partially crosses a picture slot's edge.
+    # Fully-contained overlays (intentional titles on full-bleed photos) are
+    # exempt — only partial overlaps (the text wraps off the free region).
+    for t in texts:
+        for img in images or []:
+            if crosses_image_edge(t, img):
+                _add(t["name"], (
+                    f"TEXT_OVER_IMAGE: text box crosses the edge of picture "
+                    f"'{img['name']}' ({img['w']:g}x{img['h']:g} at "
+                    f"{img['x']:g},{img['y']:g}) — bound copy will wrap onto "
+                    f"the image"
+                ))
     return out
 
 
@@ -802,7 +822,8 @@ def classify_layout(
                 "class": _image_class(i, canvas_w, canvas_h),
             }
         warnings = _slot_warnings(
-            texts, px_per_pt=px_per_pt, tokens=tokens, slot_roles=slot_roles)
+            texts, px_per_pt=px_per_pt, tokens=tokens, slot_roles=slot_roles,
+            images=images)
         if warnings:
             profile["slot_warnings"] = warnings
     if images:

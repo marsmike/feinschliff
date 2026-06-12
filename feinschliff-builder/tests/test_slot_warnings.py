@@ -144,3 +144,46 @@ def test_impossible_box_grace_tolerates_borderline(tmp_path):
     profile = _classify(dsl, brand)
     assert not any(w.startswith("IMPOSSIBLE_BOX")
                    for w in profile.get("slot_warnings", {}).get("text_1", []))
+
+
+def test_text_over_image_flagged(tmp_path):
+    """Full-width text box crossing a right-half picture (slide-22 class).
+
+    text 75,208 maxwidth:1835 maxheight:787 + picture 1006,0 914x1080
+    The text box right edge (75+1835=1910) extends well past the picture
+    left edge (1006) — TEXT_OVER_IMAGE must be reported for text_1.
+    """
+    brand = _brand(tmp_path)
+    dsl = (
+        'canvas 1920x1080\n'
+        'picture 1006,0 914x1080 path:"{{ image2 | default(\\"placeholder.jpg\\") }}"\n'
+        'text 75,208 size:16pt maxwidth:1835 maxheight:787 '
+        '"{{ text_1 | default(\\"Body copy that wraps onto the photo\\") }}"\n'
+    )
+    profile = _classify(dsl, brand)
+    warnings = profile.get("slot_warnings", {})
+    assert any(w.startswith("TEXT_OVER_IMAGE")
+               for w in warnings.get("text_1", [])), (
+        f"Expected TEXT_OVER_IMAGE on text_1; got: {warnings}"
+    )
+
+
+def test_text_inside_fullbleed_image_not_flagged(tmp_path):
+    """Title fully inside a full-bleed photo = intentional overlay (chapter-2 class).
+
+    picture 0,0 1920x1080 + text 75,483 maxwidth:1835 maxheight:81
+    The text box is entirely contained within the picture → NOT flagged.
+    """
+    brand = _brand(tmp_path)
+    dsl = (
+        'canvas 1920x1080\n'
+        'picture 0,0 1920x1080 path:"{{ image2 | default(\\"placeholder.jpg\\") }}"\n'
+        'text 75,483 size:30pt maxwidth:1835 maxheight:81 '
+        '"{{ text_1 | default(\\"Chapter Title\\") }}"\n'
+    )
+    profile = _classify(dsl, brand)
+    warnings = profile.get("slot_warnings", {})
+    assert not any(w.startswith("TEXT_OVER_IMAGE")
+                   for w in warnings.get("text_1", [])), (
+        f"Unexpected TEXT_OVER_IMAGE on text_1 (fully contained overlay); got: {warnings}"
+    )

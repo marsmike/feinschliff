@@ -33,7 +33,13 @@ from feinschliff_builder.decompile.layout_profile_gen import (
     classify_layout,
     derive_deck_map,
 )
-from feinschliff_builder.decompile.slotify import add_autoshrink, autoshrink_enabled, slotify_dsl
+from feinschliff_builder.decompile.slotify import (
+    add_autoshrink,
+    autoshrink_enabled,
+    clip_text_to_images,
+    clip_to_images_enabled,
+    slotify_dsl,
+)
 from feinschliff_builder.verify.verify_map import load_verify_map
 
 _DECK_MAP_HEADER = (
@@ -72,13 +78,19 @@ def main() -> int:
     if not layouts_dir.is_dir():
         sys.exit(f"no layouts/ in {args.brand_pack}")
 
+    clip_enabled = clip_to_images_enabled(brand_pack)
     total_slots = 0
     unslotified_text = 0
     unslotified_pics = 0
     slotified: dict[str, str] = {}  # layout name → slotified DSL text
+    clip_log: dict[str, list[str]] = {}  # layout name → clip log lines
     for path in sorted(layouts_dir.glob("*.slide.dsl")):
         text = path.read_text(encoding="utf-8")
         new_text, slots = slotify_dsl(text)
+        if clip_enabled:
+            new_text, clips = clip_text_to_images(new_text)
+            if clips:
+                clip_log[path.name[: -len(".slide.dsl")]] = clips
         leftovers = [ln for ln in new_text.splitlines()
                      if ln.startswith("text ") and '"' in ln and "{{" not in ln]
         bare_pics = [ln for ln in new_text.splitlines()
@@ -101,6 +113,12 @@ def main() -> int:
           f"{len(list(layouts_dir.glob('*.slide.dsl')))} layouts; "
           f"{unslotified_text} text lines left literal, "
           f"{unslotified_pics} pictures without slot")
+    if clip_log:
+        total_clips = sum(len(v) for v in clip_log.values())
+        print(f"text-over-image clips: {total_clips} across {len(clip_log)} layout(s):")
+        for name in sorted(clip_log):
+            for msg in clip_log[name]:
+                print(f"  {name}: {msg}")
 
     if not args.no_profiles and slotified:
         names = sorted(slotified)
