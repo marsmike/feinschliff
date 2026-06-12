@@ -104,6 +104,9 @@ _FIXED_CHROME_GUARD_ROLES = frozenset({
 #   fixed-chrome guard    -6   (profile `fixed_chrome: true` vs a
 #                                content/data caller role — see
 #                                _FIXED_CHROME_GUARD_ROLES)
+#   baked-text guard      -6   (profile `chrome_text: true` vs the same
+#                                roles — chrome draws its own labels,
+#                                text slots must not be rebound)
 # Negative if role mismatched.
 #
 # The scoring table is no longer hand-maintained here: it is derived at
@@ -338,6 +341,18 @@ def pick_layout(
             score -= 6.0
             rationale_parts.append("fixed-chrome-guard")
 
+        # Baked-text guard: native chrome that draws its own <a:t> labels
+        # (`chrome_text: true`) — binding the overlapping text slots would
+        # overprint them. Same additive sink for content/data roles as the
+        # fixed-chrome guard, with its own tag so the planner sees why.
+        baked_hit = (
+            bool(profile.get("chrome_text"))
+            and role in _FIXED_CHROME_GUARD_ROLES
+        )
+        if baked_hit:
+            score -= 6.0
+            rationale_parts.append("baked-text-guard")
+
         # Variety penalty: nudge recently-used layouts down so the deck
         # avoids visual monotony (Presenton principle: adjacent slides
         # should differ unless necessary). Structural layouts are exempt —
@@ -389,10 +404,10 @@ def pick_layout(
             rationale_parts.append(f"desc:{desc[:80]}")
 
         # Include layouts with positive score, OR layouts that received a
-        # when_not_to_use penalty / fixed-chrome guard (so the planning
-        # agent can read the demotion rationale even though the layout
-        # ranked low).
-        if score > 0 or neg_hits or guard_hit:
+        # when_not_to_use penalty / fixed-chrome guard / baked-text guard
+        # (so the planning agent can read the demotion rationale even
+        # though the layout ranked low).
+        if score > 0 or neg_hits or guard_hit or baked_hit:
             scored.append({
                 "layout": layout_id,
                 "score": score,

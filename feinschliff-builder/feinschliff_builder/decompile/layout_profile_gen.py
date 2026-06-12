@@ -45,6 +45,12 @@ unrelated illustration. Geometry comes from the payload's root
 12192000x6858000 EMU slide). When any illustration payload cannot be
 decoded the gate falls back to the old ≤2-visible-slots rule (rule 8).
 
+Baked-text gate — an illustration payload whose XML carries non-whitespace
+`<a:t>` runs gets `chrome_text: true` (+ "; baked text" on `chrome_note`):
+the chrome draws its own labels, so binding the layout's overlapping text
+slots overprints them (ghosting). The picker sinks such layouts for
+content roles (`baked-text-guard`), mirroring the fixed-chrome guard.
+
 Semantic annotation fields — every profile carries `description: ""` (one
 line: what is on this slide) and, when native illustration chrome is
 present, `chrome_subject: ""` (what the illustration depicts); both are
@@ -231,6 +237,17 @@ def _native_kind(xml: str | None) -> str:
     if "<a:tbl" in xml:
         return "table"
     return "illustration"
+
+
+_BAKED_TEXT_RE = re.compile(r"<a:t>([^<]+)</a:t>")
+
+
+def _has_baked_text(xml: str) -> bool:
+    """True when the payload carries non-whitespace `<a:t>` runs — chrome
+    with its own labels baked in (a chevron flow with STEP texts). Binding
+    the layout's text slots overprints those labels, so the profile flags
+    it (`chrome_text`) for the picker's baked-text guard."""
+    return any(t.strip() for t in _BAKED_TEXT_RE.findall(xml))
 
 
 def _parse_natives(body: str, asset_root: Path | None) -> list[tuple[str, str | None]]:
@@ -452,6 +469,15 @@ def classify_layout(
         when_not_to_use = base + [r for r in _CHROME_GATE_AVOID
                                   if r not in base]
 
+    # Baked-text gate: illustration chrome whose XML carries its own visible
+    # `<a:t>` labels. Independent of area/slot count — even a small chevron
+    # strip with baked STEP texts makes the overlapping text slots
+    # un-rebindable (new copy renders over the baked labels).
+    chrome_text = any(
+        kind == "illustration" and xml is not None and _has_baked_text(xml)
+        for kind, xml in natives
+    )
+
     if role in ("title-primary", "chapter-opener", "quote", "closer"):
         ideal_count = [1, 2]
     else:
@@ -471,6 +497,8 @@ def classify_layout(
     profile["family"] = family
     if fixed_chrome:
         profile["fixed_chrome"] = True
+    if chrome_text:
+        profile["chrome_text"] = True
     # Annotation slots for a later human/vision pass (see apply_profile —
     # non-empty values survive regeneration).
     profile["description"] = ""
@@ -481,6 +509,7 @@ def classify_layout(
         profile["chrome_note"] = (
             "carries native source chrome verbatim: "
             + ", ".join(f"{n} {k}" for k, n in counts.items())
+            + ("; baked text" if chrome_text else "")
         )
     profile["slide_index"] = slide_index
     if texts or images:

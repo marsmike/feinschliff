@@ -30,6 +30,16 @@ _FAKE = {
         "data": "none", "comp": False,
         "fixed_chrome": True,
     },
+    "baked-chevrons": {
+        "role": "content-columns", "ideal_count": (2, 4),
+        "data": "none", "comp": False,
+        "chrome_text": True,
+    },
+    "baked-divider": {
+        "role": "chapter-opener", "ideal_count": (1, 2),
+        "data": "none", "comp": False,
+        "chrome_text": True,
+    },
 }
 
 
@@ -65,6 +75,32 @@ def test_guard_fires_for_every_content_role(role):
     # planner can read the demotion rationale even at a negative score.
     assert gated is not None
     assert "fixed-chrome-guard" in gated["rationale"]
+
+
+def test_chrome_text_layout_sinks_for_content_role():
+    """Chrome with baked <a:t> labels (`chrome_text: true`) cannot host
+    rebindable text — same -6 sink as fixed_chrome, own rationale tag, so
+    a planner sees WHY the layout sank (worldcup v4 slide-29 lesson)."""
+    ranked = pick_layout(
+        role="content-columns", concept_count=3, top_k=10, profiles=_FAKE,
+    )
+    plain = _entry(ranked, "plain-columns")
+    baked = _entry(ranked, "baked-chevrons")
+    assert plain is not None and baked is not None
+    assert baked["score"] == plain["score"] - 6.0
+    assert "baked-text-guard" in baked["rationale"]
+    assert "baked-text-guard" not in plain["rationale"]
+
+
+def test_chrome_text_guard_inert_for_framing_roles():
+    """Framing picks are unaffected — baked text on a divider is fine."""
+    ranked = pick_layout(
+        role="chapter-opener", concept_count=1, top_k=10, profiles=_FAKE,
+    )
+    baked = _entry(ranked, "baked-divider")
+    assert baked is not None
+    assert baked["score"] == 5.0  # role +3, count-in-band +2 — no guard
+    assert "baked-text-guard" not in baked["rationale"]
 
 
 def test_guard_inert_for_framing_roles():

@@ -309,6 +309,12 @@ Decompiled brand packs carry planning metadata — consume it here:
   fact-heavy content. The picker already sinks these for content/data
   roles (`fixed-chrome-guard`); don't pin one over its objection
   without cause.
+- **`chrome_text: true`** marks layouts whose native graphic draws its
+  own text labels (e.g. a chevron process flow with baked STEP texts).
+  Binding the overlapping text slots renders new copy OVER the baked
+  labels (ghosting). Never bind such a layout's body slots with new
+  text — leave the slot defaults, or use a toolkit equivalent
+  (process-flow, …) in brand tokens. Picker tag: `baked-text-guard`.
 - **Image slots** declare `class: replace` or `class: keep` in the
   frontmatter `slots:` map. For `replace` slots, bind a topical image
   (ctx var) or set a `query:` derived from the slide content — the

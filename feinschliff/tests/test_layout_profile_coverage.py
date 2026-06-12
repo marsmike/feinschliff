@@ -113,15 +113,18 @@ _MINIMAL_FM = (
 
 
 def test_parse_profile_passes_through_content_metadata():
-    """fixed_chrome / description / chrome_subject ride through verbatim."""
+    """fixed_chrome / chrome_text / description / chrome_subject ride
+    through verbatim."""
     profile = parse_profile(
         _MINIMAL_FM
         + "fixed_chrome: true\n"
+        + "chrome_text: true\n"
         + "description: Workshop illustrations left, text column right\n"
         + "chrome_subject: courtyard planters\n",
         source="t",
     )
     assert profile["fixed_chrome"] is True
+    assert profile["chrome_text"] is True
     assert profile["description"] == "Workshop illustrations left, text column right"
     assert profile["chrome_subject"] == "courtyard planters"
 
@@ -129,7 +132,7 @@ def test_parse_profile_passes_through_content_metadata():
 def test_parse_profile_content_metadata_absent_is_omitted():
     """Optional means optional: absent fields don't appear at all."""
     profile = parse_profile(_MINIMAL_FM, source="t")
-    for key in ("fixed_chrome", "description", "chrome_subject"):
+    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject"):
         assert key not in profile
 
 
@@ -139,11 +142,12 @@ def test_parse_profile_content_metadata_wrong_type_is_ignored():
     profile = parse_profile(
         _MINIMAL_FM
         + "fixed_chrome: maybe\n"   # str, not bool
+        + "chrome_text: sometimes\n"  # str, not bool
         + "description: [a, b]\n"   # list, not str
         + "chrome_subject: 7\n",    # int, not str
         source="t",
     )
-    for key in ("fixed_chrome", "description", "chrome_subject"):
+    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject"):
         assert key not in profile
     # Existing strictness is untouched.
     with pytest.raises(ProfileError):

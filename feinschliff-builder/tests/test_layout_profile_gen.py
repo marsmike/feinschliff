@@ -185,6 +185,48 @@ def test_undecodable_native_defaults_to_illustration():
     assert p["role"] == "chapter-opener"
 
 
+BAKED_TEXT_ILLU_XML = (
+    '<p:sp xmlns:p="p" xmlns:a="a"><p:spPr><a:custGeom/></p:spPr>'
+    '<p:txBody><a:p><a:r><a:t>STEP 1</a:t></a:r></a:p></p:txBody></p:sp>'
+)
+
+
+def test_illustration_with_baked_text_sets_chrome_text():
+    """Illustration chrome that carries its own <a:t> labels (e.g. a chevron
+    process graphic with baked STEP texts) must be flagged — binding text
+    slots over it overprints the baked labels (worldcup v4 slide-29)."""
+    dsl = (HEADER + native(BAKED_TEXT_ILLU_XML)
+           + prose_slots(1, 3) + footer_slots(4))
+    p = classify(dsl)
+    assert p["chrome_text"] is True
+    assert "baked text" in p["chrome_note"]
+
+
+def test_illustration_without_text_has_no_chrome_text():
+    dsl = (HEADER + native(ILLUSTRATION_XML)
+           + prose_slots(1, 3) + footer_slots(4))
+    p = classify(dsl)
+    assert "chrome_text" not in p
+
+
+def test_chart_text_does_not_set_chrome_text():
+    """Charts/tables/SmartArt always carry <a:t> — only decorative
+    illustration chrome gates on baked text."""
+    xml = ('<p:graphicFrame xmlns:p="p"><a:graphic><c:chart r:id="rId2"/>'
+           '<a:t>Axis label</a:t></a:graphic></p:graphicFrame>')
+    dsl = HEADER + native(xml, "graphic1") + slot(1, "Growth by sector", pt=40)
+    p = classify(dsl)
+    assert "chrome_text" not in p
+
+
+def test_whitespace_only_baked_text_is_ignored():
+    xml = ('<p:sp xmlns:p="p" xmlns:a="a"><p:spPr><a:custGeom/></p:spPr>'
+           '<p:txBody><a:p><a:r><a:t> </a:t></a:r></a:p></p:txBody></p:sp>')
+    dsl = (HEADER + native(xml) + prose_slots(1, 3) + footer_slots(4))
+    p = classify(dsl)
+    assert "chrome_text" not in p
+
+
 def test_full_bleed_image_is_title_with_visual():
     dsl = HEADER + FULL_BLEED_PICTURE + slot(1, "Last year", pt=54)
     p = classify(dsl, name="last-year")
