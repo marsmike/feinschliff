@@ -162,7 +162,8 @@ def test_embed_skips_unreadable_font_file(tmp_path, monkeypatch):
     monkeypatch.setattr(_fe, "find_font_file", _fake_find)
 
     prs, tokens = _build()
-    import io, sys as _sys
+    import io
+    import sys as _sys
     buf = io.StringIO()
     monkeypatch.setattr(_sys, "stderr", buf)
     result = embed_brand_fonts(prs, tokens)
