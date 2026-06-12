@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from feinschmiede.diagrams.diagram_wireframe import primitives_from_svg_dsl, primitives_from_excalidraw_dsl
-from feinschmiede.diagrams.text_metrics import CHAR_WIDTH_EM, SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES, char_width_em_for
+from feinschmiede.diagrams.text_metrics import SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES, char_width_em_for
 from feinschmiede.diagrams.brand_bridge import resolve_fonts
 
 
@@ -167,7 +167,7 @@ def test_text_width_constant_under_kill_switch(monkeypatch):
     try:
         text = "Hello"
         level = "title"
-        size = SVG_TEXT_SIZES[level]  # 22
+        # size = SVG_TEXT_SIZES["title"] = 22
         # hand-computed: int(22 * 0.62 * 5) = int(68.2) = 68
         expected_w = 68
         dsl = f'text t1 100,100 {level} "{text}"'
