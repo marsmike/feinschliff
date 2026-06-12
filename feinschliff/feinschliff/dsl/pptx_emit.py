@@ -756,10 +756,12 @@ def _blend_toward(hex_color: str, target_hex: str, t: float) -> str:
     """Linearly blend `hex_color` toward `target_hex` by fraction `t` (0..1).
     Approximates run alpha over a solid background — python-pptx has no
     native alpha on text runs, so we pre-blend toward the slide paper."""
-    h = hex_color.lstrip("#"); g = target_hex.lstrip("#")
+    h = hex_color.lstrip("#")
+    g = target_hex.lstrip("#")
     out = []
     for i in (0, 2, 4):
-        c = int(h[i:i+2], 16); tg = int(g[i:i+2], 16)
+        c = int(h[i:i+2], 16)
+        tg = int(g[i:i+2], 16)
         out.append(round(c + (tg - c) * t))
     return "#{:02X}{:02X}{:02X}".format(*out)
 
