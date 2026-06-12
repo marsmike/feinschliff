@@ -165,7 +165,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
 
     # 1. authored plan + lint gate (before expensive transcription)
     authored = planmod.load_plan(plan_path)
-    errors, warnings = lint_beats(authored["beats"], meta["duration"])
+    errors, warnings = lint_beats(authored["beats"], meta["duration"],
+                                   base_dir=plan_path.parent)
     for w in warnings:
         print(f"lint warning: {w}", file=sys.stderr)
     if errors:
@@ -183,7 +184,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
 
     # 2b. re-lint the ALIGNED beats — alignment shifts timing and may break
     # doctrine floors (e.g. a takeover snapping under the 1.5s floor).
-    a_errors, a_warnings = lint_beats(aligned["beats"], meta["duration"])
+    a_errors, a_warnings = lint_beats(aligned["beats"], meta["duration"],
+                                      base_dir=plan_path.parent)
     for w in a_warnings:
         print(f"lint (aligned) warning: {w}", file=sys.stderr)
     if a_errors:

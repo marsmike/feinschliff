@@ -124,3 +124,21 @@ def test_verify_duration_mismatch_fails():
 
 def test_verify_duration_within_tolerance_passes():
     assert verifymod.check_durations(20.0, 20.1) == []
+
+
+def test_vertical_timeline_extension_not_capped():
+    # Craft words that span > MAX_BEAT so a non-sequence kind would be capped.
+    long_words = [
+        {"w": "they", "s": 1.0, "e": 1.2},
+        {"w": "used", "s": 1.5, "e": 1.7},
+        {"w": "chatgpt", "s": 2.0, "e": 2.4},
+        {"w": "claude", "s": 4.0, "e": 4.5},
+        {"w": "and", "s": 5.5, "e": 5.7},
+        {"w": "grok", "s": 6.5, "e": 6.9},
+        {"w": "to", "s": 7.5, "e": 7.6},
+        {"w": "build", "s": 8.0, "e": 8.5},
+    ]
+    beat = {"kind": "vertical_timeline", "start_sec": 1.0, "end_sec": 2.0,
+            "speech_anchor": "they used chatgpt claude and grok to build"}
+    out = align.align_beats([beat], long_words)[0]
+    assert out["end_sec"] > out["start_sec"] + align.MAX_BEAT
