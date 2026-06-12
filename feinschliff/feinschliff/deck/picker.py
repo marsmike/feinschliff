@@ -234,6 +234,7 @@ class LayoutPicker:
             diagram_complexity=slot_hint.get("diagram_complexity"),
             layout_history=slot_hint.get("layout_history"),
             slot_lengths=slot_hint.get("slot_lengths"),
+            predecessor=slot_hint.get("predecessor"),
             top_k=fetch_k,
             profiles=self._profile_table(),
         )

@@ -49,6 +49,13 @@ slot_lengths    dict  optional mapping of slot name → int character count
                      Absent budgets (no `chars` key in the profile slot)
                      and absent slot_lengths entries are both treated as
                      unknown and skipped — only the intersection is scored.
+predecessor     dict  optional previous slide's signals dict, including its
+                     chosen `layout` id. Evaluated against this layout's
+                     `follows_not` / `follows_well` frontmatter predicates
+                     (`signal=value` syntax). Each follows_not hit: −1.5.
+                     Each follows_well hit: +0.75. Additive, soft — never
+                     a hard block. Pinned layouts bypass the picker and
+                     are not affected.
 """
 from __future__ import annotations
 
@@ -120,6 +127,11 @@ _FIXED_CHROME_GUARD_ROLES = frozenset({
 #                                scaled by _BUDGET_PENALTY_SCALE; only
 #                                the intersection of declared chars budgets
 #                                and provided slot_lengths is evaluated)
+#   follows_not penalty   −1.5/hit (predecessor signal matches a
+#                                follows_not predicate; additive across
+#                                multiple hits; never a hard block)
+#   follows_well bonus    +0.75/hit (predecessor signal matches a
+#                                follows_well predicate; additive)
 #   fixed-chrome guard    -6   (profile `fixed_chrome: true` vs a
 #                                content/data caller role — see
 #                                _FIXED_CHROME_GUARD_ROLES)
@@ -197,6 +209,7 @@ def pick_layout(
     diagram_complexity: Literal["simple", "medium", "deep"] | None = None,
     layout_history: list | None = None,
     slot_lengths: dict[str, int] | None = None,
+    predecessor: dict | None = None,
     top_k: int = 3,
     profiles: dict[str, dict] | None = None,
 ) -> list[dict]:
@@ -235,6 +248,13 @@ def pick_layout(
     budgets and provided lengths, capped at 100 % per slot, scaled by
     ``_BUDGET_PENALTY_SCALE``). Layouts with no declared budgets are
     unaffected. The penalty is never a hard rejection.
+
+    `predecessor` is the previous slide's signals dict, including its
+    chosen ``layout`` id. When provided, each candidate layout's
+    ``follows_not`` / ``follows_well`` frontmatter predicates are matched
+    against it: each ``follows_not`` hit subtracts 1.5; each
+    ``follows_well`` hit adds 0.75. Adjustments are additive and soft —
+    they shift rank but never hard-block a layout.
 
     `profiles` is the ``{name: affinity-profile}`` table to score against.
     When ``None`` (the default), the cached toolkit-only table built from
@@ -362,6 +382,32 @@ def pick_layout(
         if neg_hits:
             rationale_parts.append(f"negative-guidance:{','.join(neg_hits)}")
 
+        # Adjacency (sequencing) scoring: evaluate this layout's follows_not /
+        # follows_well predicates against the predecessor slide's signals dict
+        # (which carries role, narrative_act, and layout of the prior slide).
+        # Each follows_not hit: −1.5. Each follows_well hit: +0.75. Additive,
+        # soft — ranking bias only, never a hard block.
+        adjacency_hit = False
+        if predecessor is not None:
+            pred_signals = dict(predecessor)
+            follows_not_rules = profile.get("follows_not") or []
+            for rule in follows_not_rules:
+                if "=" not in rule:
+                    continue
+                sig, expected = rule.split("=", 1)
+                if str(pred_signals.get(sig.strip())).lower() == expected.strip().lower():
+                    score -= 1.5
+                    adjacency_hit = True
+                    rationale_parts.append(f"follows-not:{rule}")
+            follows_well_rules = profile.get("follows_well") or []
+            for rule in follows_well_rules:
+                if "=" not in rule:
+                    continue
+                sig, expected = rule.split("=", 1)
+                if str(pred_signals.get(sig.strip())).lower() == expected.strip().lower():
+                    score += 0.75
+                    rationale_parts.append(f"follows-well:{rule}")
+
         # Slot budget penalty: steers toward layouts whose declared per-slot
         # char budgets fit the content being placed. Only the intersection of
         # slots with an int `chars` budget in the profile AND a length in
@@ -476,10 +522,10 @@ def pick_layout(
             rationale_parts.append(f"use:{use[:80]}")
 
         # Include layouts with positive score, OR layouts that received a
-        # when_not_to_use penalty / fixed-chrome guard / baked-text guard
-        # (so the planning agent can read the demotion rationale even
-        # though the layout ranked low).
-        if score > 0 or neg_hits or guard_hit or baked_hit:
+        # when_not_to_use penalty / adjacency demotion / fixed-chrome guard /
+        # baked-text guard — so the planning agent can read the demotion
+        # rationale even though the layout ranked low.
+        if score > 0 or neg_hits or adjacency_hit or guard_hit or baked_hit:
             scored.append({
                 "layout": layout_id,
                 "score": score,

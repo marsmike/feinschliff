@@ -122,6 +122,12 @@ def plan_deck_layouts(
           "rationale":       list of rationale strings (picker + budget),
         }
 
+    Each slide is picked with `predecessor=` set to the prior slide's
+    signal kwargs plus its chosen ``layout`` id, so adjacency rules
+    (``follows_not`` / ``follows_well``) in layout frontmatter can be
+    evaluated against what actually precedes the slide — pinned and
+    fallback picks included.
+
     A slide with no viable candidates falls back to `text-picture`. The
     fallback is recorded in the returned assignment but NOT counted
     against `text-picture`'s deck-wide usage budget or appended to the
@@ -134,13 +140,15 @@ def plan_deck_layouts(
     usage: Counter[str] = Counter()
     history: list[str] = []
     assignments: list[dict] = []
+    predecessor_signals: dict | None = None
 
     for signals in slide_signals:
         pinned = signals.get("layout")
         if isinstance(pinned, str) and pinned:
             # Explicit `layout:` pin — bypasses the picker (and any
             # deck-map default) entirely, but still counts toward usage
-            # and history so later slides rotate around it.
+            # and history so later slides rotate around it. The pinned
+            # slide is still the visual predecessor for the next slide.
             assignments.append({
                 "layout":       pinned,
                 "base_score":   0.0,
@@ -149,6 +157,14 @@ def plan_deck_layouts(
             })
             history.append(pinned)
             usage[pinned] += 1
+            # Build predecessor from this slide's declared signals + the
+            # pinned layout id so adjacency rules on the next slide fire.
+            predecessor_signals = {
+                "role":           signals.get("role"),
+                "narrative_act":  signals.get("narrative_act"),
+                "narrative_role": signals.get("narrative_role"),
+                "layout":         pinned,
+            }
             continue
 
         kwargs = {
@@ -167,6 +183,7 @@ def plan_deck_layouts(
         candidates = pick_layout(
             **kwargs,
             layout_history=history,
+            predecessor=predecessor_signals,
             top_k=candidate_window,
             profiles=profiles,
         )
@@ -179,16 +196,19 @@ def plan_deck_layouts(
                 candidates, role=signals.get("role"), deck_map=deck_map,
             )
         if not candidates:
-            # Fallback: no signals matched any layout. Record the
-            # text-picture pick but skip the usage/history bookkeeping
+            # Fallback: no signals matched any layout. The fallback pick
+            # (text-picture) IS the visual predecessor for the next slide —
+            # it sits in the deck and its position affects adjacency.
+            # Skip usage/history bookkeeping (not a genuine affinity pick)
             # so a later genuine text-picture slide still sees its full
-            # unused-layout bonus.
+            # unused-layout bonus, but do update predecessor_signals.
             assignments.append({
                 "layout":       "text-picture",
                 "base_score":   0.0,
                 "budget_bonus": 0.0,
                 "rationale":    ["fallback:no-candidates"],
             })
+            predecessor_signals = {**kwargs, "layout": "text-picture"}
             continue
 
         # Re-rank with the budget bonus. Sort key matches the picker's
@@ -222,5 +242,6 @@ def plan_deck_layouts(
         })
         history.append(winner["layout"])
         usage[winner["layout"]] += 1
+        predecessor_signals = {**kwargs, "layout": winner["layout"]}
 
     return assignments

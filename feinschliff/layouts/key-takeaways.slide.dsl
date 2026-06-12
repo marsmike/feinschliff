@@ -6,6 +6,14 @@ comparison: false
 narrative_act: resolution
 description: 'Dark navy background, four takeaway cards across: gold rule, numbered index, bold heading, two-sentence elaboration
   each'
+follows_not:
+  - role=title-primary
+  - role=agenda
+  - role=chapter-opener
+follows_well:
+  - role=content-columns
+  - role=data-quantity
+  - narrative_act=complication
 ---
 # key-takeaways — end-of-section summary on the dark ink ground. 2–4
 # takeaway columns with gold rule, mono number, white heading, gray-blue

@@ -5,6 +5,12 @@ data_band: none
 comparison: false
 variety_exempt: true
 description: Dark navy full-bleed left panel with large chapter number and title; right half blank paper for breathing room
+follows_not:
+  - role=chapter-opener
+follows_well:
+  - role=agenda
+  - role=closer
+  - role=content-columns
 ---
 # chapter-ink — section divider on the dark ink ground. Layout mirrors
 # chapter-orange with inverted chrome plus an editorial image, right half.

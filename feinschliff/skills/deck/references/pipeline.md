@@ -197,7 +197,9 @@ After step 1b displays, stop here. Don't proceed to step 2. Jump directly to ste
 
 Between step 1b approval and step 2 plan, run a **title-only storyline
 gate**. This catches broken narrative arcs *before* render budget is
-spent on layouts and content.
+spent on layouts and content. For the theory behind valid `narrative_act`
+orderings and structural slide placement, see
+[`references/slide-grammar.md`](slide-grammar.md).
 
 The orchestrating LLM (you) does four things, in order:
 

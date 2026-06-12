@@ -6,6 +6,13 @@ comparison: false
 narrative_act: resolution
 description: Large action-title headline top-left, supporting paragraph left, two jumbo KPI numerals with label and caption
   right
+follows_not:
+  - role=closer
+  - role=title-primary
+follows_well:
+  - role=content-columns
+  - role=data-comparison
+  - role=data-quantity
 ---
 # action-title — McKinsey-style takeaway slide. Title carries the
 # so-what; supporting body + optional KPIs sit beneath; source line at
