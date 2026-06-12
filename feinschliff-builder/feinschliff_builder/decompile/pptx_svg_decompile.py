@@ -195,6 +195,14 @@ class Shape:
     # placeholder's text fits its box instead of overflowing the final render.
     autoshrink: bool = False
     font_scale: float = 1.0
+    # Paragraph line spacing from `<a:pPr><a:lnSpc><a:spcPct val="N"/>`:
+    # multiplier (N/100000), or None when the source paragraph carries no
+    # explicit lnSpc — PowerPoint then uses the font's native single
+    # spacing. None must round-trip to an emitted text frame WITHOUT a
+    # lnSpc element (`linespacing:native`), NOT to the toolkit's 1.2
+    # default: writing 120% onto source-default paragraphs pushed every
+    # decompiled headline a quarter-line down the slide.
+    line_spacing: float | None = None
     # Text-frame internal insets as (l, t, r, b) in design-px. Source carries
     # these on `<a:bodyPr lIns="..." tIns="..." rIns="..." bIns="...">` in EMU.
     # When absent on source, defaults to PowerPoint's published 91440 / 45720
@@ -778,6 +786,39 @@ def _layout_placeholder_autofit(slide, ph_type: str | None, ph_idx: str | None) 
             if sp.find(".//p:txBody/a:bodyPr/a:normAutofit", NS) is not None:
                 return True
     return False
+
+
+def _layout_placeholder_line_spacing(slide, ph_type: str | None,
+                                     ph_idx: str | None) -> float | None:
+    """Effective INHERITED paragraph line spacing for a placeholder: the
+    layout / master placeholder's lvl1pPr lnSpc, then the master txStyles
+    (titleStyle for titles, bodyStyle for everything else). Corporate
+    masters routinely set spacing ONLY here (Bosch: bodyStyle 107%,
+    titleStyle 89%) — a slide paragraph with no own lnSpc must inherit it,
+    not fall through to `linespacing:native`. Returns the multiplier or
+    None when no ancestor specifies one (true native single spacing)."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+
+    def _pct(el) -> float | None:
+        if el is not None and el.get("val"):
+            try:
+                return int(el.get("val")) / 100000.0
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            v = _pct(sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:lnSpc/a:spcPct", NS))
+            if v is not None:
+                return v
+    style_name = {"title": "titleStyle",
+                  "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        return _pct(master.element.find(
+            f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:lnSpc/a:spcPct", NS))
+    return None
 
 
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
@@ -1788,6 +1829,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     padding_emu: tuple[int, int, int, int] | None = None
     autoshrink = False
     font_scale = 1.0
+    line_spacing: float | None = None
     # NOT `find(...) or find(...)` — lxml element truthiness is based on
     # child count, so a childless <p:txBody/> would falsily fall through.
     txBody = ch.find(".//p:txBody", NS)
@@ -1841,6 +1883,17 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                         font_scale = int(na.get("fontScale")) / 100000.0
                     except (TypeError, ValueError):
                         pass
+        # Explicit paragraph line spacing — first paragraph's
+        # <a:pPr><a:lnSpc><a:spcPct val="N"/> wins (consistent with how
+        # color/size/align pick the first content run). Absent → None →
+        # the emitter writes NO lnSpc so the renderer's native single
+        # spacing applies, exactly like the source.
+        spc = txBody.find("a:p/a:pPr/a:lnSpc/a:spcPct", NS)
+        if spc is not None and spc.get("val"):
+            try:
+                line_spacing = int(spc.get("val")) / 100000.0
+            except (TypeError, ValueError):
+                pass
     # Vertical anchor also inherits: a slide title with no own bodyPr anchor still
     # renders bottom/centre-anchored when the layout/master placeholder bodyPr sets
     # it (MS Geometric: master title placeholder anchor="b" → titles sit at the box
@@ -1853,6 +1906,11 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # still shrinks-to-fit — capture that (autoshrink) or the text overflows.
     if not autoshrink and (ph_type or ph_idx):
         autoshrink = _layout_placeholder_autofit(slide, ph_type, ph_idx)
+    # Line spacing inherits like anchor / autofit / insets: a placeholder
+    # paragraph with no own lnSpc takes the layout/master placeholder value,
+    # then the master txStyles (Bosch: bodyStyle 107%, titleStyle 89%).
+    if line_spacing is None and (ph_type or ph_idx):
+        line_spacing = _layout_placeholder_line_spacing(slide, ph_type, ph_idx)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
@@ -1969,7 +2027,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             kind="text", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
             text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, valign=valign,
             autoshrink=autoshrink, font_scale=font_scale,
-            padding=padding_px,
+            padding=padding_px, line_spacing=line_spacing,
         ))
         return
 
@@ -2050,23 +2108,38 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
                 media_part = slide.part.related_part(rid)
             except (KeyError, AttributeError):
                 media_part = None
-    # Template image: a small, non-placeholder <p:pic> (logo, mark, brand chrome)
-    # is fixed corporate-design identity — carry it natively (verbatim element +
-    # its media, base64-inline) rather than a fillable picture slot. Large or
-    # placeholder pics are CHANGEABLE topical content → they stay slots.
+    # Template image: changeability follows the SOURCE AUTHOR'S OWN MARKERS
+    # (provenance + media type), not a size heuristic:
+    #   placeholder pic        → picture slot — the template explicitly
+    #                            offers it for replacement. Detected by
+    #                            <p:ph> (ph_type) OR by the placeholder-
+    #                            derived shape NAME: filling a content
+    #                            placeholder with a picture can drop the
+    #                            <p:ph> element but keeps the name
+    #                            ("Content Placeholder 5",
+    #                            "Inhaltsplatzhalter 6", "Bildplatzhalter");
+    #   plain pic, JPEG media  → picture slot — photographs are topical
+    #                            content even when placed outside a
+    #                            placeholder (photo strips, cover shots);
+    #   plain pic, PNG/SVG/…   → fixed corporate-design graphic (logo,
+    #                            supergraphic, icon, illustration band,
+    #                            "Grafik N") — carry it natively (verbatim
+    #                            element + media) so it is NOT bindable.
+    # The previous mark-shape rule (min dimension ≤ 64px) left every
+    # content-sized PNG illustration as a bindable slot, which the audit
+    # then flagged and template users rightly complained about ("this CD
+    # band must not be replaceable").
     native_xml = None
     native_media = None
     _partname = str(getattr(media_part, "partname", "")).lower()
     _is_photo = _partname.endswith((".jpg", ".jpeg"))
-    # Template-chrome detection by MARK SHAPE, not area: logos / stamps are
-    # tiny in at least one dimension (B/S/H mark: 119x36). Anything at
-    # content size (tile thumbnails, photo strips, illustration icons) is a
-    # CHANGEABLE asset and must stay a picture slot — the old <12%-area rule
-    # carried 400px photo strips as fixed chrome. JPEG media is always
-    # content regardless of size.
-    _is_mark = min(cmap.w(w), cmap.h(h)) <= 64
-    if (ph_type is None and media_part is not None and len(offset) == 2
-            and not _is_photo and _is_mark):
+    _cnvpr = ch.find(".//p:nvPicPr/p:cNvPr", NS)
+    _shape_name = _cnvpr.get("name", "") if _cnvpr is not None else ""
+    _is_named_placeholder = bool(
+        re.search(r"placeholder|platzhalter", _shape_name, re.IGNORECASE))
+    if (ph_type is None and not _is_named_placeholder
+            and media_part is not None and len(offset) == 2
+            and not _is_photo):
         try:
             import base64 as _b64
             pic_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
@@ -2086,12 +2159,35 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     ))
 
 
+def _bent_route_local(prst: str, w: float, h: float,
+                      adj: dict[str, float]) -> list[tuple[float, float]] | None:
+    """Polyline route of a bentConnectorN preset in LOCAL (unrotated,
+    unflipped) shape coordinates, per the OOXML preset definitions. adj
+    values are fractions of w/h (val 50000 → 0.5)."""
+    a1 = adj.get("adj1", 0.5)
+    a2 = adj.get("adj2", 0.5)
+    a3 = adj.get("adj3", 0.5)
+    if prst == "bentConnector2":
+        return [(0, 0), (w, 0), (w, h)]
+    if prst == "bentConnector3":
+        x1 = a1 * w
+        return [(0, 0), (x1, 0), (x1, h), (w, h)]
+    if prst == "bentConnector4":
+        x1, y1 = a1 * w, a2 * h
+        return [(0, 0), (x1, 0), (x1, y1), (w, y1), (w, h)]
+    if prst == "bentConnector5":
+        x1, y1, x2 = a1 * w, a2 * h, a3 * w
+        return [(0, 0), (x1, 0), (x1, y1), (x2, y1), (x2, h), (w, h)]
+    return None
+
+
 def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
     spPr = ch.find("p:spPr", NS)
     xfrm = _get_xfrm(spPr)
     if xfrm is None:
         return
-    x, y, w, h = xfrm
+    x0, y0, w0, h0 = xfrm
+    x, y, w, h = x0, y0, w0, h0
     # Offset is a 2-tuple (translation-only ancestor groups) or an 8-tuple
     # (scaled-group affine). Apply it exactly like _shape_bbox so a connector
     # inside a SCALED group doesn't crash (`ox, oy = offset` blew up on the
@@ -2104,6 +2200,13 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
         x = ax + (x - chox) * sx + ox
         y = ay + (y - choy) * sy + oy
         w, h = w * sx, h * sy
+
+    def _apply_offset(px: float, py: float) -> tuple[float, float]:
+        if len(offset) == 2:
+            return px + offset[0], py + offset[1]
+        ox, oy, ax, ay, chox, choy, sx, sy = offset
+        return ax + (px - chox) * sx + ox, ay + (py - choy) * sy + oy
+
     # Stroke color + width + dash from <a:ln w="..."><a:solidFill .../><a:prstDash .../></a:ln>.
     ln = spPr.find("a:ln", NS)
     stroke = None
@@ -2122,6 +2225,82 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
         dash = ln.find("a:prstDash", NS)
         if dash is not None and dash.get("val"):
             stroke_dash = dash.get("val")
+
+    # Bent connectors (the elbow trees of org charts and hierarchies): a
+    # straight line between the bbox corners misrepresents the route —
+    # PowerPoint draws axis-aligned H/V segments under a rot/flip transform.
+    # Decompile the preset route into explicit `line` segments instead.
+    # (Carrying the cxnSp verbatim does NOT work: LibreOffice routes a
+    # connector by its a:stCxn/a:endCxn shape references when present —
+    # in the rebuilt deck those IDs point at unrelated shapes — and its
+    # pure xfrm+rot+flip rendering of bent presets is wrong even in the
+    # unmodified source once the references are stripped.)
+    _geom = spPr.find("a:prstGeom", NS) if spPr is not None else None
+    _prst = (_geom.get("prst") or "") if _geom is not None else ""
+    if _prst.startswith("bentConnector") and w0 >= 0 and h0 >= 0:
+        adj: dict[str, float] = {}
+        av = _geom.find("a:avLst", NS)
+        if av is not None:
+            for gd in av.findall("a:gd", NS):
+                fmla = gd.get("fmla") or ""
+                if fmla.startswith("val "):
+                    try:
+                        adj[gd.get("name") or ""] = int(fmla[4:]) / 100000.0
+                    except ValueError:
+                        pass
+        pts = _bent_route_local(_prst, float(w0), float(h0), adj)
+        if pts is not None:
+            xfrm_el = spPr.find("a:xfrm", NS)
+            flip_h = xfrm_el.get("flipH") in ("1", "true")
+            flip_v = xfrm_el.get("flipV") in ("1", "true")
+            try:
+                rot_deg = int(xfrm_el.get("rot") or 0) / 60000.0
+            except ValueError:
+                rot_deg = 0.0
+            if flip_h:
+                pts = [(w0 - px, py) for px, py in pts]
+            if flip_v:
+                pts = [(px, h0 - py) for px, py in pts]
+            # Rotate about the local box center (clockwise in y-down slide
+            # coordinates, like OOXML rot), then translate into slide space
+            # and through the group offset/affine.
+            rad = math.radians(rot_deg)
+            cosr, sinr = math.cos(rad), math.sin(rad)
+            ccx, ccy = w0 / 2.0, h0 / 2.0
+            abs_pts = []
+            for px, py in pts:
+                dx, dy = px - ccx, py - ccy
+                rx = dx * cosr - dy * sinr
+                ry = dx * sinr + dy * cosr
+                abs_pts.append(_apply_offset(x0 + ccx + rx, y0 + ccy + ry))
+            # Dedupe across sibling connectors too — two elbows fanning out
+            # of the same parent share their trunk segment verbatim.
+            seen_segs: set[tuple[int, int, int, int]] = {
+                (s.x, s.y, s.x + s.w, s.y + s.h)
+                for s in shapes if s.kind == "line"
+            }
+            for (ax1, ay1), (ax2, ay2) in zip(abs_pts, abs_pts[1:]):
+                # Normalise direction (full-endpoint swap, so diagonals
+                # keep their slope) — downstream treats lines as x,y + w,h
+                # and expects non-negative extents where possible.
+                if (ax2, ay2) < (ax1, ay1):
+                    (ax1, ay1), (ax2, ay2) = (ax2, ay2), (ax1, ay1)
+                px1, py1 = cmap.x(ax1), cmap.y(ay1)
+                px2, py2 = cmap.x(ax2), cmap.y(ay2)
+                # Skip segments that collapse to a point at canvas resolution
+                # (a degenerate connector axis, adj at 0/100%) and exact
+                # duplicates (sibling elbows share their trunk segment).
+                if (px1, py1) == (px2, py2) or (px1, py1, px2, py2) in seen_segs:
+                    continue
+                seen_segs.add((px1, py1, px2, py2))
+                shapes.append(Shape(
+                    kind="line", x=px1, y=py1, w=px2 - px1, h=py2 - py1,
+                    stroke=stroke or "fog",
+                    stroke_width=stroke_width,
+                    stroke_dash=stroke_dash,
+                ))
+            return
+
     shapes.append(Shape(
         kind="line", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         stroke=stroke or "fog",
@@ -4013,6 +4192,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # autoshrink: source bodyPr had normAutofit — arm the emitter's fit as a
         # safety net (no-op when the scaled size already fits the box).
         autoshrink_attr = " autoshrink:true" if t.autoshrink else ""
+        # linespacing: explicit source spcPct → its multiplier; absent →
+        # `native` so the emitter writes NO lnSpc and the renderer's single
+        # spacing applies (the toolkit's 1.2 default pushed every
+        # source-default headline a quarter-line down).
+        linespacing_attr = (
+            f" linespacing:{t.line_spacing:g}" if t.line_spacing is not None
+            else " linespacing:native"
+        )
         valign_attr = f" valign:{t.valign}" if t.valign else ""
         # Horizontal align — pick the first non-None align from the runs.
         # PPTX stores it per-paragraph; for a single emitted `text` primitive
@@ -4044,6 +4231,21 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         for _o in shapes:
             if _o is t:
                 continue
+            # A filled card rect that CONTAINS the text box bounds growth:
+            # text inside a card must not spill past the card's edges, even
+            # when nothing else shares the row (slide-45's org-chart root
+            # body grew across the whole slide once the elbow connectors
+            # stopped contributing a blocking bbox). Slide-sized panels
+            # (backgrounds, full-bleed bands ≥90% of both dimensions) don't
+            # count — text on those grows like background text.
+            if (_o.kind == "rect" and _o.fill
+                    and not (_o.w >= cmap.cw * 0.9 and _o.h >= cmap.ch * 0.9)
+                    and _o.x <= t.x + 2 and _o.y <= t.y + 2
+                    and _o.x + _o.w >= t.x + t.w - 2
+                    and _o.y + _o.h >= t.y + t.h - 2):
+                _right = min(_right, _o.x + _o.w)
+                _bottom = min(_bottom, _o.y + _o.h)
+                continue
             _y_overlap = not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h)
             if _y_overlap:
                 if _o.x >= t.x + t.w:
@@ -4062,7 +4264,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         if t.valign in (None, "top"):
             mh = max(mh, _bottom - t.y - _gap)
         out.append(
-            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{autoshrink_attr}{valign_attr}{align_attr}{padding_attr} '
+            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{autoshrink_attr}{linespacing_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'
         )
 
@@ -4108,8 +4310,12 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                     padding_attr = f" padding:{left:g}"
                 else:
                     padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
+            linespacing_attr = (
+                f" linespacing:{t.line_spacing:g}" if t.line_spacing is not None
+                else " linespacing:native"
+            )
             out.append(
-                f'text {t.x},{t.y} style:footer{color_attr}{size_attr}{padding_attr} '
+                f'text {t.x},{t.y} style:footer{color_attr}{size_attr}{linespacing_attr}{padding_attr} '
                 f'maxwidth:{mw} maxheight:{mh} "{text}"'
             )
 
