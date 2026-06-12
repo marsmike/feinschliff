@@ -210,3 +210,24 @@ def test_per_word_runs_coalesce_into_one_slot():
     dsl = f'native table1 b64:"{_b64(xml)}"\n'
     _new, slots, _ = slotify_native_text(dsl, None)
     assert [s["default"] for s in slots] == ["Lorem ipsum dolor", "BOLD"]
+
+
+def test_port_curation_with_mapping(tmp_path):
+    import importlib.util
+    from pathlib import Path as _P
+    script = _P(__file__).resolve().parents[1] / "scripts" / "brand_port_curation.py"
+    spec = importlib.util.spec_from_file_location("port_curation", script)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+
+    ref, fresh = tmp_path / "ref", tmp_path / "fresh"
+    (ref / "layouts").mkdir(parents=True)
+    (fresh / "layouts").mkdir(parents=True)
+    (ref / "layouts" / "slide-02.slide.dsl").write_text(
+        "---\ndescription: Curated desc\nwhen_to_use: Use wisely\n---\nbody\n")
+    (fresh / "layouts" / "slide-15.slide.dsl").write_text(
+        "---\ndescription: ''\nwhen_to_use: ''\n---\nbody\n")
+    n = mod.port_curation(ref, fresh, {"slide-15": "slide-02"})
+    assert n == 1
+    out = (fresh / "layouts" / "slide-15.slide.dsl").read_text()
+    assert "Curated desc" in out and "Use wisely" in out

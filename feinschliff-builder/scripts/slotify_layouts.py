@@ -67,6 +67,28 @@ def _slide_indices(brand_pack: Path, names: list[str]) -> tuple[dict[str, int], 
     return indices, total
 
 
+def _apply_deck_map_pins(brand_pack: Path, deck_map: dict) -> tuple[dict, bool]:
+    """Merge `<brand-pack>/deck-map.pins.yaml` over the generated deck-map.
+
+    Pins survive every regeneration: scalar roles (cover/agenda/closer)
+    override, a pinned `section:` list replaces the generated one, and all
+    pinned layouts are removed from `content`. Returns (map, pinned?)."""
+    pins_path = brand_pack / "deck-map.pins.yaml"
+    if not pins_path.is_file():
+        return deck_map, False
+    pins = yaml.safe_load(pins_path.read_text(encoding="utf-8")) or {}
+    for key in ("cover", "agenda", "closer"):
+        if pins.get(key):
+            deck_map[key] = pins[key]
+    if pins.get("section"):
+        deck_map["section"] = list(pins["section"])
+    pinned = {deck_map.get("cover"), deck_map.get("agenda"), deck_map.get("closer"),
+              *(deck_map.get("section") or [])}
+    deck_map["content"] = [x for x in (deck_map.get("content") or [])
+                           if x not in pinned]
+    return deck_map, True
+
+
 def _pack_width_emu(brand_pack: Path) -> float:
     """slide.width_emu from tokens.json (0.0 when absent — geometry check
     in strip_native_text_doubles then falls back to literal-only match)."""
@@ -187,9 +209,14 @@ def main() -> int:
                     for msg in msgs:
                         print(f"  {name}.{slot}: {msg}")
         deck_map = derive_deck_map(profiles)
+        deck_map, pinned = _apply_deck_map_pins(brand_pack, deck_map)
         if not args.dry_run:
+            header = _DECK_MAP_HEADER
+            if pinned:
+                header += ("# Roles merged from deck-map.pins.yaml — edit pins "
+                           "there, they survive regeneration.\n")
             (brand_pack / "deck-map.yaml").write_text(
-                _DECK_MAP_HEADER + yaml.safe_dump(
+                header + yaml.safe_dump(
                     deck_map, sort_keys=False, allow_unicode=True,
                     default_flow_style=None),
                 encoding="utf-8")
