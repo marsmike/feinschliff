@@ -84,6 +84,27 @@ React code — the shared engine in `edit-engine/` renders it.
 - **Every `image_path` needs a file extension** — the engine cannot infer a
   MIME type without one (lint errors).
 
+## Captions
+
+Word-synced captions are generated from `words.json` and on by default. The
+plan may only configure them — **never author chunk text**:
+
+```json
+"captions": {"enabled": true, "emphasis": ["exact workflow"]}
+```
+
+- **Emphasis phrases** are copied verbatim from `words.json` (multi-word, same
+  rule as anchors); matched words render accent + heavy weight. Unmatched
+  phrases surface as `captions warning:` lines — fix the wording, don't guess.
+- **Suppression:** takeovers and the lower-third text overlays (`word_pop`,
+  `hook_title`) silence captions for their whole window; visual overlays
+  (`image_card`, `ratio_dots`, `inline_chart`) keep them unless the chunk
+  shares a meaningful word with the beat's text. A ±0.8s echo pad around every
+  beat drops chunks sharing meaningful words with it.
+- **Known gap (digit vs word):** "Nine" spoken vs a `9 OF 12 FAILED` caption
+  don't token-match, so a brief "NINE OF MY" chunk renders under the dots —
+  near-duplication, not overlap ("12"/"failed" chunks ARE echo-dropped).
+
 ## Output contract
 
 - Preview: `<video stem>.preview.mp4` next to the source.
