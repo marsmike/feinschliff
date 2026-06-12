@@ -54,28 +54,13 @@ class CompileResult:
     defects: list[Defect]
 
 
-def _register_brand_font_metrics(tokens) -> None:
-    """Register tokens' `font-metrics` width ratios with the textfit table.
-
-    Block shape: ``{"<Family>": {"normal": 0.48, "bold": 0.53}, ...}``;
-    ``$``-prefixed keys (descriptions etc.) are skipped. Malformed entries
-    are ignored — metrics are a measurement aid, never a build-breaker.
-    """
-    from feinschliff.textfit import register_font_metrics
-
-    raw = getattr(tokens, "raw", None)
-    block = raw.get("font-metrics") if isinstance(raw, dict) else None
-    if not isinstance(block, dict):
-        return
-    for family, m in block.items():
-        if family.startswith("$") or not isinstance(m, dict):
-            continue
-        try:
-            register_font_metrics(
-                family, normal=float(m["normal"]), bold=float(m["bold"])
-            )
-        except (KeyError, TypeError, ValueError):
-            continue
+# Canonical implementation lives next to the budget walker so every
+# compute_slot_budgets entry point registers pack metrics, not just builds
+# that reach compile_slide. Re-exported under the old private name for
+# existing callers.
+from feinschliff.slot_budget import (  # noqa: E402
+    register_tokens_font_metrics as _register_brand_font_metrics,
+)
 
 
 def compile_slide(

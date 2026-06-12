@@ -35,7 +35,33 @@ from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, CompoundDef
 from feinschmiede.dsl.tokens import Tokens
-from feinschliff.textfit import chars_per_line as _cpl, supported_fonts as _supported_fonts
+from feinschliff.textfit import (
+    chars_per_line as _cpl,
+    register_font_metrics as _register_font_metrics,
+    supported_fonts as _supported_fonts,
+)
+
+
+def register_tokens_font_metrics(tokens) -> None:
+    """Register tokens' `font-metrics` width ratios with the textfit table.
+
+    Block shape: ``{"<Family>": {"normal": 0.48, "bold": 0.53}, ...}``;
+    ``$``-prefixed keys (descriptions etc.) are skipped. Malformed entries
+    are ignored — metrics are a measurement aid, never a build-breaker.
+    """
+    raw = getattr(tokens, "raw", None)
+    block = raw.get("font-metrics") if isinstance(raw, dict) else None
+    if not isinstance(block, dict):
+        return
+    for family, m in block.items():
+        if family.startswith("$") or not isinstance(m, dict):
+            continue
+        try:
+            _register_font_metrics(
+                family, normal=float(m["normal"]), bold=float(m["bold"])
+            )
+        except (KeyError, TypeError, ValueError):
+            continue
 
 
 # Design-px → EMU and pt legacy defaults (1920px / 13.33in baseline).
@@ -184,6 +210,13 @@ def compute_slot_budgets(
     constraint (false negatives) on already-fitting content; callers who
     want a safety buffer should pass it explicitly.
     """
+    # Brand packs ship width ratios for their own (often proprietary) fonts
+    # via a tokens `font-metrics` block. Register them here, not only in
+    # compile_slide: budgets are also computed from entry points that never
+    # compile a slide (the default static gate, deck plan-skeleton), and all
+    # of them pass `tokens`.
+    register_tokens_font_metrics(tokens)
+
     candidates: dict[str, list[SlotBudget]] = {}
 
     if compounds:

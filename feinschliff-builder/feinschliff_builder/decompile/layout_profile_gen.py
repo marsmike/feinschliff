@@ -45,10 +45,24 @@ unrelated illustration. Geometry comes from the payload's root
 12192000x6858000 EMU slide). When any illustration payload cannot be
 decoded the gate falls back to the old ≤2-visible-slots rule (rule 8).
 
+Baked-text gate — an illustration payload whose XML carries non-whitespace
+`<a:t>` runs gets `chrome_text: true` (+ "; baked text" on `chrome_note`):
+the chrome draws its own labels, so binding the layout's overlapping text
+slots overprints them (ghosting). The picker sinks such layouts for
+content roles (`baked-text-guard`), mirroring the fixed-chrome guard.
+
 Semantic annotation fields — every profile carries `description: ""` (one
-line: what is on this slide) and, when native illustration chrome is
-present, `chrome_subject: ""` (what the illustration depicts); both are
-meant to be filled by a later human/vision pass. Image slots appear in
+line: what is on this slide) and `when_to_use: ""` (one line: when a deck
+planner should pick this layout), and, when native illustration chrome is
+present, `chrome_subject: ""` (what the illustration depicts); all are
+meant to be filled by a later human/vision pass. The same pass may overrule
+the heuristic slide-type by setting `family` + `family_curated: true` —
+the marker makes the override survive regeneration (a bare `family` edit
+reverts). Every profile also carries a mechanical `element_tree:` — one
+compact line per slide element (`text <slot> role=… @x,y wxh <pt>pt`,
+`image <slot> class=… @x,y wxh`, `native <kind> [@x,y wxh] [baked-text]`)
+in reading order — the structural map a planner reads alongside the
+description. Image slots appear in
 `slots:` with `class: replace|keep` (replace = content photo the deck
 should swap, keep = brand chrome such as a logo strip). `apply_profile`
 MERGES instead of replacing: non-empty `description` / `chrome_subject` /
@@ -132,7 +146,15 @@ _IMAGE_CLASSES = ("keep", "replace")
 
 # Annotation fields a human/vision pass fills in; `apply_profile` preserves
 # their non-empty values across re-runs.
-_ANNOTATION_KEYS = ("description", "chrome_subject")
+_ANNOTATION_KEYS = ("description", "chrome_subject", "when_to_use")
+
+# The unified slide-type vocabulary (`family`). The heuristic classifier
+# assigns one; a vision pass may overrule it with `family_curated: true`,
+# which `apply_profile` then preserves across re-runs.
+_FAMILIES = frozenset({
+    "framing", "voice", "closing", "comparison",
+    "organizational", "process", "image-driven", "data",
+})
 
 # Heuristic trigger patterns (see module docstring).
 _AGENDA_RE = re.compile(r"agenda|inhalt|contents", re.I)
@@ -189,7 +211,7 @@ def _parse_text_slots(body: str) -> list[dict]:
 
 
 def _parse_image_slots(body: str) -> list[dict]:
-    """Each slotified `picture` line → {name, w, h}."""
+    """Each slotified `picture` line → {name, x, y, w, h}."""
     slots: list[dict] = []
     for line in body.splitlines():
         if not line.startswith("picture "):
@@ -198,8 +220,11 @@ def _parse_image_slots(body: str) -> list[dict]:
         if m is None:
             continue
         wh = _WH_RE.search(line.split('path:', 1)[0])
+        xy = _XY_RE.match(line)
         slots.append({
             "name": m.group(1),
+            "x": float(xy.group(1)) if xy else 0.0,
+            "y": float(xy.group(2)) if xy else 0.0,
             "w": float(wh.group(1)) if wh else 0.0,
             "h": float(wh.group(2)) if wh else 0.0,
         })
@@ -231,6 +256,17 @@ def _native_kind(xml: str | None) -> str:
     if "<a:tbl" in xml:
         return "table"
     return "illustration"
+
+
+_BAKED_TEXT_RE = re.compile(r"<a:t>([^<]+)</a:t>")
+
+
+def _has_baked_text(xml: str) -> bool:
+    """True when the payload carries non-whitespace `<a:t>` runs — chrome
+    with its own labels baked in (a chevron flow with STEP texts). Binding
+    the layout's text slots overprints those labels, so the profile flags
+    it (`chrome_text`) for the picker's baked-text guard."""
+    return any(t.strip() for t in _BAKED_TEXT_RE.findall(xml))
 
 
 def _parse_natives(body: str, asset_root: Path | None) -> list[tuple[str, str | None]]:
@@ -282,6 +318,58 @@ def _illustration_area_share(
         if vis_w > 0 and vis_h > 0:
             total += vis_w * vis_h
     return total / (canvas_w * canvas_h)
+
+
+def _n(v: float) -> str:
+    """Compact number: integral floats print as ints, others trimmed."""
+    return str(int(v)) if float(v).is_integer() else f"{v:g}"
+
+
+def _element_tree(
+    texts: list[dict],
+    images: list[dict],
+    natives: list[tuple[str, str | None]],
+    slot_roles: dict[str, str],
+    image_classes: dict[str, str],
+    canvas_w: float,
+) -> list[str]:
+    """One compact line per slide element, sorted into reading order
+    (top→bottom, left→right) — the structural 'what is where' a deck
+    planner reads alongside `description`:
+
+        native illustration @0,0 960x540 baked-text
+        image image class=replace @1008,0 912x1080
+        text text_1 role=title @76,76 922x122 20pt
+
+    Natives whose root geometry cannot be decoded sort last and carry no
+    `@x,y wxh` part. Purely mechanical — regenerated on every run.
+    """
+    scale = canvas_w / _EMU_SLIDE_W
+    entries: list[tuple[float, float, str]] = []
+    for kind, xml in natives:
+        line = f"native {kind}"
+        x = y = float("inf")
+        xfrm = _root_xfrm_emu(xml) if xml is not None else None
+        if xfrm is not None:
+            ex, ey, ew, eh = (v * scale for v in xfrm)
+            line += f" @{_n(ex)},{_n(ey)} {_n(ew)}x{_n(eh)}"
+            x, y = ex, ey
+        if xml is not None and kind == "illustration" and _has_baked_text(xml):
+            line += " baked-text"
+        entries.append((y, x, line))
+    for i in images:
+        entries.append((i["y"], i["x"], (
+            f"image {i['name']} class={image_classes.get(i['name'], 'replace')}"
+            f" @{_n(i['x'])},{_n(i['y'])} {_n(i['w'])}x{_n(i['h'])}"
+        )))
+    for t in texts:
+        entries.append((t["y"], t["x"], (
+            f"text {t['name']} role={slot_roles[t['name']]}"
+            f" @{_n(t['x'])},{_n(t['y'])} {_n(t['maxw'])}x{_n(t['maxh'])}"
+            f" {_n(t['pt'])}pt"
+        )))
+    entries.sort(key=lambda e: (e[0], e[1]))
+    return [line for _y, _x, line in entries]
 
 
 # --- Slot roles -------------------------------------------------------------
@@ -452,6 +540,15 @@ def classify_layout(
         when_not_to_use = base + [r for r in _CHROME_GATE_AVOID
                                   if r not in base]
 
+    # Baked-text gate: illustration chrome whose XML carries its own visible
+    # `<a:t>` labels. Independent of area/slot count — even a small chevron
+    # strip with baked STEP texts makes the overlapping text slots
+    # un-rebindable (new copy renders over the baked labels).
+    chrome_text = any(
+        kind == "illustration" and xml is not None and _has_baked_text(xml)
+        for kind, xml in natives
+    )
+
     if role in ("title-primary", "chapter-opener", "quote", "closer"):
         ideal_count = [1, 2]
     else:
@@ -471,9 +568,12 @@ def classify_layout(
     profile["family"] = family
     if fixed_chrome:
         profile["fixed_chrome"] = True
+    if chrome_text:
+        profile["chrome_text"] = True
     # Annotation slots for a later human/vision pass (see apply_profile —
     # non-empty values survive regeneration).
     profile["description"] = ""
+    profile["when_to_use"] = ""
     if "illustration" in kinds:
         profile["chrome_subject"] = ""
     if native_kinds:
@@ -481,6 +581,7 @@ def classify_layout(
         profile["chrome_note"] = (
             "carries native source chrome verbatim: "
             + ", ".join(f"{n} {k}" for k, n in counts.items())
+            + ("; baked text" if chrome_text else "")
         )
     profile["slide_index"] = slide_index
     if texts or images:
@@ -503,6 +604,12 @@ def classify_layout(
     if images:
         query = _image_query(layout_name, title_default)
         profile["image_queries"] = {i["name"]: query for i in images}
+    image_classes = {
+        i["name"]: _image_class(i, canvas_w, canvas_h) for i in images
+    }
+    if texts or images or natives:
+        profile["element_tree"] = _element_tree(
+            texts, images, natives, slot_roles, image_classes, canvas_w)
     return profile
 
 
@@ -544,6 +651,13 @@ def _merge_annotations(profile: dict, old_fm: str | None) -> dict:
         # illustration that no longer exists must not be resurrected.
         if key in merged and isinstance(val, str) and val.strip():
             merged[key] = val
+    # Curated slide-type: a vision pass may overrule the heuristic `family`,
+    # but only an explicit `family_curated: true` marker survives — a bare
+    # hand-edit of `family` is mechanical tampering and regenerates.
+    if (old.get("family_curated") is True
+            and old.get("family") in _FAMILIES):
+        merged["family"] = old["family"]
+        merged["family_curated"] = True
     old_slots = old.get("slots")
     if isinstance(old_slots, dict) and isinstance(merged.get("slots"), dict):
         merged["slots"] = {
@@ -633,6 +747,11 @@ def main(argv: list[str] | None = None) -> int:
     an.add_argument("--description", help="one line: what is on this slide")
     an.add_argument("--chrome-subject",
                     help="what the native illustration depicts")
+    an.add_argument("--when-to-use",
+                    help="one line: when a planner should pick this layout")
+    an.add_argument("--family",
+                    help="curated slide-type override (sets family_curated); "
+                         "one of: " + ", ".join(sorted(_FAMILIES)))
     an.add_argument("--image-class", action="append", default=[],
                     metavar="SLOT=keep|replace",
                     help="override an image slot's class (repeatable)")
@@ -657,6 +776,15 @@ def main(argv: list[str] | None = None) -> int:
         profile["description"] = args.description
     if args.chrome_subject is not None:
         profile["chrome_subject"] = args.chrome_subject
+    if args.when_to_use is not None:
+        profile["when_to_use"] = args.when_to_use
+    if args.family is not None:
+        if args.family not in _FAMILIES:
+            print(f"--family {args.family!r}: expected one of "
+                  + ", ".join(sorted(_FAMILIES)), file=sys.stderr)
+            return 2
+        profile["family"] = args.family
+        profile["family_curated"] = True
     for spec in args.image_class:
         slot, sep, cls = spec.partition("=")
         entry = profile.get("slots", {}).get(slot)

@@ -41,3 +41,48 @@ def test_pipeline_registers_from_tokens_block():
 def test_no_block_is_a_noop():
     _register_brand_font_metrics(_FakeTokens({}))
     _register_brand_font_metrics(_FakeTokens({"font-metrics": "not-a-dict"}))
+
+
+class _BudgetTokens(_FakeTokens):
+    """Tokens stand-in with the API compute_slot_budgets touches."""
+
+    def __init__(self, raw, family):
+        super().__init__(raw)
+        self._family = family
+
+    def slide(self, key):
+        raise KeyError(key)
+
+    def resolve_style(self, name):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(
+            font_family=[self._family], size_px=26.0, line_height=1.4, weight=300
+        )
+
+
+def test_compute_slot_budgets_registers_tokens_font_metrics(capsys):
+    """Budget entry points that never reach compile_slide (default static
+    gate, deck plan-skeleton) must still honor the pack's font-metrics block
+    instead of warning and falling back to default ratios."""
+    from feinschliff.dsl.parser import DSLNode
+    from feinschliff.slot_budget import compute_slot_budgets
+
+    nodes = [
+        DSLNode(
+            kind="text",
+            kw_args={"style": "body", "maxwidth": "760"},
+            label="{{ text_1 }}",
+        )
+    ]
+    tokens = _BudgetTokens(
+        {"font-metrics": {"Budget Test Face": {"normal": 0.25, "bold": 0.30}}},
+        "Budget Test Face",
+    )
+    budgets = compute_slot_budgets(nodes, tokens)
+    assert budgets["text_1"].font_family == "Budget Test Face"
+    # narrow registered ratio (0.25) beats the 0.52 default → more chars/line
+    assert budgets["text_1"].chars_per_line > chars_per_line(
+        "Unknown Font", budgets["text_1"].size_pt, False, budgets["text_1"].width_emu
+    )
+    assert "not in width-ratio table" not in capsys.readouterr().err
