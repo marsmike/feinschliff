@@ -56,6 +56,31 @@ def patch_set_hash(patches: list) -> str:
     return hashlib.sha256(repr(items).encode()).hexdigest()
 
 
+# ── _slot_lengths_from_slide ──────────────────────────────────────────────────
+
+def _slot_lengths_from_slide(slide: dict[str, Any]) -> dict[str, int]:
+    """Derive a conservative slot-name → char-count mapping from a content-plan slide.
+
+    Only maps fields whose names correspond 1:1 to canonical slot names used
+    in layout frontmatter and slot-binding code (see
+    ``feinschliff.deck.content_metadata.warn_overbudget_slots``).  Unmapped
+    fields are silently ignored — a sparse result is correct; overcounting
+    would penalise layouts that aren't actually over-budget.
+
+    Current mappings:
+        ``title``    → ``"title"`` slot   (present in nearly every layout)
+        ``subtitle`` → ``"subtitle"`` slot (declared in layouts that have one)
+    """
+    out: dict[str, int] = {}
+    title = slide.get("title")
+    if isinstance(title, str) and title:
+        out["title"] = len(title)
+    subtitle = slide.get("subtitle")
+    if isinstance(subtitle, str) and subtitle:
+        out["subtitle"] = len(subtitle)
+    return out
+
+
 # ── signals_from_slide ────────────────────────────────────────────────────────
 
 def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
@@ -81,6 +106,14 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
         DIAGRAM_KIND_TO_ROLE.get(str(slide.get("diagram_kind") or ""))
         or "content-columns"
     )
+    # slot_lengths: prefer an explicitly provided dict; fall back to the
+    # conservative field→slot derivation so callers don't need to pre-compute.
+    explicit_lengths = slide.get("slot_lengths")
+    slot_lengths: dict[str, int] | None = (
+        explicit_lengths
+        if isinstance(explicit_lengths, dict) and explicit_lengths
+        else (_slot_lengths_from_slide(slide) or None)
+    )
     return {
         "role":            role,
         "concept_count":   slide.get("concept_count"),
@@ -90,8 +123,10 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
         "narrative_act":   slide.get("narrative_act"),
         "time_axis_role":  slide.get("time_axis_role"),
         "audience_mode":   slide.get("audience_mode"),
-        "diagram_kind":    slide.get("diagram_kind"),
-        "layout":          slide.get("layout"),
+        "diagram_kind":       slide.get("diagram_kind"),
+        "diagram_complexity": slide.get("diagram_complexity"),
+        "layout":             slide.get("layout"),
+        "slot_lengths":       slot_lengths,
     }
 
 

@@ -383,3 +383,72 @@ def test_four_column_cards_picked_for_content_columns_role():
         f"four-column-cards should be a top-3 candidate for role=content-columns, "
         f"count=4; got {layout_ids}"
     )
+
+
+# --- Slice 1: narrative_act wired to toolkit layouts + diagram_complexity ----
+
+
+def test_key_takeaways_scores_higher_with_resolution_act():
+    """key-takeaways declares narrative_act=resolution. Passing that signal
+    must yield a +1 bonus over the same call without it. Uses role=closer
+    to match key-takeaways' declared role (so the role bonus is identical
+    in both calls and cannot mask the act delta)."""
+    from feinschliff.layout_picker import _default_profile_table
+    all_layouts = _default_profile_table()
+    top_k = len(all_layouts)
+
+    without_act = pick_layout(role="closer", concept_count=3, top_k=top_k)
+    with_act    = pick_layout(role="closer", concept_count=3,
+                              narrative_act="resolution", top_k=top_k)
+
+    def _score(cands, layout_id):
+        for c in cands:
+            if c["layout"] == layout_id:
+                return c["score"]
+        return None
+
+    base  = _score(without_act, "key-takeaways")
+    bonus = _score(with_act,    "key-takeaways")
+    assert base  is not None, "key-takeaways must appear in full candidate list"
+    assert bonus is not None, "key-takeaways must appear in full candidate list"
+    assert bonus == base + 1, (
+        f"key-takeaways should gain exactly +1 from narrative_act=resolution; "
+        f"got base={base}, with_act={bonus}"
+    )
+
+
+def test_signals_from_slide_extracts_diagram_complexity():
+    """signals_from_slide must pass diagram_complexity through from the
+    content-plan slide dict so the picker can consume it."""
+    from feinschliff.deck.orchestrate import signals_from_slide
+
+    signals = signals_from_slide({
+        "role": "concept-diagram",
+        "diagram_complexity": "deep",
+    })
+    assert signals["diagram_complexity"] == "deep", (
+        f"expected diagram_complexity='deep', got {signals.get('diagram_complexity')!r}"
+    )
+    # Absent field must not raise — returns None.
+    assert signals_from_slide({"role": "concept-diagram"})["diagram_complexity"] is None
+
+
+def test_plan_deck_layouts_passes_diagram_complexity_to_picker():
+    """diagram_complexity in slide signals must flow through plan_deck_layouts
+    to pick_layout and influence the winner. A 'deep' signal favours
+    excalidraw-diagram-full over the narrower excalidraw-diagram."""
+    from feinschliff.layout_budget import plan_deck_layouts
+
+    # Without diagram_complexity the narrow layout can win; with deep it
+    # should not — excalidraw-diagram-full (diagram_complexity=deep) should
+    # score higher.
+    deep_signal = {
+        "role": "concept-diagram",
+        "concept_count": 12,   # above the narrow layout's 8-node ceiling
+        "diagram_complexity": "deep",
+    }
+    out = plan_deck_layouts([deep_signal])
+    assert out[0]["layout"] == "excalidraw-diagram-full", (
+        f"diagram_complexity=deep with high concept_count should prefer "
+        f"excalidraw-diagram-full; got {out[0]['layout']}"
+    )

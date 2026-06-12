@@ -40,6 +40,22 @@ layout_history  list  optional list of recently-used layout IDs (most
                      layout used loses 0.5 points, the second-to-last
                      loses 0.25. Structural layouts (title slides, chapter
                      openers, agenda, end) are exempt — they don't rotate.
+slot_lengths    dict  optional mapping of slot name → int character count
+                     for the content being placed. Layouts whose declared
+                     per-slot `chars` budget (from frontmatter) would be
+                     exceeded receive a soft penalty proportional to the
+                     overage. Never a hard rejection — the downstream
+                     textfit gate and autoshrink remain authoritative.
+                     Absent budgets (no `chars` key in the profile slot)
+                     and absent slot_lengths entries are both treated as
+                     unknown and skipped — only the intersection is scored.
+predecessor     dict  optional previous slide's signals dict, including its
+                     chosen `layout` id. Evaluated against this layout's
+                     `follows_not` / `follows_well` frontmatter predicates
+                     (`signal=value` syntax). Each follows_not hit: −1.5.
+                     Each follows_well hit: +0.75. Additive, soft — never
+                     a hard block. Pinned layouts bypass the picker and
+                     are not affected.
 """
 from __future__ import annotations
 
@@ -56,6 +72,12 @@ _VALID_AUDIENCE_MODES = frozenset({"presentation", "discussion"})
 # / `svg-infographic`) and full-slide (`*-full`) diagram layouts. `deep`
 # prefers the full layouts; `simple|medium` prefer the narrow ones.
 _VALID_DIAGRAM_COMPLEXITY = frozenset({"simple", "medium", "deep"})
+
+# Scale factor for the per-slot character-budget penalty. The maximum
+# possible penalty (all budgeted slots 100 %+ over, averaged) is
+# −_BUDGET_PENALTY_SCALE. Calibrated to sit below the role-match weight
+# (+3) so structural fitness always wins; budgets break ties.
+_BUDGET_PENALTY_SCALE = 2.0
 
 # Structural layouts that anchor every deck — they don't rotate by content
 # and should never be penalised for consecutive use.
@@ -101,6 +123,15 @@ _FIXED_CHROME_GUARD_ROLES = frozenset({
 #   audience_mode bonus   +0.5 (sparser fit when presentation, denser
 #                                when discussion; any layout, scaled
 #                                against its ideal_count range)
+#   slot budget penalty   −0..−2.0 (averaged per-slot overage fraction,
+#                                scaled by _BUDGET_PENALTY_SCALE; only
+#                                the intersection of declared chars budgets
+#                                and provided slot_lengths is evaluated)
+#   follows_not penalty   −1.5/hit (predecessor signal matches a
+#                                follows_not predicate; additive across
+#                                multiple hits; never a hard block)
+#   follows_well bonus    +0.75/hit (predecessor signal matches a
+#                                follows_well predicate; additive)
 #   fixed-chrome guard    -6   (profile `fixed_chrome: true` vs a
 #                                content/data caller role — see
 #                                _FIXED_CHROME_GUARD_ROLES)
@@ -136,7 +167,9 @@ def _default_profile_table() -> dict[str, dict]:
 # line between "legacy scoring" (inert against new signals) and "Phase 4
 # scoring" (affinity-driven by narrative_role / narrative_act /
 # time_axis_role). The list lives in source-of-truth here so callers
-# don't drift.
+# don't drift. Membership criterion: any layout whose frontmatter
+# declares one of those affinity fields belongs here, or the
+# legacy-inertness invariant in tests breaks.
 _PHASE4_LAYOUTS = frozenset({
     "recommendation",
     "next-steps",
@@ -145,6 +178,10 @@ _PHASE4_LAYOUTS = frozenset({
     "roadmap",
     "timeline",
     "excalidraw-diagram",
+    "key-takeaways",
+    "executive-summary",
+    "pyramid",
+    "action-title",
 })
 
 
@@ -171,6 +208,8 @@ def pick_layout(
     diagram_kind: Literal["concept", "chart"] | None = None,
     diagram_complexity: Literal["simple", "medium", "deep"] | None = None,
     layout_history: list | None = None,
+    slot_lengths: dict[str, int] | None = None,
+    predecessor: dict | None = None,
     top_k: int = 3,
     profiles: dict[str, dict] | None = None,
 ) -> list[dict]:
@@ -200,6 +239,22 @@ def pick_layout(
     layouts (title slides, chapter openers, agenda, end) are exempt
     from this penalty since they never rotate. The penalty never
     eliminates a layout — it only breaks ties in favour of variety.
+
+    `slot_lengths` is an optional ``{slot_name: char_count}`` dict
+    carrying the measured length of the content going into each slot.
+    Layouts whose frontmatter declares an integer ``chars`` budget for a
+    slot receive a soft score penalty proportional to how far the content
+    exceeds that budget (averaged across the intersection of declared
+    budgets and provided lengths, capped at 100 % per slot, scaled by
+    ``_BUDGET_PENALTY_SCALE``). Layouts with no declared budgets are
+    unaffected. The penalty is never a hard rejection.
+
+    `predecessor` is the previous slide's signals dict, including its
+    chosen ``layout`` id. When provided, each candidate layout's
+    ``follows_not`` / ``follows_well`` frontmatter predicates are matched
+    against it: each ``follows_not`` hit subtracts 1.5; each
+    ``follows_well`` hit adds 0.75. Adjustments are additive and soft —
+    they shift rank but never hard-block a layout.
 
     `profiles` is the ``{name: affinity-profile}`` table to score against.
     When ``None`` (the default), the cached toolkit-only table built from
@@ -327,6 +382,73 @@ def pick_layout(
         if neg_hits:
             rationale_parts.append(f"negative-guidance:{','.join(neg_hits)}")
 
+        # Adjacency (sequencing) scoring: evaluate this layout's follows_not /
+        # follows_well predicates against the predecessor slide's signals dict
+        # (which carries role, narrative_act, and layout of the prior slide).
+        # Each follows_not hit: −1.5. Each follows_well hit: +0.75. Additive,
+        # soft — ranking bias only, never a hard block.
+        adjacency_hit = False
+        if predecessor is not None:
+            pred_signals = dict(predecessor)
+            follows_not_rules = profile.get("follows_not") or []
+            for rule in follows_not_rules:
+                if "=" not in rule:
+                    continue
+                sig, expected = rule.split("=", 1)
+                if str(pred_signals.get(sig.strip())).lower() == expected.strip().lower():
+                    score -= 1.5
+                    adjacency_hit = True
+                    rationale_parts.append(f"follows-not:{rule}")
+            follows_well_rules = profile.get("follows_well") or []
+            for rule in follows_well_rules:
+                if "=" not in rule:
+                    continue
+                sig, expected = rule.split("=", 1)
+                if str(pred_signals.get(sig.strip())).lower() == expected.strip().lower():
+                    score += 0.75
+                    rationale_parts.append(f"follows-well:{rule}")
+
+        # Slot budget penalty: steers toward layouts whose declared per-slot
+        # char budgets fit the content being placed. Only the intersection of
+        # slots with an int `chars` budget in the profile AND a length in
+        # slot_lengths is evaluated — absence means unknown constraints, not
+        # a violation. A budgeted slot is matched by its name OR by its
+        # declared `role` (decompiled brand packs name slots text_1, text_2…
+        # and carry the semantic role in `slots.*.role` — callers supply
+        # lengths keyed by semantic name, e.g. "title"). Max penalty
+        # (−_BUDGET_PENALTY_SCALE) sits below the role-match weight (+3):
+        # structural fitness wins, budgets break ties.
+        if slot_lengths:
+            budgeted_slots: dict[str, tuple[int, int]] = {}
+            for name, meta in (profile.get("slots") or {}).items():
+                if not (
+                    isinstance(meta, dict)
+                    and isinstance(meta.get("chars"), int)
+                    and meta["chars"] > 0
+                ):
+                    continue
+                length = slot_lengths.get(name)
+                if not isinstance(length, int):
+                    length = slot_lengths.get(meta.get("role"))
+                if isinstance(length, int):
+                    budgeted_slots[name] = (meta["chars"], length)
+            if budgeted_slots:
+                overage_parts: list[str] = []
+                total_overage = 0.0
+                for sname, (chars, length) in budgeted_slots.items():
+                    raw = max(0, length - chars) / chars
+                    capped = min(raw, 1.0)
+                    total_overage += capped
+                    if capped > 0:
+                        pct = int(round(capped * 100))
+                        overage_parts.append(f"{sname}+{pct}%")
+                penalty = (total_overage / len(budgeted_slots)) * _BUDGET_PENALTY_SCALE
+                if penalty > 0:
+                    score -= penalty
+                    rationale_parts.append(
+                        f"over-budget({', '.join(overage_parts)})"
+                    )
+
         # Fixed-chrome guard: a decompiled brand layout that carries its
         # source decoration verbatim (`fixed_chrome: true`) cannot host
         # dense content — sink it hard whenever the caller asks for a
@@ -408,10 +530,10 @@ def pick_layout(
             rationale_parts.append(f"use:{use[:80]}")
 
         # Include layouts with positive score, OR layouts that received a
-        # when_not_to_use penalty / fixed-chrome guard / baked-text guard
-        # (so the planning agent can read the demotion rationale even
-        # though the layout ranked low).
-        if score > 0 or neg_hits or guard_hit or baked_hit:
+        # when_not_to_use penalty / adjacency demotion / fixed-chrome guard /
+        # baked-text guard — so the planning agent can read the demotion
+        # rationale even though the layout ranked low.
+        if score > 0 or neg_hits or adjacency_hit or guard_hit or baked_hit:
             scored.append({
                 "layout": layout_id,
                 "score": score,
