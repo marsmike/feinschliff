@@ -2091,6 +2091,38 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         ))
         return
 
+    # FILLED rect carrying multi-style text (Bosch tile cards: bold 18pt
+    # "Placeholder" lead-in over regular 12pt body inside one filled
+    # shape). Collapsing to a single text primitive emits the body at the
+    # lead-in's max size and bold weight. Split exactly like the fill-None
+    # case above: the rect emits on its own (no runs), each text block
+    # keeps its own size / colour / weight at its own y-offset.
+    if runs and fill is not None and kind == "rect":
+        blocks = _split_runs_by_color(runs)
+        if len(blocks) > 1:
+            shapes.append(Shape(
+                kind="rect", x=cmap.x(x), y=cmap.y(y),
+                w=cmap.w(w), h=cmap.h(h),
+                fill=fill, stroke=stroke, stroke_width=stroke_width,
+                stroke_dash=stroke_dash, corner_radius=corner_radius,
+                shadow=shadow, gradient=gradient,
+            ))
+            cursor = cmap.y(y)
+            for block_runs in blocks:
+                block_pts = [r.pt for r in block_runs if r.text and r.text != "\n"]
+                primary_pt = max(block_pts) if block_pts else 12
+                line_count = sum(1 for r in block_runs if r.text and r.text != "\n")
+                block_h_px = max(int(round(primary_pt * (4 / 3) * 1.25 * max(line_count, 1))), 24)
+                shapes.append(Shape(
+                    kind="text", x=cmap.x(x), y=cursor,
+                    w=cmap.w(w), h=block_h_px,
+                    text_runs=block_runs, ph_type=ph_type, ph_idx=ph_idx,
+                    valign=None, padding=padding_px,
+                    line_spacing=line_spacing,
+                ))
+                cursor += block_h_px
+            return
+
     # custGeom paths convert directly to SVG path `d`. Build it in
     # canvas-pixel space so the surrounding svg-block can simply
     # `path "<d>"` without further transforms.
