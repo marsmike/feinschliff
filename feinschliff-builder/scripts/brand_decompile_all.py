@@ -43,6 +43,7 @@ from feinschliff_builder.verify.verify_map import load_verify_map
 
 
 def _cleanup_and_slotify_loop(dsl: str, *, asset_root, layout_name: str,
+                              width_emu: float = 0.0, canvas_w: float = 1920.0,
                               max_rounds: int = 4) -> tuple[str, list[str]]:
     """Per-slide decompile loop: cleanup -> slotify (text lines + native
     payloads) -> re-check, until the unslotified-text report stops shrinking.
@@ -52,7 +53,8 @@ def _cleanup_and_slotify_loop(dsl: str, *, asset_root, layout_name: str,
     are texts that CANNOT be slotified (chart/SmartArt part labels, labels
     with braces), surfaced as warnings for the operator.
     """
-    dsl, stats = cleanup_dsl(dsl)
+    dsl, stats = cleanup_dsl(dsl, asset_root, width_emu=width_emu,
+                             canvas_w=canvas_w)
     noise = {k: v for k, v in stats.items() if v}
     if noise:
         print(f"    cleanup {layout_name}: " +
@@ -258,7 +260,8 @@ def main() -> int:
         )
         if not args.raw:
             dsl, leftovers = _cleanup_and_slotify_loop(
-                dsl, asset_root=brand_pack / "assets", layout_name=layout_name)
+                dsl, asset_root=brand_pack / "assets", layout_name=layout_name,
+                width_emu=float(src_w_emu), canvas_w=canvas_w)
             for msg in leftovers:
                 print(f"    ⚠ {layout_name}: unslotified {msg}")
         target.write_text(dsl, encoding="utf-8")

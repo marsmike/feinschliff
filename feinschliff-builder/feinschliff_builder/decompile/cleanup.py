@@ -27,13 +27,16 @@ __all__ = [
     "drop_prompt_copies",
     "drop_helper_captions",
     "dedupe_native_pics",
+    "strip_native_text_doubles",
     "cleanup_dsl",
     "unslotified_text_report",
 ]
 
 _TEXT_GEO_RE = re.compile(
     r"^text\s+(\d+),(\d+)\b.*?maxwidth:(\d+)\s+maxheight:(\d+)")
-_TEXT_LABEL_RE = re.compile(r'^text\s+\d+,\d+\b.*"(.*)"\s*$')
+# Trailing quoted label with escape support — `.*"(.*)"` would split on the
+# `\"` pairs inside slot templates and capture garbage.
+_TEXT_LABEL_RE = re.compile(r'^text\s+\d+,\d+\b[^"]*"((?:[^"\\]|\\.)*)"\s*$')
 _NATIVE_B64_RE = re.compile(r'^native\s+\w+\s.*?b64:"([^"]+)"')
 _XFRM_OFF_RE = re.compile(r'<a:off x="(-?\d+)" y="(-?\d+)"/>')
 _XFRM_EXT_RE = re.compile(r'<a:ext cx="(\d+)" cy="(\d+)"/>')
@@ -146,13 +149,16 @@ def dedupe_native_pics(dsl_text: str, *, iou: float = PROMPT_COPY_IOU
             len(drop))
 
 
-def cleanup_dsl(dsl_text: str) -> tuple[str, dict[str, int]]:
+def cleanup_dsl(dsl_text: str, asset_root=None, *, width_emu: float = 0.0,
+                canvas_w: float = 1920.0) -> tuple[str, dict[str, int]]:
     """Run all post-decompile cleanup passes; returns (new_dsl, stats)."""
     stats: dict[str, int] = {}
     dsl_text, stats["dedupe_text"] = dedupe_text_lines(dsl_text)
     dsl_text, stats["prompt_copies"] = drop_prompt_copies(dsl_text)
     dsl_text, stats["helper_captions"] = drop_helper_captions(dsl_text)
     dsl_text, stats["native_pic_dupes"] = dedupe_native_pics(dsl_text)
+    dsl_text, stats["native_text_doubles"] = strip_native_text_doubles(
+        dsl_text, asset_root, width_emu=width_emu, canvas_w=canvas_w)
     return dsl_text, stats
 
 
@@ -192,3 +198,117 @@ def unslotified_text_report(dsl_text: str, asset_root=None) -> list[str]:
             if t.strip() and "{{" not in t:
                 leftovers.append(f"native text run: {t[:60]!r}")
     return leftovers
+
+
+_NATIVE_LINE_KW_RE = re.compile(r'(\w+):"([^"]*)"')
+# Matches default("…") in all three carrier encodings: raw XML text,
+# XML-escaped (&quot;), and DSL-line backslash-escaped (\").
+_RUN_DEFAULT_RE = re.compile(r'default\(\\?(?:&quot;|")(.*?)\\?(?:&quot;|")\)')
+
+
+def _run_literal(run_text: str) -> str:
+    """The human literal of an <a:t> run — its default(...) when the run is
+    a slot template, else the run text itself."""
+    m = _RUN_DEFAULT_RE.search(run_text)
+    return m.group(1) if m else run_text
+
+
+def strip_native_text_doubles(
+    dsl_text: str, asset_root=None, *, width_emu: float = 0.0,
+    canvas_w: float = 1920.0,
+) -> tuple[str, int]:
+    """Blank native text runs that DOUBLE a regular text line's label.
+
+    The hybrid decompiler emits some text-bearing custGeom shapes twice: the
+    shape goes native (label baked in the XML) AND its text frame is ALSO
+    extracted as a `text` primitive at the same spot. With showcase defaults
+    the two render stacked and invisible; the moment a deck binds one of
+    them they diverge into double text. Policy: the regular `text` line wins
+    (full styling + slot control) — the native run is blanked.
+
+    A native run is a double when its literal equals a text line's literal
+    (slot templates compared by their default) AND the boxes overlap
+    (checked only when ``width_emu`` is known; without it, exact-literal
+    match alone decides). Returns ``(new_dsl, blanked_count)``.
+    """
+    import base64 as _b64
+
+    text_labels: list[tuple[str, tuple]] = []
+    for line in dsl_text.splitlines():
+        m = _TEXT_LABEL_RE.match(line.strip())
+        if not m:
+            continue
+        geo = _TEXT_GEO_RE.match(line.strip())
+        rect = tuple(float(g) for g in geo.groups()) if geo else None
+        text_labels.append((_run_literal(m.group(1)), rect))
+    if not text_labels:
+        return dsl_text, 0
+    labels = {lit for lit, _ in text_labels if lit.strip()}
+
+    scale = (canvas_w / width_emu) if width_emu else None
+    blanked = 0
+    out_lines: list[str] = []
+    for line in dsl_text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        if not body.strip().startswith("native "):
+            out_lines.append(line)
+            continue
+        kwargs = dict(_NATIVE_LINE_KW_RE.findall(body))
+        xml: str | None = None
+        sidecar = None
+        if kwargs.get("b64"):
+            try:
+                xml = _b64.b64decode(kwargs["b64"]).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                xml = None
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / kwargs["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8")
+        if xml is None or any(s in xml for s in _CHART_MARKERS):
+            out_lines.append(line)
+            continue
+
+        native_rect_px = None
+        if scale is not None:
+            off, ext = _XFRM_OFF_RE.search(xml), _XFRM_EXT_RE.search(xml)
+            if off and ext:
+                native_rect_px = (float(off.group(1)) * scale,
+                                  float(off.group(2)) * scale,
+                                  float(ext.group(1)) * scale,
+                                  float(ext.group(2)) * scale)
+
+        def _overlaps_some_text(lit: str) -> bool:
+            for tlit, trect in text_labels:
+                if tlit != lit:
+                    continue
+                if native_rect_px is None or trect is None:
+                    return True
+                if _iou(native_rect_px, trect) > 0.0:
+                    return True
+            return False
+
+        changed = False
+
+        def repl(m: re.Match) -> str:
+            nonlocal changed
+            lit = _run_literal(m.group(1))
+            if lit.strip() and lit in labels and _overlaps_some_text(lit):
+                changed = True
+                return "<a:t></a:t>"
+            return m.group(0)
+
+        new_xml = re.sub(r"<a:t>([^<]+)</a:t>", repl, xml)
+        if not changed:
+            out_lines.append(line)
+            continue
+        blanked += new_xml.count("<a:t></a:t>") - xml.count("<a:t></a:t>")
+        if sidecar is not None:
+            sidecar.write_text(new_xml, encoding="utf-8")
+            out_lines.append(line)
+        else:
+            new_b64 = _b64.b64encode(new_xml.encode("utf-8")).decode("ascii")
+            out_lines.append(
+                body.replace(kwargs["b64"], new_b64, 1)
+                + ("\n" if line.endswith("\n") else ""))
+    return "".join(out_lines), blanked

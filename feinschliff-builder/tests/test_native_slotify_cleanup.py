@@ -140,3 +140,30 @@ def test_unslotified_report_and_cleanup_roundtrip():
     assert not any("Headline" in r for r in report2)
     cleaned, stats = cleanup_dsl(new_dsl)
     assert isinstance(stats, dict)
+
+
+def test_native_text_double_blanked_when_text_line_matches():
+    from feinschliff_builder.decompile.cleanup import strip_native_text_doubles
+    sp = ('<p:sp xmlns:p="x" xmlns:a="y"><p:spPr><a:xfrm>'
+          '<a:off x="445500" y="3073950"/><a:ext cx="1679062" cy="571500"/>'
+          '</a:xfrm></p:spPr><p:txBody><a:p><a:r><a:t>Step 1</a:t></a:r>'
+          "</a:p></p:txBody></p:sp>")
+    dsl = (f'native shape1 b64:"{_b64(sp)}"\n'
+           'text 78,538 style:body maxwidth:294 maxheight:100 '
+           '"{{ text_8 | default(\\"Step 1\\") }}"\n')
+    out, n = strip_native_text_doubles(dsl, None, width_emu=10969625)
+    assert n == 1
+    xml = base64.b64decode(out.split('b64:"')[1].split('"')[0]).decode()
+    assert "<a:t></a:t>" in xml and "Step 1" not in xml
+    # the regular text slot stays
+    assert 'default(\\"Step 1\\")' in out
+
+
+def test_native_text_without_matching_text_line_kept():
+    from feinschliff_builder.decompile.cleanup import strip_native_text_doubles
+    sp = ('<p:sp xmlns:p="x" xmlns:a="y"><p:txBody><a:p><a:r>'
+          "<a:t>Unique label</a:t></a:r></a:p></p:txBody></p:sp>")
+    dsl = (f'native shape1 b64:"{_b64(sp)}"\n'
+           'text 78,538 maxwidth:294 maxheight:100 "Other"\n')
+    out, n = strip_native_text_doubles(dsl, None)
+    assert n == 0 and out == dsl

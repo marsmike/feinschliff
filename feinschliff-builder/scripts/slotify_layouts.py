@@ -33,6 +33,7 @@ from feinschliff_builder.decompile.layout_profile_gen import (
     classify_layout,
     derive_deck_map,
 )
+from feinschliff_builder.decompile.cleanup import strip_native_text_doubles
 from feinschliff_builder.decompile.slotify import (
     add_autoshrink,
     autoshrink_enabled,
@@ -66,6 +67,17 @@ def _slide_indices(brand_pack: Path, names: list[str]) -> tuple[dict[str, int], 
     return indices, total
 
 
+def _pack_width_emu(brand_pack: Path) -> float:
+    """slide.width_emu from tokens.json (0.0 when absent — geometry check
+    in strip_native_text_doubles then falls back to literal-only match)."""
+    import json
+    try:
+        raw = json.loads((brand_pack / "tokens.json").read_text(encoding="utf-8"))
+        return float(raw["slide"]["width_emu"]["$value"])
+    except Exception:
+        return 0.0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--brand-pack", required=True, type=Path)
@@ -89,9 +101,16 @@ def main() -> int:
         text = path.read_text(encoding="utf-8")
         new_text, slots = slotify_dsl(text)
         if not args.dry_run:
-            # Native payloads (carried tables / grouped shapes): rewrite
-            # placeholder <a:t> runs to {{ text_N }} slots too. Sidecar
-            # payloads rewrite on disk, so this pass is skipped on dry runs.
+            # Native runs that double a regular text line's label render
+            # stacked once a deck binds either copy — blank the native run
+            # (the text slot is the single binding point), THEN slotify the
+            # remaining native payload text. Sidecar payloads rewrite on
+            # disk, so both passes are skipped on dry runs.
+            new_text, doubles = strip_native_text_doubles(
+                new_text, brand_pack / "assets",
+                width_emu=_pack_width_emu(brand_pack))
+            if doubles:
+                print(f"  {path.name}: blanked {doubles} native text double(s)")
             new_text, native_slots, native_logs = slotify_native_text(
                 new_text, brand_pack / "assets")
             for line in native_logs:
