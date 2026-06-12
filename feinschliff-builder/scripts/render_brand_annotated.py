@@ -232,6 +232,9 @@ def main() -> int:
     ap.add_argument("--workdir", type=Path,
                     help="Working dir for intermediate renders "
                          "(default: <out>.work/)")
+    ap.add_argument("--metadata-pdf", type=Path,
+                    help="Also write a compact metadata-only PDF (the detail "
+                         "cards without renders) to this path")
     args = ap.parse_args()
 
     from PIL import Image, ImageDraw, ImageFont
@@ -463,6 +466,27 @@ def main() -> int:
                     f"--print-to-pdf={args.out}", html_path.as_uri()],
                    check=True, capture_output=True)
     print(f"wrote {args.out} ({3 * n} pages: render + coverage + detail per layout)")
+
+    if args.metadata_pdf:
+        # Compact A4 reference: the detail cards only, several per page —
+        # the handover's "what slots exist" document without the renders.
+        meta_doc = doc.replace(
+            f"@page {{ size: {page_w_pt}pt {page_h_pt}pt; margin: 0; }}",
+            "@page { size: A4; margin: 12mm 10mm; }")
+        meta_doc = re.sub(
+            r"<div class='page render'>.*?</div>\s*(?=<div class='page detail'>)",
+            "", meta_doc, flags=re.S)
+        meta_doc = meta_doc.replace(
+            f".page {{ width:{page_w_pt}pt; height:{page_h_pt}pt; overflow:hidden; "
+            "page-break-after:always; position:relative; }",
+            ".page { page-break-inside:avoid; margin-bottom:10pt; position:relative; }")
+        meta_html = work / "metadata.html"
+        meta_html.write_text(meta_doc, encoding="utf-8")
+        subprocess.run([_chrome(), "--headless", "--disable-gpu",
+                        "--no-pdf-header-footer", "--allow-file-access-from-files",
+                        f"--print-to-pdf={args.metadata_pdf}", meta_html.as_uri()],
+                       check=True, capture_output=True)
+        print(f"wrote {args.metadata_pdf} (metadata cards only)")
     return 0
 
 
