@@ -387,6 +387,31 @@ def lint_beats(
     return errors, warnings
 
 
+def lint_score_config(config) -> list[str]:
+    """Validate the optional top-level 'score' block in an edit plan.
+
+    Returns a list of error strings (empty → valid).
+    """
+    errs: list[str] = []
+    if not isinstance(config, dict):
+        errs.append("score config must be a dict/object")
+        return errs
+    _ALLOWED_SCORE_KEYS = {"enabled", "music"}
+    for k in config:
+        if k not in _ALLOWED_SCORE_KEYS:
+            errs.append(
+                f"score config: unknown key {k!r} "
+                f"(allowed: {', '.join(sorted(_ALLOWED_SCORE_KEYS))})"
+            )
+    enabled = config.get("enabled")
+    if enabled is not None and not isinstance(enabled, bool):
+        errs.append("score.enabled must be a boolean when present")
+    music = config.get("music")
+    if music is not None and not isinstance(music, str):
+        errs.append("score.music must be a string when present")
+    return errs
+
+
 def lint_captions_config(config) -> list[str]:
     """Validate the optional top-level 'captions' block in an edit plan.
 

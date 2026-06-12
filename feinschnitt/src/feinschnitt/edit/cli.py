@@ -10,7 +10,7 @@ from feinschnitt.edit import plan as planmod
 from feinschnitt.edit import render as rendermod
 from feinschnitt.edit import transcribe as transcribemod
 from feinschnitt.edit import verify as verifymod
-from feinschnitt.edit.lint import lint_beats, lint_captions_config
+from feinschnitt.edit.lint import lint_beats, lint_captions_config, lint_score_config
 from feinschnitt.edit.workdir import workdir_for
 
 __all__ = ["add_parser"]
@@ -35,6 +35,8 @@ def _cmd_lint(args) -> int:
     errors, warnings = lint_beats(plan["beats"], duration, base_dir=args.plan.parent)
     if "captions" in plan:
         errors.extend(lint_captions_config(plan["captions"]))
+    if "score" in plan:
+        errors.extend(lint_score_config(plan["score"]))
     for w in warnings:
         print(f"warning: {w}")
     if errors:
