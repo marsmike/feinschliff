@@ -128,6 +128,30 @@ def test_use_case_layout_names_classify_roles():
     assert classify(body, name="legend", index=5, total=17)["role"] != "closer"
 
 
+def test_reference_sheet_layout_names_classify_reference():
+    """Template reference sheets (howto, design samples, small-elements)
+    must not fall into position-based roles — index==total would make a
+    'small-elements' sheet the deck closer."""
+    body = HEADER + slot(1, "Small Elements", pt=20)
+    p = classify(body, name="small-elements", index=17, total=17)
+    assert p["role"] == "reference"
+    assert p["family"] == "organizational"
+
+
+def test_tiny_native_pic_is_mark_not_illustration_chrome():
+    """A flattened logo mark (small native picture on every slide) must not
+    trip the decorative-divider rule or the area gate — it is brand mark,
+    not illustration chrome."""
+    logo = ('<p:pic xmlns:p="p" xmlns:a="a"><p:spPr><a:xfrm>'
+            '<a:off x="9849600" y="5760000"/><a:ext cx="684000" cy="207973"/>'
+            '</a:xfrm></p:spPr></p:pic>')
+    dsl = HEADER + native(logo, "logo") + slot(1, "Some title", pt=30)
+    p = classify(dsl, name="some-layout")
+    assert p["role"] != "chapter-opener"
+    assert "chrome_subject" not in p
+    assert "mark" in p["chrome_note"]
+
+
 def test_agenda_by_layout_name():
     dsl = HEADER + slot(1, "Was uns erwartet", pt=40)
     assert classify(dsl, name="inhalt", index=2)["role"] == "agenda"
@@ -231,6 +255,19 @@ def test_chart_text_does_not_set_chrome_text():
     dsl = HEADER + native(xml, "graphic1") + slot(1, "Growth by sector", pt=40)
     p = classify(dsl)
     assert "chrome_text" not in p
+
+
+def test_mark_sized_native_with_baked_text_still_sets_chrome_text():
+    """Mark demotion must not silence the baked-text gate: a small chevron
+    native that draws its own 'Step 1' still makes text slots un-rebindable."""
+    chevron = ('<p:sp xmlns:p="p" xmlns:a="a"><p:spPr><a:xfrm>'
+               '<a:off x="100" y="100"/><a:ext cx="600000" cy="200000"/>'
+               '</a:xfrm><a:custGeom/></p:spPr>'
+               '<p:txBody><a:p><a:r><a:t>Step 1</a:t></a:r></a:p></p:txBody></p:sp>')
+    dsl = HEADER + native(chevron) + prose_slots(1, 3) + footer_slots(4)
+    p = classify(dsl)
+    assert p["chrome_text"] is True
+    assert p["role"] != "chapter-opener"  # mark demotion still applies
 
 
 def test_whitespace_only_baked_text_is_ignored():
