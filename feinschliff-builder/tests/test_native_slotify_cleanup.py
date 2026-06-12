@@ -194,3 +194,19 @@ def test_clip_text_at_native_pic():
     assert logs and "shifted right of picture" in logs[0]
     # shifted box starts right of the 221px photo with the gutter
     assert re.search(r"text 31[12](?:\.\d+)?,", out)
+
+
+def test_per_word_runs_coalesce_into_one_slot():
+    xml = (
+        '<p:graphicFrame xmlns:p="x"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        "<a:tbl><a:tr><a:tc><a:txBody><a:p>"
+        '<a:r><a:rPr lang="de-DE"/><a:t>Lorem</a:t></a:r>'
+        '<a:r><a:rPr lang="de-DE"/><a:t> ipsum</a:t></a:r>'
+        '<a:r><a:rPr lang="de-DE"/><a:t> dolor</a:t></a:r>'
+        '<a:r><a:rPr lang="de-DE" b="1"/><a:t>BOLD</a:t></a:r>'
+        "</a:p></a:txBody></a:tc></a:tr></a:tbl></p:graphicFrame>"
+    )
+    dsl = f'native table1 b64:"{_b64(xml)}"\n'
+    _new, slots, _ = slotify_native_text(dsl, None)
+    assert [s["default"] for s in slots] == ["Lorem ipsum dolor", "BOLD"]

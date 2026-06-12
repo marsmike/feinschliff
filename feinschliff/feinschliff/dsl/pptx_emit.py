@@ -1544,10 +1544,22 @@ def sanitize_chrome(slide_xml) -> None:
         grad_parent.remove(solid)
         grad_parent.insert(idx, solid)
 
-    # 3. Clamp outline widths > 1pt down to a 0.5pt hairline.
+    # 3. Clamp outline widths > 1pt down to a 0.5pt hairline — except
+    #    inside opted-in subtrees (native chrome carried verbatim from a
+    #    source deck: a thick brand outline like BSH's parallelogram IS the
+    #    corporate design, not an AI-template artefact).
     for ln in sptree.iter(f"{{{_NS_A}}}ln"):
         w_str = ln.get("w")
         if w_str is None:
+            continue
+        anc = ln.getparent()
+        allowed = False
+        while anc is not None:
+            if _effect_allowed(anc):
+                allowed = True
+                break
+            anc = anc.getparent()
+        if allowed:
             continue
         try:
             w = int(w_str)
@@ -1912,6 +1924,22 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
         raise DSLError(
             f"native shape (line {node.line_no}): unparseable embedded element — {exc}"
         )
+    # Carried tables referencing PowerPoint's BUILT-IN "No Style, No Grid"
+    # style: built-ins are never serialized, so renderers without the GUID
+    # fall back to their own default (solid banded fills) — covering any
+    # chrome drawn underneath. Register an EMPTY definition (= transparent,
+    # borderless) under the same GUID.
+    _NO_GRID_GUID = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
+    xml_text = xml_bytes.decode("utf-8", "replace")
+    if "tableStyleId" in xml_text and _NO_GRID_GUID in xml_text:
+        import base64 as _b64s
+        _snippet = (
+            '<a:tblStyle xmlns:a="http://schemas.openxmlformats.org/'
+            f'drawingml/2006/main" styleId="{_NO_GRID_GUID}" '
+            'styleName="No Style, No Grid"/>')
+        _merge_table_style(slide, _b64s.b64encode(_snippet.encode()).decode("ascii"),
+                           node)
+
     parts_b64 = node.kw_args.get("parts")
     if not parts_b64 and node.kw_args.get("parts_file"):
         parts_b64 = base64.b64encode(
@@ -1950,7 +1978,16 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
         # the image here and re-point every <a:blip> to the fresh relationship.
         import io
         from pptx.oxml.ns import qn
-        _part, rid = slide.part.get_or_add_image_part(io.BytesIO(media_bytes))
+        try:
+            _part, rid = slide.part.get_or_add_image_part(io.BytesIO(media_bytes))
+        except Exception as exc:
+            # Unsupported media (e.g. raw SVG from an older pack) — emit the
+            # element without re-embedded media rather than crash the build.
+            print(f"native (line {node.line_no}): cannot re-embed carried media "
+                  f"({exc}); emitting without it", file=sys.stderr)
+            _remap_colliding_shape_ids(slide, el)
+            slide.shapes._spTree.append(el)
+            return
         # Drop the Microsoft svgBlip sidecar: we carry only the raster media, so
         # its stale rId would dangle / collide with another shape's relationship
         # (some renderers prefer the svgBlip and then show the WRONG image). The
@@ -1961,8 +1998,18 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
             if _ext is not None and _ext.getparent() is not None:
                 _ext.getparent().remove(_ext)
         for blip in el.iter(qn("a:blip")):
-            if blip.get(qn("r:embed")) is not None:
-                blip.set(qn("r:embed"), rid)
+            # Unconditional: SVG-only pictures carry a BARE <a:blip> (the
+            # reference lived in the svgBlip extension we just dropped) —
+            # leaving it without r:embed renders an invisible picture.
+            blip.set(qn("r:embed"), rid)
+    # Carried-verbatim chrome is source design by definition — opt the whole
+    # subtree out of sanitize_chrome (effects, gradients, outline clamp).
+    # Legacy bare attribute on purpose: the namespaced form adds an xmlns
+    # declaration LibreOffice treats as unknown content and DROPS the shape.
+    # <p:pic> elements skip the marker entirely (LO drops pics even for the
+    # bare form; pictures carry no clamped outlines anyway).
+    if not el.tag.endswith("}pic"):
+        el.set(_EFFECT_ALLOW_LEGACY, "1")
     _remap_colliding_shape_ids(slide, el)
     slide.shapes._spTree.append(el)
 

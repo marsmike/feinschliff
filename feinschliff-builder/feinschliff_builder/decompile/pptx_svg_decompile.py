@@ -102,6 +102,16 @@ def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
     return f"{(native_rel or 'native').rstrip('/')}/{name}"
 
 
+def _rasterize_svg_bytes(blob: bytes) -> bytes | None:
+    """Rasterize SVG bytes to PNG bytes via a temp file; None on failure."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        svg = Path(td) / "m.svg"
+        svg.write_bytes(blob)
+        png = _rasterize_svg(svg)
+        return png.read_bytes() if png is not None else None
+
+
 def _rasterize_svg(svg_path: Path) -> Path | None:
     """soffice-rasterize an extracted SVG to a sibling PNG; None on failure."""
     import subprocess
@@ -2033,13 +2043,21 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     # placeholder pics are CHANGEABLE topical content → they stay slots.
     native_xml = None
     native_media = None
+    _partname = str(getattr(media_part, "partname", "")).lower()
+    _is_photo = _partname.endswith((".jpg", ".jpeg"))
     if (ph_type is None and media_part is not None and len(offset) == 2
+            and not _is_photo
             and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
         try:
             import base64 as _b64
             pic_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
             native_xml = etree.tostring(pic_el).decode("utf-8")
-            native_media = _b64.b64encode(media_part.blob).decode("ascii")
+            media_blob = media_part.blob
+            if str(getattr(media_part, "partname", "")).lower().endswith(".svg"):
+                # python-pptx cannot re-embed SVG bytes at build time —
+                # carry a rasterized PNG (emit drops the svgBlip sidecar).
+                media_blob = _rasterize_svg_bytes(media_blob) or media_blob
+            native_media = _b64.b64encode(media_blob).decode("ascii")
         except Exception:
             native_xml = native_media = None
     shapes.append(Shape(
@@ -3726,7 +3744,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # `stroke:<token>` with no fill; otherwise fill (or fog fallback).
     # When no path data is available we keep the lossy bbox-rect fallback
     # so the DSL still builds.
+    # Custom shapes / graphic frames / ovals / pictures interleave in SOURCE
+    # z-order: PowerPoint draws them as one stream, and grouping by kind put
+    # e.g. the BSH parallelogram OUTLINE (a custGeom drawn ON TOP of the
+    # photo) underneath the picture slot. Each shape's lines collect into a
+    # chunk tagged with its position in `shapes` (already spTree order);
+    # the chunks emit sorted at the end.
+    _src_pos = {id(_s): _i for _i, _s in enumerate(shapes)}
+    _layers: list[tuple[int, list[str]]] = []
     for i, s in enumerate(custs, 1):
+        chunk: list[str] = []
         if s.native_xml:
             # Native vector chrome carried verbatim from the source (editable,
             # pixel-exact). Small fragments ride inline as base64 so the DSL
@@ -3736,10 +3763,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             _xb = s.native_xml.encode("utf-8")
             _ref = _native_sidecar_ref(_xb, "xml", native_dir, native_rel)
             if _ref:
-                out.append(f'native shape{i} xml_file:"{_ref}"')
+                chunk.append(f'native shape{i} xml_file:"{_ref}"')
             else:
                 _enc = _b64.b64encode(_xb).decode("ascii")
-                out.append(f'native shape{i} b64:"{_enc}"')
+                chunk.append(f'native shape{i} b64:"{_enc}"')
         elif s.svg_path_d:
             # `none` is not in the SVG DSL's 17-name semantic colour
             # vocabulary, so we omit `fill:` entirely when the source has
@@ -3752,15 +3779,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             if s.stroke:
                 attrs.append(f"stroke:{_svg_color_token(s.stroke)}")
             attr_str = (" " + " ".join(attrs)) if attrs else ""
-            out.append(f"svg shape{i} {s.x},{s.y} {s.w}x{s.h} {{")
+            chunk.append(f"svg shape{i} {s.x},{s.y} {s.w}x{s.h} {{")
             # Path coordinates are already in svg-block-local pixels (the
             # converter scales from path-local space to the shape's bbox).
-            out.append(f"  path p \"{s.svg_path_d}\"{attr_str}")
-            out.append("}")
+            chunk.append(f"  path p \"{s.svg_path_d}\"{attr_str}")
+            chunk.append("}")
         elif s.fill is None and s.stroke:
-            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
+            chunk.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
         else:
-            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
+            chunk.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
+        _layers.append((_src_pos.get(id(s), 0), chunk))
 
     # Native graphic frames carried verbatim — pixel-exact, vs the lossy
     # re-synthesis. Tables ship inline (<a:tbl>, no external parts → b64 only).
@@ -3768,6 +3796,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # chartColorStyle / embedded-xlsx) as a base64-of-json `parts:` kwarg so the
     # emitter can re-create the parts + rewire rIds in the output deck.
     for i, s in enumerate(graphics, 1):
+        chunk = []
         if s.native_xml:
             import base64 as _b64
             _xb = s.native_xml.encode("utf-8")
@@ -3783,7 +3812,9 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                     line += f' parts_file:"{_pref}"'
                 else:
                     line += f' parts:"{_b64.b64encode(_pb).decode("ascii")}"'
-            out.append(line)
+            chunk.append(line)
+        if chunk:
+            _layers.append((_src_pos.get(id(s), 0), chunk))
 
     # Ovals (circles, decorative dots). Stroke-only ovals (callout
     # circles, annotation marks) emit as stroke without fill; fill-only
@@ -3798,7 +3829,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 line += f" stroke:{o.stroke}"
         if o.stroke_width is not None and o.stroke_width > 0:
             line += f" stroke-width:{o.stroke_width:g}"
-        out.append(line)
+        _layers.append((_src_pos.get(id(o), 0), [line]))
 
     # Pictures — default to the brand's generic placeholder (so a derived
     # layout works as a reusable template) OR, when derive() was called
@@ -3811,6 +3842,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # bbox confuses the visual-diff coverage gate (>90% triggers a
     # struct = total fallback that masks real text deficits).
     for i, p in enumerate(pics, 1):
+        chunk = []
         if p.native_xml and p.native_media:
             # Template image carried natively (fixed corporate-design chrome):
             # the emitter re-embeds the media + splices the <p:pic>. Big media
@@ -3828,7 +3860,8 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 line += f' media_file:"{_mref}"'
             else:
                 line += f' media:"{p.native_media}"'
-            out.append(line)
+            chunk.append(line)
+            _layers.append((_src_pos.get(id(p), 0), chunk))
             continue
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
@@ -3844,10 +3877,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # slot resolved to empty string and the build fell into the
         # "no image bound" placeholder-rect branch — exactly why pictures
         # rendered as grey rects even when the asset path was correct.
-        out.append(
+        chunk.append(
             f'picture {cx0},{cy0} {cw}x{ch} '
             f'path:"{{{{ {slot} | default(\\"{default_path}\\") }}}}" cover:true'
         )
+        _layers.append((_src_pos.get(id(p), 0), chunk))
+
+    for _pos, _chunk in sorted(_layers, key=lambda e: e[0]):
+        out.extend(_chunk)
 
     # Lines. Stroke-width preserves the source `<a:ln w="...">` value so
     # a 3pt horizontal divider survives the round-trip — the previous
@@ -3988,8 +4025,17 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         for _o in shapes:
             if _o is t:
                 continue
-            if _o.x >= t.x + t.w and not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h):
-                _right = min(_right, _o.x)          # neighbour clear to the right
+            _y_overlap = not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h)
+            if _y_overlap:
+                if _o.x >= t.x + t.w:
+                    _right = min(_right, _o.x)      # neighbour clear to the right
+                elif _o.x + _o.w > t.x + t.w:
+                    # An element STARTS left of the text's right edge but
+                    # extends beyond it (full-height illustration sharing the
+                    # row, photo panel under a caption): the space to the
+                    # right is already occupied — no growth at all. Growing
+                    # there put slide-39's body column on top of its scene.
+                    _right = min(_right, t.x + t.w + _gap)
             if _o.y >= t.y + t.h and not (_o.x + _o.w <= t.x or _o.x >= t.x + t.w):
                 _bottom = min(_bottom, _o.y)         # neighbour clear below
         if run_align in (None, "left", "justify"):

@@ -407,6 +407,43 @@ _NATIVE_T_RE = re.compile(r"(<a:t>)([^<]+)(</a:t>)")
 _NATIVE_SKIP_MARKERS = ("<c:chart", "<dgm:", "relIds")
 
 
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def _coalesce_runs(xml: str) -> str:
+    """Merge ADJACENT runs with identical run properties inside each
+    paragraph. Source decks split sentences into per-word runs (spellcheck /
+    incremental-edit artifacts); slotifying those yields one useless slot
+    per word with a chars budget of that word's length. Identical-rPr
+    neighbours are visually one run — merge before slotification."""
+    from lxml import etree
+    try:
+        root = etree.fromstring(xml.encode("utf-8"))
+    except Exception:
+        return xml
+    changed = False
+    for para in root.iter(f"{{{_A_NS}}}p"):
+        prev = None       # (run element, rPr signature)
+        for run in list(para):
+            if run.tag != f"{{{_A_NS}}}r":
+                prev = None
+                continue
+            t = run.find(f"{{{_A_NS}}}t")
+            if t is None:
+                prev = None
+                continue
+            rpr = run.find(f"{{{_A_NS}}}rPr")
+            sig = etree.tostring(rpr) if rpr is not None else b""
+            if prev is not None and prev[1] == sig:
+                pt = prev[0].find(f"{{{_A_NS}}}t")
+                pt.text = (pt.text or "") + (t.text or "")
+                para.remove(run)
+                changed = True
+            else:
+                prev = (run, sig)
+    return etree.tostring(root, encoding="unicode") if changed else xml
+
+
 def _slotify_native_xml(
     xml: str, next_idx: int
 ) -> tuple[str, list[dict]]:
@@ -421,6 +458,7 @@ def _slotify_native_xml(
     from xml.sax.saxutils import escape as _xml_escape
     from xml.sax.saxutils import unescape as _xml_unescape
 
+    xml = _coalesce_runs(xml)
     slots: list[dict] = []
 
     def repl(m: re.Match) -> str:
