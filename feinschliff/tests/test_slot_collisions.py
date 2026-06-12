@@ -108,3 +108,59 @@ def test_validate_content_routes_collisions():
         slide_index=1, slot_budgets=budgets, chrome_bboxes=[],
     )
     assert any(d.kind == "slot-collision" for d in defects)
+
+
+def test_autoshrink_slot_predicts_fitted_rect():
+    """An autoshrink slot that wraps tall at the declared size but fits its
+    box after the emitter's shrink must NOT collide with the slot below —
+    the predictor models the rescue (final-review C1).
+
+    Arithmetic (DejaVu Sans, body 32px → 16pt, line_height=1.2,
+    width=600px, height=80px, EMU_PER_PX=6350):
+    - text3 (115 chars) at 16pt → ~153.6px — overflows the 80px declared box.
+    - autoshrink_size finds 10pt fits: 48px < 80px → rescue succeeds.
+    - Collision predictor must use h_px=max(80, 48)=80px (declared height).
+    - Bottom slot at y=220 → top_bottom=100+80=180 < 220 → no collision.
+    - Without the fix the predictor would use 153.6px → 253.6 > 220 (false
+      positive on every decompiled-pack title+body pair).
+    """
+    _require_font()
+    # top: autoshrink slot, bottom: plain slot below with a 40px gap
+    budgets = _budgets(
+        'text 100,100 "{{ top }}" style:body maxwidth:600 maxheight:80 autoshrink:true\n'
+        'text 100,220 "{{ bot }}" style:body maxwidth:600 maxheight:60'
+    )
+    # 115-char text wraps to 3 lines at 16pt but autoshrink rescues to 10pt (48px < 80px)
+    wrapping_text = "autoshrink rescues this word " * 4
+    defects = check_slot_collisions(
+        {"top": wrapping_text, "bot": "Short line"},
+        slot_budgets=budgets, chrome_bboxes=None, slide_index=1,
+    )
+    assert defects == [], (
+        f"autoshrink rescue should prevent collision but got: {defects}"
+    )
+
+
+def test_autoshrink_floor_overflow_still_collides():
+    """Content the 10pt floor cannot contain still grows past the box and
+    collides — the predictor doesn't pretend the rescue is magic (final-review C1).
+
+    Arithmetic (same tokens as above, height=80px):
+    - text_flood (224 chars) at 10pt floor → ~120px > 80px box — floor fails.
+    - Collision predictor must use h_px=max(80, 120)=120px.
+    - Bottom slot at y=170 → top_bottom=100+120=220 > 170 → real collision.
+    """
+    _require_font()
+    budgets = _budgets(
+        'text 100,100 "{{ top }}" style:body maxwidth:600 maxheight:80 autoshrink:true\n'
+        'text 100,170 "{{ bot }}" style:body maxwidth:600 maxheight:60'
+    )
+    # 224-char text: even at 10pt floor it needs ~120px > 80px box
+    flood_text = "overflow " * 25
+    defects = check_slot_collisions(
+        {"top": flood_text, "bot": "Short line"},
+        slot_budgets=budgets, chrome_bboxes=None, slide_index=1,
+    )
+    assert any(d.kind == "slot-collision" for d in defects), (
+        "floor-overflow autoshrink slot should still produce a collision defect"
+    )

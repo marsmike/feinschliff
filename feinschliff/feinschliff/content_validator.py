@@ -336,6 +336,24 @@ def _check_so_what_vagueness(
     )]
 
 
+def _autoshrink_fitted_pt(value: str, budget: "SlotBudget") -> float:
+    """Compute the fitted font size (pt) the emitter would use for an
+    autoshrink slot — mirrors check_slot_overflow's rescue exactly so
+    both callers share the same math and can't drift.
+
+    Uses the inset-reduced envelope (pptx_emit subtracts insets from the
+    fit budget) and the same 10pt floor.
+    """
+    from feinschliff.textfit import autoshrink_size as _autoshrink
+    inset_w = max(1, budget.width_emu - budget.inset_w_emu)
+    inset_h = max(1, budget.height_emu - budget.inset_h_emu)
+    return _autoshrink(
+        value, font=budget.font_family, max_size_pt=budget.font_size_pt,
+        min_size_pt=10, bold=budget.bold, width_emu=inset_w,
+        height_emu=inset_h, line_height=budget.line_height,
+    )
+
+
 def check_slot_overflow(
     value: str,
     *,
@@ -387,14 +405,9 @@ def check_slot_overflow(
     # silently — a "raw-pass, inset-fail" case is a real defect.
     floor_note = ""
     if budget.autoshrink:
-        from feinschliff.textfit import autoshrink_size as _autoshrink
+        fitted = _autoshrink_fitted_pt(value, budget)
         inset_w = max(1, budget.width_emu - budget.inset_w_emu)
         inset_h = max(1, budget.height_emu - budget.inset_h_emu)
-        fitted = _autoshrink(
-            value, font=budget.font_family, max_size_pt=budget.font_size_pt,
-            min_size_pt=10, bold=budget.bold, width_emu=inset_w,
-            height_emu=inset_h, line_height=budget.line_height,
-        )
         if _fits(value, font=budget.font_family, size_pt=fitted,
                  bold=budget.bold, width_emu=inset_w,
                  height_emu=inset_h, line_height=budget.line_height):
@@ -487,11 +500,22 @@ def check_slot_collisions(
         budget = slot_budgets.get(norm_path)
         if budget is None or not value.strip():
             continue
-        h_emu = _measure(
-            value, font=budget.font_family, size_pt=budget.font_size_pt,
-            bold=budget.bold, width_emu=budget.width_emu,
-            line_height=budget.line_height,
-        )
+        if budget.autoshrink:
+            # autoshrink slots render at the fitted size — predict the rect
+            # the emitter actually draws, mirroring check_slot_overflow's
+            # rescue.
+            fitted_pt = _autoshrink_fitted_pt(value, budget)
+            h_emu = _measure(
+                value, font=budget.font_family, size_pt=fitted_pt,
+                bold=budget.bold, width_emu=budget.width_emu,
+                line_height=budget.line_height,
+            )
+        else:
+            h_emu = _measure(
+                value, font=budget.font_family, size_pt=budget.font_size_pt,
+                bold=budget.bold, width_emu=budget.width_emu,
+                line_height=budget.line_height,
+            )
         h_px = max(budget.height_px, h_emu / budget.emu_per_px)
         rects.append((raw_path, (budget.x_px, budget.y_px, budget.width_px, h_px)))
 
