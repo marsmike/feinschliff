@@ -43,11 +43,37 @@ from pathlib import Path
 
 from feinschliff.io.soffice import PDFTOPPM, SOFFICE, pptx_to_png
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
-BRANDS_DIR = REPO_ROOT / "brands"
-SHARED_LAYOUTS = REPO_ROOT / "layouts"
-SHARED_CONTENT = REPO_ROOT / "tests" / "fixtures" / "layouts"
-GALLERY_DIR = REPO_ROOT.parent / "docs" / "brand-previews"
+REPO_ROOT = Path(__file__).resolve().parent.parent   # feinschliff-builder/
+WORKSPACE = REPO_ROOT.parent
+
+# Brands are split across feinschliff/ (core) and feinschliff-extra/
+# since v0.2.0 — same dual-root resolution as build_brand_gallery_site.py.
+# `blank` is a neutral base, excluded from default rendering.
+GALLERY_EXCLUDE = frozenset({"blank"})
+BRAND_ROOTS: dict[str, Path] = {}
+for _root in (WORKSPACE / "feinschliff" / "brands",
+              WORKSPACE / "feinschliff-extra" / "brands"):
+    if _root.is_dir():
+        for _d in sorted(_root.iterdir()):
+            if _d.is_dir() and (_d / "tokens.json").is_file():
+                BRAND_ROOTS.setdefault(_d.name, _d)
+
+SHARED_LAYOUTS = WORKSPACE / "feinschliff" / "layouts"
+SHARED_CONTENT = WORKSPACE / "feinschliff" / "tests" / "fixtures" / "layouts"
+GALLERY_DIR = WORKSPACE / "docs" / "brand-previews"
+
+
+def _all_brands() -> list[str]:
+    return sorted(b for b in BRAND_ROOTS if b not in GALLERY_EXCLUDE)
+
+
+def _brand_root(brand: str) -> Path:
+    try:
+        return BRAND_ROOTS[brand]
+    except KeyError:
+        raise SystemExit(
+            f"render_brand_atlas: unknown brand {brand!r} — known: "
+            + ", ".join(sorted(BRAND_ROOTS)))
 
 
 @dataclass(frozen=True)
@@ -70,7 +96,7 @@ def _discover_layouts(brand: str) -> list[tuple[str, Path]]:
     seen: dict[str, Path] = {}
     for dsl in sorted(SHARED_LAYOUTS.glob("*.slide.dsl")):
         seen[dsl.stem.removesuffix(".slide")] = dsl
-    brand_layouts = BRANDS_DIR / brand / "layouts"
+    brand_layouts = _brand_root(brand) / "layouts"
     if brand_layouts.is_dir():
         for dsl in sorted(brand_layouts.glob("*.slide.dsl")):
             seen[dsl.stem.removesuffix(".slide")] = dsl
@@ -79,7 +105,7 @@ def _discover_layouts(brand: str) -> list[tuple[str, Path]]:
 
 def _find_content(brand: str, layout_id: str) -> Path | None:
     """Resolve the content YAML for a (brand, layout_id) pair."""
-    brand_yaml = BRANDS_DIR / brand / "tests" / "fixtures" / "layouts" / f"{layout_id}.yaml"
+    brand_yaml = _brand_root(brand) / "tests" / "fixtures" / "layouts" / f"{layout_id}.yaml"
     if brand_yaml.is_file():
         return brand_yaml
     shared_yaml = SHARED_CONTENT / f"{layout_id}.yaml"
@@ -111,7 +137,14 @@ def _brand_chain(brand_dir: Path) -> list[Path]:
             if s.startswith("extends:"):
                 parent_name = s.split(":", 1)[1].strip()
                 break
-        cur = (cur.parent / parent_name) if parent_name else None
+        # Parent brands usually sit in the same root; extra brands extend
+        # the core `feinschliff` brand across plugin roots — fall back to
+        # the by-name registry when there is no sibling dir.
+        nxt: Path | None = None
+        if parent_name:
+            sibling = cur.parent / parent_name
+            nxt = sibling if sibling.is_dir() else BRAND_ROOTS.get(parent_name)
+        cur = nxt
     return chain
 
 
@@ -128,7 +161,10 @@ def _cache_inputs_mtime(job: LayoutJob, brand_dir: Path) -> float:
         compounds_dir = ancestor / "compounds"
         if compounds_dir.is_dir():
             candidates.extend(compounds_dir.glob("*.dsl"))
-    candidates.extend((REPO_ROOT / "compounds").glob("*.dsl"))
+    # NOTE: shared feinschmiede compounds are deliberately NOT cache
+    # inputs — their checkout/install mtimes would force a full re-render
+    # on every fresh clone (and break hermetic cache tests). Use --force
+    # after compound changes.
     return max(p.stat().st_mtime for p in candidates if p.exists())
 
 
@@ -169,7 +205,7 @@ def _pptx_to_png(pptx: Path, out_png: Path) -> None:
 
 def _render_one(job: LayoutJob) -> tuple[LayoutJob, str, str]:
     """Return (job, verdict, message). Verdict ∈ {ok, cached, fail}."""
-    brand_dir = BRANDS_DIR / job.brand
+    brand_dir = _brand_root(job.brand)
     if job.out_png.is_file():
         inputs_mtime = _cache_inputs_mtime(job, brand_dir)
         if job.out_png.stat().st_mtime > inputs_mtime:
@@ -228,7 +264,7 @@ def main() -> int:
     if args.brands:
         brands = args.brands
     else:
-        brands = sorted(b.name for b in BRANDS_DIR.iterdir() if b.is_dir())
+        brands = _all_brands()
 
     jobs, notes = _collect_jobs(brands, skip_missing_content=args.skip_missing)
     for n in notes:

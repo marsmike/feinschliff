@@ -27,7 +27,13 @@ from PIL import Image
 
 REPO = Path(__file__).resolve().parents[2]
 PREVIEW_DIR = REPO / "docs" / "brand-previews"
-BRANDS_DIR = REPO / "feinschliff" / "brands"
+# Brands split across core + extra plugins; resolve by name.
+BRAND_ROOTS = {}
+for _root in (REPO / "feinschliff" / "brands", REPO / "feinschliff-extra" / "brands"):
+    if _root.is_dir():
+        for _d in sorted(_root.iterdir()):
+            if _d.is_dir() and (_d / "tokens.json").is_file():
+                BRAND_ROOTS.setdefault(_d.name, _d)
 
 DARK_FIRST = {
     "binance", "ferrari", "spotify",
@@ -38,7 +44,7 @@ DARK_FIRST = {
 
 
 def _brand_bg(brand: str) -> tuple[int, int, int]:
-    tok = BRANDS_DIR / brand / "tokens.json"
+    tok = BRAND_ROOTS[brand] / "tokens.json"
     if not tok.is_file():
         return (255, 255, 255)
     data = json.loads(tok.read_text())
