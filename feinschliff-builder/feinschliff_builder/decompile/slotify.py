@@ -80,3 +80,32 @@ def slotify_layout_file(path: Path) -> list[str]:
     if slots:
         path.write_text(new_text, encoding="utf-8")
     return slots
+
+
+_SLOT_NAME_RE = re.compile(r"\{\{\s*(text_\d+)\b")
+_TEXT_PREFIX_RE = re.compile(r'^(text\s+[^"]*?)\s*("(?:\{\{.*)$)')
+
+# Roles whose boxes were sized for showcase copy but receive arbitrary real
+# content — graceful shrink to the 10pt emit floor beats silent overflow.
+_AUTOSHRINK_ROLES = frozenset({"title", "body"})
+
+
+def add_autoshrink(dsl_text: str, slot_roles: dict[str, str]) -> str:
+    """Add `autoshrink:true` to slot-bearing text lines whose slot role is
+    title/body. Idempotent; never touches the quoted label."""
+    out_lines: list[str] = []
+    for line in dsl_text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        slot = _SLOT_NAME_RE.search(body)
+        if (not body.startswith("text ") or slot is None
+                or "autoshrink:" in body
+                or slot_roles.get(slot.group(1)) not in _AUTOSHRINK_ROLES):
+            out_lines.append(line)
+            continue
+        m = _TEXT_PREFIX_RE.match(body)
+        if m is None:
+            out_lines.append(line)
+            continue
+        new_body = f"{m.group(1)} autoshrink:true {m.group(2)}"
+        out_lines.append(new_body + ("\n" if line.endswith("\n") else ""))
+    return "".join(out_lines)

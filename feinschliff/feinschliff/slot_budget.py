@@ -94,6 +94,7 @@ class SlotBudget:
     height_px: float        # maxheight in design-px (0 = unconstrained)
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
+    autoshrink: bool = False  # emitter will shrink to fit (10pt floor) when True
     emu_per_px: float = units.EMU_PER_PX_BASELINE  # design-px → EMU scale (derived from tokens slide.width_emu)
     px_to_pt: float = units.PX_TO_PT_BASELINE       # design-px → pt scale (emu_per_px / EMU_PER_PT)
 
@@ -196,6 +197,10 @@ def _budget_face(font_family: list[str], weight: int) -> tuple[str, bool]:
        keeps gate predictions on the same glyph widths the emitter fits with.
     2. Otherwise today's fallback walk (_best_font + _bold_for_weight) so
        fallback-list brands and metric-less environments are unchanged.
+
+    Named weight-variant faces (e.g. "Open Sans SemiBold" at weight 600) are
+    rarely in the table or measurable, so they fall through to path 2 until
+    registered.
     """
     if font_family:
         # Lazy import: pptx_emit pulls python-pptx/PIL — only needed here.
@@ -328,6 +333,7 @@ def compute_slot_budgets(
             height_px=height_px,
             font_family=font_name,
             bold=bold,
+            autoshrink=str(node.kw_args.get("autoshrink", "")).lower() == "true",
             emu_per_px=emu_per_px,
             px_to_pt=px_to_pt,
         )

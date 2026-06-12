@@ -374,6 +374,22 @@ def check_slot_overflow(
     if ok:
         return []
 
+    # Autoshrink rescue: the emitter will shrink to fit (10pt floor) — only
+    # fire when even the floor overflows (work item E).
+    floor_note = ""
+    if budget.autoshrink:
+        from feinschliff.textfit import autoshrink_size as _autoshrink
+        fitted = _autoshrink(
+            value, font=budget.font_family, max_size_pt=budget.font_size_pt,
+            min_size_pt=10, bold=budget.bold, width_emu=budget.width_emu,
+            height_emu=budget.height_emu, line_height=budget.line_height,
+        )
+        if _fits(value, font=budget.font_family, size_pt=fitted,
+                 bold=budget.bold, width_emu=budget.width_emu,
+                 height_emu=budget.height_emu, line_height=budget.line_height):
+            return []
+        floor_note = " Overflows even at the 10pt autoshrink floor."
+
     # Compute estimated lines for a helpful message and wrap-overflow guard.
     from feinschliff.textfit import measure_height_emu as _measure
     actual_h = _measure(
@@ -409,7 +425,7 @@ def check_slot_overflow(
             f"at {budget.style} {budget.size_px:.0f}px "
             f"({budget.width_px:.0f}×{budget.height_px:.0f}px, "
             f"~{budget.chars_per_line} chars/line). "
-            f"Shorten to ≤{budget.max_chars} chars.{hyphen_hint}"
+            f"Shorten to ≤{budget.max_chars} chars.{hyphen_hint}{floor_note}"
         ),
     )]
 

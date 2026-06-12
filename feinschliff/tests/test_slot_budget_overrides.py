@@ -87,3 +87,55 @@ def test_budget_face_table_families_unchanged():
     raw["font-family"] = {"display": ["Open Sans"], "body": ["Open Sans"]}
     b = _budgets('text 100,100 "{{ t }}" style:body maxwidth:800 maxheight:200', raw)["t"]
     assert b.font_family == "Open Sans"
+
+
+def test_autoshrink_node_rescues_moderate_overflow():
+    """Content that overflows at the declared size but fits ≥10pt after
+    shrinking must NOT abort the build — the emitter will rescue it (E).
+
+    Arithmetic (validated):
+      box 600×120px → width_emu≈3,428,007, height_emu≈685,601
+      16pt DejaVu Sans → ~27 chars/line, max 2 lines
+      Text ~68 chars wraps to 3 lines (height 731520 > 685601) — overflows at 16pt.
+      autoshrink_size → 14pt; fits at 14pt → rescue fires, no defect.
+    """
+    import pytest
+    from feinschliff.content_validator import validate_content
+    from feinschmiede.text import measure
+    if measure.find_font_file("DejaVu Sans") is None:
+        pytest.skip("DejaVu Sans not resolvable")
+    raw = dict(RAW_12IN)
+    raw["font-family"] = {"display": ["DejaVu Sans"], "body": ["DejaVu Sans"]}
+    line = ('text 100,100 "{{ t }}" style:body size:16pt autoshrink:true '
+            'maxwidth:600 maxheight:120')
+    b = _budgets(line, raw)["t"]
+    assert b.autoshrink is True
+    # ~3 lines at 16pt in a 2-line box: overflows declared, fits shrunk.
+    text = "Quarterly enterprise revenue grew across all priority regions again"
+    defects = validate_content({"t": text}, slot_budgets={"t": b})
+    assert not [d for d in defects if d.kind == "slot-overflow"], defects
+
+
+def test_autoshrink_floor_still_fatal():
+    """Even the 10pt floor can't fit a paragraph in a sliver — still fatal.
+
+    Arithmetic (validated):
+      box 200×30px → width_emu≈1,142,669, height_emu≈171,400
+      max 1 line at 16pt; 10pt line height > height_emu → no size fits.
+      autoshrink_size returns 10pt (floor); fits at 10pt → False.
+      Defect is raised with "10pt" in message.
+    """
+    import pytest
+    from feinschliff.content_validator import validate_content
+    from feinschmiede.text import measure
+    if measure.find_font_file("DejaVu Sans") is None:
+        pytest.skip("DejaVu Sans not resolvable")
+    raw = dict(RAW_12IN)
+    raw["font-family"] = {"display": ["DejaVu Sans"], "body": ["DejaVu Sans"]}
+    line = ('text 100,100 "{{ t }}" style:body size:16pt autoshrink:true '
+            'maxwidth:200 maxheight:30')
+    b = _budgets(line, raw)["t"]
+    text = " ".join(["overflowing"] * 40)
+    defects = validate_content({"t": text}, slot_budgets={"t": b})
+    overflow = [d for d in defects if d.kind == "slot-overflow"]
+    assert overflow and "10pt" in overflow[0].message
