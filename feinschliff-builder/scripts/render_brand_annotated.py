@@ -57,6 +57,8 @@ NATIVE_KW_RE = re.compile(r'(\w+):"([^"]*)"')
 NATIVE_XFRM_RE = re.compile(
     r'<a:off x="(-?\d+)" y="(-?\d+)"/><a:ext cx="(\d+)" cy="(\d+)"/>')
 NATIVE_SLOT_RE = re.compile(r"\{\{\s*(text_\d+)\s*\|")
+NATIVE_CHART_MARKERS = ("<c:chart", "<dgm:", "relIds")
+VIOLET = (120, 60, 200)
 
 BADGE_FIELDS = ["role", "family", "ideal_count", "data_band", "comparison",
                 "family_curated", "variety_exempt", "fixed_chrome", "slide_index"]
@@ -141,6 +143,39 @@ def native_slot_frames(body: str, asset_root: Path | None,
             continue
         x, y, w, h = (float(v) * emu_to_canvas for v in g.groups())
         frames.append((slots, (x, y, w, h)))
+    return frames
+
+
+def native_chart_frames(body: str, asset_root: Path | None,
+                        emu_to_canvas: float) -> list[tuple]:
+    """Chart / SmartArt native frames (data replaceable post-export) →
+    rects in canvas px, for the overlay's replaceable-data marker."""
+    frames = []
+    if not emu_to_canvas:
+        return frames
+    for ln in body.splitlines():
+        ln = ln.strip()
+        if not ln.startswith("native "):
+            continue
+        kwargs = dict(NATIVE_KW_RE.findall(ln))
+        xml = None
+        if kwargs.get("b64"):
+            try:
+                xml = base64.b64decode(kwargs["b64"]).decode("utf-8", "replace")
+            except ValueError:
+                continue
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sc = asset_root / kwargs["xml_file"]
+            if sc.is_file():
+                xml = sc.read_text(encoding="utf-8", errors="replace")
+        if not xml or not any(m in xml for m in NATIVE_CHART_MARKERS):
+            continue
+        g = NATIVE_XFRM_RE.search(xml)
+        if g is None:
+            continue
+        x, y, w, h = (float(v) * emu_to_canvas for v in g.groups())
+        kind = "chart" if "<c:chart" in xml else "diagram"
+        frames.append((kind, (x, y, w, h)))
     return frames
 
 
@@ -318,6 +353,12 @@ def main() -> int:
                     draw.line([xx, y + h, min(xx + 5, x + w), y + h], fill=GRAY, width=1)
         # native frames whose payload carries slots: orange box + slot range
         w_emu = pack_width_emu(lp)
+        for kind, (x, y, w, h) in native_chart_frames(
+                body, lp.parent.parent / "assets",
+                (1920.0 / w_emu) if w_emu else 0.0):
+            x, y, w, h = x * scale, y * scale, w * scale, h * scale
+            draw.rectangle([x, y, x + w, y + h], outline=VIOLET, width=3)
+            tag(draw, x, y, f"{kind} · data replaceable (edit in PowerPoint)", VIOLET)
         for slot_names, (x, y, w, h) in native_slot_frames(
                 body, lp.parent.parent / "assets",
                 (1920.0 / w_emu) if w_emu else 0.0):
@@ -365,7 +406,7 @@ def main() -> int:
 
         pages_html.append(f"""
 <div class='page render'><img src='{ann_png.as_uri()}'>
-  <div class='strip'>{i:0{digits}d} · {esc(name)} — slots: orange = text · blue = image · gray = footer/page · dashes = baked chrome</div>
+  <div class='strip'>{i:0{digits}d} · {esc(name)} — slots: orange = text · blue = image · violet = chart/diagram data · gray = footer/page · dashes = baked chrome</div>
 </div>
 <div class='page render'><img src='{Path(cov_png).as_uri()}'>
   <div class='strip'>{i:0{digits}d} · {esc(name)} — slot coverage: {esc(args.debug_color)} text = slot-bound · brand-coloured text = NOT bindable</div>
