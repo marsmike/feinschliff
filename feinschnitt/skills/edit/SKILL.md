@@ -49,7 +49,10 @@ React code — the shared engine in `edit-engine/` renders it.
 
 **Short (portrait, ≤60s):** hook at 0.0; density per doctrine table (§2);
 concept pass first, then fill connectives via the picker; one `quote_pull`
-max; captions on, 1–2 emphasis phrases verbatim from `words.json`.
+max; captions on, 1–2 emphasis phrases verbatim from `words.json` — chosen
+from SPEAKER-ONLY stretches: a phrase inside a beat's window (or its ±0.8s
+echo pad) is suppressed with its chunk and never renders (lint-time warning
+tells you; found in the M5 cold-start run, 2026-06-12).
 
 **Longform (landscape or >60s):** skim `words.json` for topic shifts (pauses
 ≥1.5s, markers "OK so" / "next up"); author chapter-by-chapter into ONE
