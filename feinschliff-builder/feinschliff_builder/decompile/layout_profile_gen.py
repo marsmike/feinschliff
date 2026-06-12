@@ -96,6 +96,9 @@ from pathlib import Path
 import yaml
 
 from feinschliff.dsl.parser import split_frontmatter
+from feinschmiede.dsl.tokens import load_tokens
+from feinschmiede.geometry import units
+from feinschmiede.text.measure import avg_char_width_ratio
 
 # --- DSL line patterns ------------------------------------------------------
 # In the FILE the slot's inner quotes are backslash-escaped:
@@ -409,13 +412,27 @@ def _element_tree(
 
 # --- Slot roles -------------------------------------------------------------
 
-def _char_capacity(slot: dict) -> int:
-    """Rough text capacity of the slot box (chars/line × lines), per the
-    0.55 em average glyph width / 1.5 em line height rule of thumb."""
-    pt_px = slot["pt"] * 96.0 / 72.0
-    cols = math.floor(slot["maxw"] / (0.55 * pt_px))
-    rows = max(1, math.floor(slot["maxh"] / (1.5 * pt_px)))
-    return cols * rows
+def _char_capacity(slot: dict, *, px_per_pt: float = 2.0, tokens=None,
+                   face: str | None = None) -> int:
+    """Honest capacity of the slot box: measured chars/line × FULL lines.
+
+    Char width: measured avg glyph advance for the resolved brand face
+    (fallback 0.55em). pt→px: the pack's real slide scale — never the CSS
+    96/72-DPI convention. 0 rows is an honest 0: a box shorter than one
+    line holds no wrapped text (slot_warnings carries IMPOSSIBLE_BOX).
+    Exception: a borderline-tight box that passes the soft-clip grace
+    (_fits_one_line_soft) budgets one row — coherent with IMPOSSIBLE_BOX."""
+    line_height, style_face = _style_metrics(slot.get("style", ""), tokens)
+    size_px = slot["pt"] * px_per_pt
+    if size_px <= 0:
+        return 0
+    cols = math.floor(slot["maxw"] / (_char_ratio(face or style_face) * size_px))
+    rows = math.floor(slot["maxh"] / (line_height * size_px))
+    if rows == 0 and _fits_one_line_soft(line_height * size_px, slot["maxh"]):
+        # Borderline-tight box: one soft-clipped line renders fine (same
+        # grace as the IMPOSSIBLE_BOX lint) — budget a single row.
+        rows = 1
+    return max(0, cols) * max(0, rows)
 
 
 def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
@@ -446,6 +463,124 @@ def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
         else:
             roles[t["name"]] = "body"
     return roles
+
+
+_MIN_CHARS_PER_LINE = 8
+_FALLBACK_CHAR_RATIO = 0.55
+
+# PPT soft-clips a line that exceeds its box by up to ~10% without visual
+# damage (native bboxes routinely run that tight). Shared by the
+# IMPOSSIBLE_BOX lint and _char_capacity so the two can never disagree on
+# whether a box holds one line.
+_LINE_FIT_GRACE = 1.10
+
+
+def _fits_one_line_soft(line_h_px: float, maxh: float) -> bool:
+    return maxh > 0 and line_h_px <= maxh * _LINE_FIT_GRACE + 0.5
+
+# Roles that legitimately hold a digit or fixed short string — exempt from
+# the NARROW_BOX chars-per-line lint.
+_NARROW_BOX_EXEMPT_ROLES = frozenset({"page-number", "footer", "source-note"})
+
+
+def _style_metrics(style_name: str, tokens) -> tuple[float, str | None]:
+    """(line_height, primary_face) for a style bundle; (1.2, None) when the
+    pack tokens are unavailable or the style doesn't resolve."""
+    if tokens is None or not style_name:
+        return 1.2, None
+    try:
+        resolved = tokens.resolve_style(style_name)
+    except (KeyError, ValueError):
+        return 1.2, None
+    face = resolved.font_family[0] if resolved.font_family else None
+    return resolved.line_height, face
+
+
+def _char_ratio(face: str | None) -> float:
+    if face:
+        measured = avg_char_width_ratio(face)
+        if measured:
+            return measured
+    return _FALLBACK_CHAR_RATIO
+
+
+def _boxes_overlap(a: dict, b: dict) -> bool:
+    return (a["x"] < b["x"] + b["maxw"] and b["x"] < a["x"] + a["maxw"]
+            and a["y"] < b["y"] + b["maxh"] and b["y"] < a["y"] + a["maxh"])
+
+
+def _slot_warnings(
+    texts: list[dict],
+    *,
+    px_per_pt: float,
+    tokens=None,
+    slot_roles: dict[str, str] | None = None,
+) -> dict[str, list[str]]:
+    """Static box-sanity lint over slotified text nodes — content-free, only
+    declared geometry and resolved type size. Results land in frontmatter
+    `slot_warnings:` (planning LLMs and /improve-brand read them) and in the
+    slotify summary print.
+
+    ``slot_roles`` is used to suppress false positives for intentionally
+    compact chrome slots:
+    - NARROW_BOX is skipped for page-number / footer / source-note roles
+      (these hold a digit or a short fixed string — 7 chars/line is fine).
+    - IMPOSSIBLE_BOX is skipped when the default is 1-2 chars (decorative
+      display glyphs such as oversized quotation marks).
+    """
+    out: dict[str, list[str]] = {}
+
+    def _add(name: str, msg: str) -> None:
+        out.setdefault(name, []).append(msg)
+
+    for t in texts:
+        size_px = t["pt"] * px_per_pt
+        if size_px <= 0:
+            continue
+        line_height, face = _style_metrics(t["style"], tokens)
+        line_h_px = size_px * line_height
+        # 1-2 char defaults are decorative display glyphs (oversized quote marks
+        # etc.) — overflow is the design.
+        is_decorative_glyph = len(t["default"].strip()) <= 2
+        # Grace shared with _char_capacity via _fits_one_line_soft / _LINE_FIT_GRACE.
+        if t["maxh"] > 0 and not _fits_one_line_soft(line_h_px, t["maxh"]) \
+                and not is_decorative_glyph:
+            _add(t["name"], (
+                f"IMPOSSIBLE_BOX: one line at {t['pt']:g}pt is ~{line_h_px:.0f}px "
+                f"tall but the box is {t['maxh']:g}px"
+            ))
+        role = (slot_roles or {}).get(t["name"], "body")
+        cols = math.floor(t["maxw"] / (_char_ratio(face) * size_px))
+        # Skip NARROW_BOX for slots whose role is page-number / footer /
+        # source-note — these hold a digit or a fixed short string by design.
+        if (0 < cols < _MIN_CHARS_PER_LINE
+                and role not in _NARROW_BOX_EXEMPT_ROLES):
+            _add(t["name"], (
+                f"NARROW_BOX: ~{cols} chars/line at {t['pt']:g}pt in a "
+                f"{t['maxw']:g}px-wide box"
+            ))
+    for i, a in enumerate(texts):
+        for b in texts[i + 1:]:
+            if _boxes_overlap(a, b):
+                msg = (f"SLOT_BOX_OVERLAP: declared boxes of {a['name']} and "
+                       f"{b['name']} intersect")
+                _add(a["name"], msg)
+                _add(b["name"], msg)
+    return out
+
+
+def _chrome_bboxes(natives, canvas_w: float, width_emu: float) -> list[list[int]]:
+    """Design-px [x,y,w,h] for each decodable native chrome payload, scaled
+    with the pack's REAL slide width (element_tree's fixed 12192000 scale is
+    ~11% off on 12in packs — kept untouched there, correct here)."""
+    scale = canvas_w / (width_emu or _EMU_SLIDE_W)
+    boxes: list[list[int]] = []
+    for _kind, xml in natives:
+        xfrm = _root_xfrm_emu(xml) if xml is not None else None
+        if xfrm is not None:
+            x, y, w, h = (v * scale for v in xfrm)
+            boxes.append([round(x), round(y), round(w), round(h)])
+    return boxes
 
 
 def _image_class(img: dict, canvas_w: float, canvas_h: float) -> str:
@@ -495,6 +630,7 @@ def classify_layout(
     slide_index: int,
     total_slides: int,
     asset_root: Path | None = None,
+    brand_dir: Path | None = None,
 ) -> dict:
     """Classify one slotified layout into its frontmatter profile dict.
 
@@ -502,9 +638,23 @@ def classify_layout(
     `feinschliff.layout_profile.parse_profile` accepts; the extra keys
     (`family`, `slots`, `image_queries`, …) are tolerated/ignored there and
     consumed by deck planning instead.
+
+    ``brand_dir`` is the pack root directory (contains ``tokens.json``).
+    When supplied, slot_warnings uses the pack's real px/pt scale and
+    chrome_bboxes uses the real slide width in EMU.
     """
     _, body = split_frontmatter(dsl_text)  # tolerate re-runs on profiled files
     canvas_w, canvas_h = _parse_canvas(body)
+    tokens = None
+    width_emu = 0.0
+    if brand_dir is not None and (brand_dir / "tokens.json").exists():
+        try:
+            tokens = load_tokens(brand_dir)
+            width_emu = float(tokens.slide("width_emu") or 0)
+        except Exception:
+            tokens = None
+    px_per_pt = ((canvas_w * units.EMU_PER_PT / width_emu) if width_emu
+                 else 1.0 / units.PX_TO_PT_BASELINE)
     sx, sy = canvas_w / 1920.0, canvas_h / 1080.0
     texts = _parse_text_slots(body)
     images = _parse_image_slots(body)
@@ -638,7 +788,7 @@ def classify_layout(
         profile["slots"] = {
             t["name"]: {
                 "role": slot_roles[t["name"]],
-                "chars": _char_capacity(t),
+                "chars": _char_capacity(t, px_per_pt=px_per_pt, tokens=tokens),
                 # Preview only — truncated so a lorem paragraph cannot bloat
                 # the frontmatter; the authoritative default stays in the DSL.
                 "default": (t["default"][:77] + "…"
@@ -651,12 +801,19 @@ def classify_layout(
                 "role": "image",
                 "class": _image_class(i, canvas_w, canvas_h),
             }
+        warnings = _slot_warnings(
+            texts, px_per_pt=px_per_pt, tokens=tokens, slot_roles=slot_roles)
+        if warnings:
+            profile["slot_warnings"] = warnings
     if images:
         query = _image_query(layout_name, title_default)
         profile["image_queries"] = {i["name"]: query for i in images}
     image_classes = {
         i["name"]: _image_class(i, canvas_w, canvas_h) for i in images
     }
+    bboxes = _chrome_bboxes(natives, canvas_w, width_emu)
+    if bboxes:
+        profile["chrome_bboxes"] = bboxes
     if texts or images or natives:
         profile["element_tree"] = _element_tree(
             texts, images, natives, slot_roles, image_classes, canvas_w)

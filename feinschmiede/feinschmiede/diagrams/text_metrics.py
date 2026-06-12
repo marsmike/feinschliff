@@ -35,3 +35,21 @@ EXCALIDRAW_TEXT_SIZES = {
     "detail": 12,
     "mono": 13,
 }
+
+
+def char_width_em_for(face: str | None) -> float:
+    """Average char width (em fraction) for *face* — measured when the font
+    resolves, else the 0.62 heuristic. Keeps wireframe/validator estimates
+    in sync with what the brand face actually renders (F4).
+
+    The import of avg_char_width_ratio is deferred: text_metrics is imported
+    by lightweight consumers (structural_validator, diagram_wireframe) that
+    never measure fonts. Deferring avoids pulling in fontconfig/PIL at import
+    time for those callers."""
+    if face:
+        # deferred: text_metrics is imported by lightweight consumers that never measure
+        from feinschmiede.text.measure import avg_char_width_ratio
+        measured = avg_char_width_ratio(face)
+        if measured:
+            return measured
+    return CHAR_WIDTH_EM

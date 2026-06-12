@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from feinschliff.slot_budget import SlotBudget
@@ -31,10 +31,11 @@ _NUMERIC_ANCHOR_RE = re.compile(
 
 @dataclass
 class ContentDefect:
-    kind: str           # "title-length" | "action-verb-leading" | "vague-so-what"
+    kind: str           # "title-length" | "action-verb-leading" | "vague-so-what" | "slot-collision"
     slide_index: int    # 1-based
     slot: str           # e.g. "title", "actions[0].verb"
     message: str
+    severity: Literal["fatal", "warn"] = "fatal"  # "fatal" (aborts build) | "warn" (logged, build continues)
 
     def __str__(self) -> str:
         return f"slide {self.slide_index} [{self.kind}] {self.slot}: {self.message}"
@@ -335,6 +336,24 @@ def _check_so_what_vagueness(
     )]
 
 
+def _autoshrink_fitted_pt(value: str, budget: "SlotBudget") -> float:
+    """Compute the fitted font size (pt) the emitter would use for an
+    autoshrink slot — mirrors check_slot_overflow's rescue exactly so
+    both callers share the same math and can't drift.
+
+    Uses the inset-reduced envelope (pptx_emit subtracts insets from the
+    fit budget) and the same 10pt floor.
+    """
+    from feinschliff.textfit import autoshrink_size as _autoshrink
+    inset_w = max(1, budget.width_emu - budget.inset_w_emu)
+    inset_h = max(1, budget.height_emu - budget.inset_h_emu)
+    return _autoshrink(
+        value, font=budget.font_family, max_size_pt=budget.font_size_pt,
+        min_size_pt=10, bold=budget.bold, width_emu=inset_w,
+        height_emu=inset_h, line_height=budget.line_height,
+    )
+
+
 def check_slot_overflow(
     value: str,
     *,
@@ -354,6 +373,11 @@ def check_slot_overflow(
     - KPI values with 3 digits overflowing a narrow maxwidth.
 
     Only fires when ``budget.height_px > 0`` (unconstrained slots are skipped).
+
+    Note: the primary fit check uses the raw box (the tuned-corpus envelope);
+    only the autoshrink rescue is inset-aware, mirroring the emitter's actual
+    shrink budget — predictions err pessimistic there, which converts silent
+    under-shrink into a visible defect.
     """
     if not value or not value.strip():
         return []
@@ -365,7 +389,7 @@ def check_slot_overflow(
     ok = _fits(
         value,
         font=budget.font_family,
-        size_pt=budget.size_pt,
+        size_pt=budget.font_size_pt,
         bold=budget.bold,
         width_emu=budget.width_emu,
         height_emu=budget.height_emu,
@@ -374,17 +398,33 @@ def check_slot_overflow(
     if ok:
         return []
 
+    # Autoshrink rescue: the emitter will shrink to fit (10pt floor) using the
+    # INSET-REDUCED envelope (pptx_emit subtracts inset_w/h_emu from the fit
+    # budget). Use the same reduced box here so a slot that overflows the raw
+    # box at 10pt but only barely passes the raw rescue cannot slip through
+    # silently — a "raw-pass, inset-fail" case is a real defect.
+    floor_note = ""
+    if budget.autoshrink:
+        fitted = _autoshrink_fitted_pt(value, budget)
+        inset_w = max(1, budget.width_emu - budget.inset_w_emu)
+        inset_h = max(1, budget.height_emu - budget.inset_h_emu)
+        if _fits(value, font=budget.font_family, size_pt=fitted,
+                 bold=budget.bold, width_emu=inset_w,
+                 height_emu=inset_h, line_height=budget.line_height):
+            return []
+        floor_note = " Overflows even at the 10pt autoshrink floor."
+
     # Compute estimated lines for a helpful message and wrap-overflow guard.
     from feinschliff.textfit import measure_height_emu as _measure
     actual_h = _measure(
         value,
         font=budget.font_family,
-        size_pt=budget.size_pt,
+        size_pt=budget.font_size_pt,
         bold=budget.bold,
         width_emu=budget.width_emu,
         line_height=budget.line_height,
     )
-    line_h = budget.size_pt * budget.line_height * 12700  # EMU per line
+    line_h = budget.font_size_pt * budget.line_height * 12700  # EMU per line
     est_lines = max(1, round(actual_h / line_h)) if line_h > 0 else "?"
 
     # Skip vertical-clipping-only cases: the text fits on 1 line horizontally
@@ -409,9 +449,98 @@ def check_slot_overflow(
             f"at {budget.style} {budget.size_px:.0f}px "
             f"({budget.width_px:.0f}×{budget.height_px:.0f}px, "
             f"~{budget.chars_per_line} chars/line). "
-            f"Shorten to ≤{budget.max_chars} chars.{hyphen_hint}"
+            f"Shorten to ≤{budget.max_chars} chars.{floor_note}{hyphen_hint}"
         ),
     )]
+
+
+def _rects_intersect(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+    *,
+    epsilon: float = 1.0,
+) -> bool:
+    """Return True when rectangles *a* and *b* overlap by more than *epsilon* px.
+
+    Each rect is (x, y, width, height) in design-px. The epsilon guard
+    prevents spurious hits from numerical adjacency (e.g. two boxes sharing
+    exactly one edge pixel).
+    """
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return (ax + epsilon < bx + bw and bx + epsilon < ax + aw
+            and ay + epsilon < by + bh and by + epsilon < ay + ah)
+
+
+def check_slot_collisions(
+    ctx: dict,
+    *,
+    slot_budgets: "dict[str, SlotBudget]",
+    chrome_bboxes: list[list[float]] | None,
+    slide_index: int,
+) -> list[ContentDefect]:
+    """Predict each bound slot's wrapped height, grow its rect, and flag
+    pairwise slot/slot and slot/chrome intersections. Severity 'warn' in
+    release 1 — promotion to fatal is a one-line change once the
+    false-positive rate over the repo brands is known.
+
+    Only bound slots (those with a value in *ctx*) are grown and checked.
+    Unbound slots are skipped — the pack-build lint owns declared-box
+    overlap analysis without content. However, declared-box overlaps
+    (pack-lint territory) also fire here once both slots are bound — bound
+    content makes the overlap real.
+
+    Requires SlotBudget.x_px/y_px from the DSL 'X,Y' positional; budgets
+    without coordinates anchor at the origin and will false-positive.
+    """
+    from feinschliff.textfit import measure_height_emu as _measure
+
+    rects: list[tuple[str, tuple[float, float, float, float]]] = []
+    for norm_path, raw_path, value in iter_slot_values(ctx):
+        budget = slot_budgets.get(norm_path)
+        if budget is None or not value.strip():
+            continue
+        if budget.autoshrink:
+            # autoshrink slots render at the fitted size — predict the rect
+            # the emitter actually draws, mirroring check_slot_overflow's
+            # rescue.
+            fitted_pt = _autoshrink_fitted_pt(value, budget)
+            h_emu = _measure(
+                value, font=budget.font_family, size_pt=fitted_pt,
+                bold=budget.bold, width_emu=budget.width_emu,
+                line_height=budget.line_height,
+            )
+        else:
+            h_emu = _measure(
+                value, font=budget.font_family, size_pt=budget.font_size_pt,
+                bold=budget.bold, width_emu=budget.width_emu,
+                line_height=budget.line_height,
+            )
+        h_px = max(budget.height_px, h_emu / budget.emu_per_px)
+        rects.append((raw_path, (budget.x_px, budget.y_px, budget.width_px, h_px)))
+
+    defects: list[ContentDefect] = []
+    for i, (slot_a, rect_a) in enumerate(rects):
+        for slot_b, rect_b in rects[i + 1:]:
+            if _rects_intersect(rect_a, rect_b):
+                defects.append(ContentDefect(
+                    kind="slot-collision", slide_index=slide_index, slot=slot_a,
+                    message=(f"predicted text rect of '{slot_a}' intersects "
+                             f"'{slot_b}' ({rect_a[2]:.0f}x{rect_a[3]:.0f}px at "
+                             f"{rect_a[0]:.0f},{rect_a[1]:.0f})"),
+                    severity="warn",
+                ))
+    for slot_name, rect in rects:
+        for bbox in chrome_bboxes or []:
+            if len(bbox) == 4 and _rects_intersect(rect, tuple(map(float, bbox))):
+                defects.append(ContentDefect(
+                    kind="slot-collision", slide_index=slide_index, slot=slot_name,
+                    message=(f"predicted text rect of '{slot_name}' overlaps baked "
+                             f"chrome at {bbox[0]:.0f},{bbox[1]:.0f} "
+                             f"{bbox[2]:.0f}x{bbox[3]:.0f}px"),
+                    severity="warn",
+                ))
+    return defects
 
 
 def _check_filler_words(
@@ -477,6 +606,7 @@ def validate_content(
     slide_index: int = 1,
     layout: str | None = None,
     slot_budgets: dict[str, SlotBudget] | None = None,
+    chrome_bboxes: list | None = None,
 ) -> list[ContentDefect]:
     """Walk the content dict; return all defects.
 
@@ -491,6 +621,11 @@ def validate_content(
     slot value in `ctx` is checked against its budget via
     ``check_slot_overflow``; this fires the ``slot-overflow`` defect class
     before any render budget is spent.
+
+    `chrome_bboxes` is an optional list of ``[x, y, w, h]`` rectangles
+    (design-px ints) read from the layout front-matter's ``chrome_bboxes``
+    key. When supplied together with *slot_budgets*, ``check_slot_collisions``
+    predicts whether any grown slot rect intersects baked chrome.
     """
     defects: list[ContentDefect] = []
 
@@ -539,6 +674,10 @@ def validate_content(
                 defects.extend(check_slot_overflow(
                     value, slot=raw_path, budget=budget, slide_index=slide_index,
                 ))
+        defects.extend(check_slot_collisions(
+            ctx, slot_budgets=slot_budgets, chrome_bboxes=chrome_bboxes,
+            slide_index=slide_index,
+        ))
 
     return defects
 

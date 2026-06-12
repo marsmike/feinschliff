@@ -121,8 +121,19 @@ def cmd_build(args) -> int:
         content_defects = validate_content(
             ctx, slide_index=1, layout=layout_name, slot_budgets=slot_budgets,
         )
-        if content_defects:
-            emit_defects_and_abort_message({1: content_defects}, cli_name="build")
+        # Mirror deck.py's severity split: warn-severity defects (e.g.
+        # slot-collision) are logged but never abort the build; only fatal
+        # defects block the render.  Parity required — both entry points
+        # call validate_content with slot_budgets, so both must handle the
+        # same defect vocabulary.
+        warn_defects, fatal_defects = [], []
+        for d in content_defects:
+            (warn_defects if getattr(d, "severity", "fatal") == "warn"
+             else fatal_defects).append(d)
+        for d in warn_defects:
+            print(f"build: WARN: {d}", file=sys.stderr)
+        if fatal_defects:
+            emit_defects_and_abort_message({1: fatal_defects}, cli_name="build")
             return 1
 
     result = compile_slide(

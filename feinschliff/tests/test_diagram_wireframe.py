@@ -3,11 +3,24 @@ from __future__ import annotations
 from pathlib import Path
 
 from feinschmiede.diagrams.diagram_wireframe import primitives_from_svg_dsl, primitives_from_excalidraw_dsl
-from feinschmiede.diagrams.text_metrics import CHAR_WIDTH_EM, SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES
+from feinschmiede.diagrams.text_metrics import SVG_TEXT_SIZES, EXCALIDRAW_TEXT_SIZES, char_width_em_for
+from feinschmiede.diagrams.brand_bridge import resolve_fonts
 
 
 def _brand_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "brands" / "feinschliff"
+
+
+def _brand_char_em() -> float:
+    """Measured char-width ratio for the feinschliff brand's body face (F4).
+
+    When Noto Sans is installed, this returns the measured ratio (~0.566);
+    when the kill-switch is set or the font is absent, it falls back to
+    CHAR_WIDTH_EM (0.62). Tests use this helper so they track the actual
+    wireframe behavior rather than pinning the heuristic constant.
+    """
+    primary = resolve_fonts(_brand_dir()).primary_body
+    return char_width_em_for(primary)
 
 
 def test_svg_dsl_yields_bbox_primitives():
@@ -39,46 +52,50 @@ arrow api -> svc
 
 
 # ---------------------------------------------------------------------------
-# Text-width formula: size * CHAR_WIDTH_EM * len(longest_line)
+# Text-width formula: size * char_width_em_for(brand_face) * len(longest_line)
 # ---------------------------------------------------------------------------
 
 def test_svg_text_width_uses_char_width_em():
-    """SVG text primitive width must equal int(size * CHAR_WIDTH_EM * len(text)).
+    """SVG text primitive width must equal int(size * char_em * len(text)).
 
     SVG title = 22 px at scale=1, text="Hello" (len=5).
-    Expected: int(22 * 0.62 * 5) = int(68.2) = 68.
-    Old formula: 5 * 8 = 40.
+    With Noto Sans installed: char_em ≈ 0.566 → int(22 * 0.566 * 5) = 62.
+    With heuristic fallback (0.62): int(22 * 0.62 * 5) = int(68.2) = 68.
+    Test uses _brand_char_em() so it tracks the actual wireframe behavior (F4).
     """
     text = "Hello"
     level = "title"
     size = SVG_TEXT_SIZES[level]  # 22
-    expected_w = int(size * CHAR_WIDTH_EM * len(text))  # int(68.2) = 68
+    char_em = _brand_char_em()
+    expected_w = int(size * char_em * len(text))
     dsl = f'text t1 100,100 {level} "{text}"'
     prims = primitives_from_svg_dsl(dsl, _brand_dir())
     text_prim = next(p for p in prims if p.kind == "text")
     assert text_prim.w == expected_w, (
         f"SVG text width {text_prim.w} != expected {expected_w} "
-        f"(size={size}, CHAR_WIDTH_EM={CHAR_WIDTH_EM}, len={len(text)})"
+        f"(size={size}, char_em={char_em}, len={len(text)})"
     )
 
 
 def test_excalidraw_text_width_uses_char_width_em():
-    """Excalidraw text primitive width must equal int(size * CHAR_WIDTH_EM * len(text)).
+    """Excalidraw text primitive width must equal int(size * char_em * len(text)).
 
     Excalidraw title = 28 px at scale=1, text="Hello" (len=5).
-    Expected: int(28 * 0.62 * 5) = int(86.8) = 86.
-    Old formula: 5 * 8 = 40.
+    With Noto Sans installed: char_em ≈ 0.566 → int(28 * 0.566 * 5) = 79.
+    With heuristic fallback (0.62): int(28 * 0.62 * 5) = int(86.8) = 86.
+    Test uses _brand_char_em() so it tracks the actual wireframe behavior (F4).
     """
     text = "Hello"
     level = "title"
     size = EXCALIDRAW_TEXT_SIZES[level]  # 28
-    expected_w = int(size * CHAR_WIDTH_EM * len(text))  # int(86.8) = 86
+    char_em = _brand_char_em()
+    expected_w = int(size * char_em * len(text))
     dsl = f'text t1 100,100 "{text}" size:{level}'
     prims = primitives_from_excalidraw_dsl(dsl, _brand_dir())
     text_prim = next(p for p in prims if p.kind == "text")
     assert text_prim.w == expected_w, (
         f"Excalidraw text width {text_prim.w} != expected {expected_w} "
-        f"(size={size}, CHAR_WIDTH_EM={CHAR_WIDTH_EM}, len={len(text)})"
+        f"(size={size}, char_em={char_em}, len={len(text)})"
     )
 
 
@@ -86,12 +103,15 @@ def test_svg_text_width_scales_with_canvas():
     """At 4x canvas (6880 vs baseline 1720), SVG text width must scale 4x.
 
     SVG title = 22px * 4.0 = 88px effective size, text="Hello" (len=5).
-    Expected: int(88.0 * 0.62 * 5) = int(272.8) = 272.
+    With Noto Sans: int(88.0 * 0.566 * 5) = 249.
+    With heuristic (0.62): int(88.0 * 0.62 * 5) = int(272.8) = 272.
+    Test uses _brand_char_em() so it tracks the actual wireframe behavior (F4).
     """
     text = "Hello"
     level = "title"
     size_4x = SVG_TEXT_SIZES[level] * 4.0  # 88.0
-    expected_w = int(size_4x * CHAR_WIDTH_EM * len(text))  # int(272.8) = 272
+    char_em = _brand_char_em()
+    expected_w = int(size_4x * char_em * len(text))
     dsl = f'text t1 100,100 {level} "{text}"'
     prims = primitives_from_svg_dsl(dsl, _brand_dir(), canvas_w=6880)
     text_prim = next(p for p in prims if p.kind == "text")
@@ -110,7 +130,9 @@ def test_svg_text_multiline_uses_longest_line():
     before passing text to the renderer.
 
     Longest line = "there" (len=5), SVG body = 14px, scale=1.
-    Expected: int(14 * 0.62 * 5) = int(43.4) = 43.
+    With Noto Sans: int(14 * 0.566 * 5) = 39.
+    With heuristic (0.62): int(14 * 0.62 * 5) = int(43.4) = 43.
+    Test uses _brand_char_em() so it tracks the actual wireframe behavior (F4).
     """
     level = "body"
     size = SVG_TEXT_SIZES[level]  # 14
@@ -119,12 +141,41 @@ def test_svg_text_multiline_uses_longest_line():
     raw_label = r"Hi\nthere"  # repr: 'Hi\\nthere'
     lines = raw_label.split("\\n")  # ['Hi', 'there']
     longest = max(len(line) for line in lines)  # 5
-    expected_w = int(size * CHAR_WIDTH_EM * longest)  # int(43.4) = 43
+    char_em = _brand_char_em()
+    expected_w = int(size * char_em * longest)
     # Embed raw label in DSL (the shlex string keeps the backslash).
     dsl = r'text t1 100,100 body "Hi\nthere"'
     prims = primitives_from_svg_dsl(dsl, _brand_dir())
     text_prim = next(p for p in prims if p.kind == "text")
     assert text_prim.w == expected_w, (
         f"SVG multiline text width {text_prim.w} != expected {expected_w} "
-        f"(longest_line=5, size={size}, CHAR_WIDTH_EM={CHAR_WIDTH_EM})"
+        f"(longest_line=5, size={size}, char_em={char_em})"
     )
+
+
+def test_text_width_constant_under_kill_switch(monkeypatch):
+    """With real metrics disabled the width formula is fully deterministic:
+    int(size * 0.62 * maxlinelen) — an absolute pin that cannot go circular
+    through char_width_em_for.
+
+    SVG title size = 22 px (SVG_TEXT_SIZES["title"]), text = "Hello" (len=5).
+    Expected: int(22 * 0.62 * 5) == 68  (0.62 = CHAR_WIDTH_EM fallback constant)
+    """
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    from feinschmiede.text import measure
+    measure.clear_caches()
+    try:
+        text = "Hello"
+        level = "title"
+        # size = SVG_TEXT_SIZES["title"] = 22
+        # hand-computed: int(22 * 0.62 * 5) = int(68.2) = 68
+        expected_w = 68
+        dsl = f'text t1 100,100 {level} "{text}"'
+        prims = primitives_from_svg_dsl(dsl, _brand_dir())
+        text_prim = next(p for p in prims if p.kind == "text")
+        assert text_prim.w == expected_w, (
+            f"Kill-switch width {text_prim.w} != 68 "
+            f"(expected int(22 * 0.62 * 5) with FEINSCHMIEDE_NO_REAL_METRICS=1)"
+        )
+    finally:
+        measure.clear_caches()

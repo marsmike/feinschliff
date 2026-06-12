@@ -5,7 +5,7 @@ bundle, builds a single-slide Presentation, returns it.
 
 Coordinate system: DSL uses design pixels in a 1920×1080 frame, matching
 the existing brand-pack convention. We map 1 design-px → 6350 EMU
-(same as gs-ramspau's `px()` helper).
+(legacy baseline; per-build scale is reconfigured from tokens slide.width_emu by _configure_slide_scale).
 
 Primitives implemented:
   canvas WxH                 — set slide size
@@ -40,6 +40,7 @@ from pptx.util import Emu, Pt
 
 from .. import textfit
 from feinschmiede.dsl.tokens import Tokens
+from feinschmiede.geometry import units
 
 # Provider search + asset-lock pinning + HTTP materialise live in
 # feinschliff.io.image_materialise. Accessed via module attributes
@@ -47,6 +48,7 @@ from feinschmiede.dsl.tokens import Tokens
 # patch `feinschliff.io.image_materialise.X` once and affect the emitter.
 from ..io import image_materialise as _img_mat
 from .parser import DSLNode, parse_xy, parse_wh
+from .style_resolve import resolve_node_style, text_insets_emu
 from .polish import normalize_text
 
 if TYPE_CHECKING:
@@ -66,13 +68,12 @@ class DSLError(Exception):
     """
 
 
-# Single source of truth for the legacy 13.33"×7.5" widescreen baseline used
-# by brand packs that don't declare an explicit physical slide size. Source-
-# decompiled brand packs (brand_decompile_all.py writes `slide.width_emu` /
-# `slide.height_emu` to tokens.json) override this via `_configure_slide_scale`.
-# 13.333" × 914400 EMU/in = 12192000 EMU wide.
-_LEGACY_SLIDE_WIDTH_EMU = 12_192_000
-_LEGACY_CANVAS_W = 1920
+# Legacy 13.33"×7.5" widescreen baseline for brand packs that don't declare an
+# explicit physical slide size. Values sourced from feinschmiede.geometry.units
+# (LEGACY_SLIDE_WIDTH_EMU = 12 192 000 EMU, LEGACY_CANVAS_W = 1920 px).
+# Source-decompiled brand packs override these via `_configure_slide_scale`.
+_LEGACY_SLIDE_WIDTH_EMU = units.LEGACY_SLIDE_WIDTH_EMU
+_LEGACY_CANVAS_W = units.LEGACY_CANVAS_W
 
 
 @functools.lru_cache(maxsize=1)
@@ -176,9 +177,9 @@ def _assert_font_available(family: str, brand_name: str) -> None:
         raise DSLError(msg)
     print(f"WARN: {msg}", file=sys.stderr)
 
-EMU_PER_PT = 12700           # PowerPoint standard: 1pt = 12700 EMU (914400 / 72).
-_EMU_PER_PX = _LEGACY_SLIDE_WIDTH_EMU / _LEGACY_CANVAS_W   # 6350 — default fallback
-_PX_TO_PT = _EMU_PER_PX / EMU_PER_PT                       # 0.5  — default fallback
+EMU_PER_PT = units.EMU_PER_PT
+_EMU_PER_PX = units.EMU_PER_PX_BASELINE   # default fallback; rebound per build
+_PX_TO_PT = units.PX_TO_PT_BASELINE       # default fallback; rebound per build
 _STROKE_PX_TO_PT = 0.75      # CSS px → pt for stroke widths (96/72 inverse rounded)
 
 
@@ -195,8 +196,7 @@ def _configure_slide_scale(tokens: "Tokens", canvas_w: int) -> None:
         width_emu = tokens.slide("width_emu") or _LEGACY_SLIDE_WIDTH_EMU
     except Exception:
         width_emu = _LEGACY_SLIDE_WIDTH_EMU
-    cw = canvas_w or _LEGACY_CANVAS_W
-    _EMU_PER_PX = width_emu / cw
+    _EMU_PER_PX = units.emu_per_px(width_emu, canvas_w or _LEGACY_CANVAS_W)
     _PX_TO_PT = _EMU_PER_PX / EMU_PER_PT
 _DEFAULT_PADDING_X = 100     # fallback right/left margin if brand has no slide.padding-x token
 
@@ -224,34 +224,6 @@ _HANG_SIDE_BEARING_EM: dict[str, float] = {
     "-":      0.15,  # ASCII hyphen
 }
 
-
-# 3-channel hierarchy stepping for indent levels. Each level beyond 0 steps:
-#   size  ×= 0.85   (round to 0.5pt)
-#   weight -= 100   (clamped at 300)
-#   color  walks ink → graphite → fog (clamped at fog)
-_HIERARCHY_COLOR_WALK = ["ink", "graphite", "fog"]
-
-
-def _step_hierarchy(
-    size_px: float, weight: int, color_role: str, *, level: int,
-) -> tuple[float, int, str]:
-    """Step all three channels for `level` indent levels. level<=0 is a no-op."""
-    if level <= 0:
-        return size_px, weight, color_role
-    new_size = size_px
-    new_weight = weight
-    new_color = color_role
-    for _ in range(level):
-        new_size *= 0.85
-        new_weight = max(300, new_weight - 100)
-        if new_color in _HIERARCHY_COLOR_WALK:
-            idx = _HIERARCHY_COLOR_WALK.index(new_color)
-            new_color = _HIERARCHY_COLOR_WALK[min(idx + 1, len(_HIERARCHY_COLOR_WALK) - 1)]
-    # Round size_pt to nearest 0.5pt. size_px ↔ pt: 2 design-px per pt.
-    pt = new_size * _PX_TO_PT
-    pt = round(pt * 2) / 2
-    new_size = pt / _PX_TO_PT
-    return new_size, new_weight, new_color
 
 
 def _leading_hang_offset_px(text: str, size_pt: float) -> float:
@@ -402,70 +374,8 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     if not node.pos_args:
         raise ValueError(f"text at line {node.line_no}: expected 'X,Y' positional")
     x, y = parse_xy(node.pos_args[0])
-    style_name = node.kw_args.get("style", "body")
-    style = ctx.tokens.resolve_style(style_name)
-    color_override = node.kw_args.get("color")
-    if color_override:
-        from dataclasses import replace as _replace
-        style = _replace(style, color_hex=ctx.tokens.color(color_override),
-                         color_role=color_override)
-    # `weight:<token>` overrides the style's default font weight without
-    # forcing the author to switch style bundles. Lets a single layout pair
-    # display-size with bold (or huge with regular), which the predefined
-    # bundles don't express (huge/display are light-only, title-l is
-    # bold-only). Token must exist in tokens.json.font-weight.
-    weight_override = node.kw_args.get("weight")
-    if weight_override:
-        from dataclasses import replace as _replace
-        style = _replace(style, weight=ctx.tokens.font_weight(weight_override))
-    # `size:<N>px` or `size:<N>pt` or `size:<token-name>` lets a single text
-    # primitive escape its style bundle's fixed size. Critical for matching
-    # source decks whose pt sizes fall between the bundle steps (16/26/44/80
-    # /120/160 px) — without it, the decompiler has to round to the nearest
-    # bundle and a 42pt source title renders at the 44px sub bundle ≈ 33pt,
-    # noticeably small. Numeric forms accepted: "32pt", "56px", or bare int
-    # treated as px.
-    size_override = node.kw_args.get("size")
-    if size_override:
-        from dataclasses import replace as _replace
-        raw = size_override.strip().lower()
-        if raw.endswith("pt"):
-            # `pt` → design-px uses the SAME conversion the emitter rounds-
-            # trip with (Pt(_px_to_pt(size_px)) downstream). Using the CSS
-            # convention (pt × 4/3) here bakes a 96-DPI assumption and
-            # halves the rendered font when the slide is sized for a
-            # different DPI — e.g. 42pt → 56px → 21pt on a 10" slide.
-            size_px = float(raw[:-2]) / _PX_TO_PT
-        elif raw.endswith("px"):
-            size_px = float(raw[:-2])
-        else:
-            try:
-                size_px = float(raw)
-            except ValueError:
-                size_px = ctx.tokens.font_size_px(raw)
-        style = _replace(style, size_px=size_px)
-    # Hierarchy stepping: indent:N steps size/weight/color N times.
-    try:
-        indent_level = int(node.kw_args.get("indent", "0"))
-    except (TypeError, ValueError):
-        indent_level = 0
-    if indent_level > 0:
-        from dataclasses import replace as _replace
-        new_size, new_weight, new_color_role = _step_hierarchy(
-            style.size_px, style.weight, style.color_role, level=indent_level,
-        )
-        try:
-            new_color_hex = ctx.tokens.color(new_color_role)
-        except KeyError:
-            new_color_hex = style.color_hex
-        style = _replace(
-            style,
-            size_px=new_size, weight=new_weight,
-            color_hex=new_color_hex, color_role=new_color_role,
-        )
-    if str(node.kw_args.get("italic", "")).lower() == "true":
-        from dataclasses import replace as _replace
-        style = _replace(style, italic=True)
+    style_name = node.kw_args.get("style", "body")  # kept for the shape name below; style resolution re-reads it
+    style = resolve_node_style(node, ctx.tokens, px_to_pt=_PX_TO_PT)
     align = _align_pp(node.kw_args.get("align", "left"))
     # Default right margin = brand's slide.padding-x token; fall back to a
     # sensible canvas-relative inset if the brand omits it.
@@ -493,10 +403,12 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     # the wrap width/height — the fit predictor must see the same usable
     # area the renderer sees. Without explicit padding, PowerPoint's
     # defaults apply: lIns/rIns 91440 EMU, tIns/bIns 45720 EMU.
+    # Inset *totals* (for fit math) come from the shared helper; individual
+    # pad_* px values are kept locally for tf.margin_* assignment below.
+    inset_w_emu, inset_h_emu = text_insets_emu(node, _EMU_PER_PX)
     padding = node.kw_args.get("padding")
     pad_left = pad_top = pad_right = pad_bottom = None
     if padding is not None:
-        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
         parts = [p.strip() for p in str(padding).split(",")]
         if len(parts) == 1:
             pad_left = pad_top = pad_right = pad_bottom = float(parts[0])
@@ -504,13 +416,6 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             pad_left, pad_top, pad_right, pad_bottom = (float(p) for p in parts)
         else:
             pad_left = pad_top = pad_right = pad_bottom = 0.0
-    if pad_left is not None:
-        inset_w_emu = int(pad_left * _EMU_PER_PX) + int(pad_right * _EMU_PER_PX)
-        inset_h_emu = int(pad_top * _EMU_PER_PX) + int(pad_bottom * _EMU_PER_PX)
-    else:
-        # PowerPoint OOXML defaults, already in EMU — no scale conversion
-        inset_w_emu = 91440 + 91440
-        inset_h_emu = 45720 + 45720
 
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
     # Resolve font face once for all fit/shrink paths (autoshrink, orphan
@@ -534,8 +439,8 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             line_height=style.line_height,
         )
         if fitted_pt < max_pt:
-            # Convert pt back to design-px (2 design-px per pt).
-            style = _replace(style, size_px=fitted_pt * 2.0)
+            # Convert pt back to design-px at the build's px→pt scale.
+            style = _replace(style, size_px=fitted_pt / _PX_TO_PT)
 
     # Orphan control: per paragraph, if the greedy wrap would orphan one
     # word on the final line, replace its preceding space with NBSP so
@@ -786,7 +691,7 @@ def _px_to_pt(px: float) -> float:
     """Design-px (1920×1080 baseline) → PowerPoint points.
 
     A standard 16:9 PPT slide is 13.33×7.5in = 960×540pt. The 1920-wide
-    design baseline maps 2 design-px per point (960/1920 = 0.5).
+    design baseline maps 2 design-px per point (960/1920 = 0.5) at the 1920-wide legacy baseline; the actual scale is set per build by _configure_slide_scale.
     """
     return px * _PX_TO_PT
 

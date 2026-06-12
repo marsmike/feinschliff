@@ -23,10 +23,11 @@ import math
 
 import pyphen
 
+from feinschmiede.geometry import units
 from feinschmiede.text import measure as _measure
 
 
-_EMU_PER_PT = 12700
+_EMU_PER_PT = units.EMU_PER_PT
 
 # Empirical average glyph widths as fraction of font size. Tune per brand by
 # rendering a swatch and measuring. The "default" entry is the fallback for
