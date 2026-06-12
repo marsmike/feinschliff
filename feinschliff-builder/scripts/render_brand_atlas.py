@@ -184,6 +184,10 @@ def _build_pptx(job: LayoutJob) -> Path:
         "--allow-missing-assets",  # showcase render: blank slot beats missing
                                    # thumbnail when a brand lacks an illustration
                                    # the layout references
+        "--allow-diagram-warnings",  # diagram-overflow became FATAL by default
+                                     # (2026-06-11 quality batch); for the gallery
+                                     # a slightly-overflowing showcase diagram
+                                     # beats a missing preview
     ]
     res = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
     if res.returncode != 0:
