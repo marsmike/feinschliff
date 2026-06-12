@@ -391,3 +391,44 @@ def test_plan_deck_layouts_slot_lengths_flow_through():
     # so "open-layout" wins alphabetically too (o > t? no — o < t).
     # Actual winner depends on tiebreak; just confirm tight-layout CAN win here.
     assert results_no_lengths[0]["layout"] in {"tight-layout", "open-layout"}
+
+
+def test_budget_penalty_matches_slot_by_declared_role():
+    """Decompiled brand packs name slots text_1, text_2… and carry the
+    semantic role in slots.*.role — a slot_lengths entry keyed by the
+    semantic name ("title") must match the budgeted slot via that role."""
+    profiles = {
+        "decompiled": _simple_profile(
+            slots={"text_1": {"role": "title", "chars": 40}},
+        ),
+        "plain": _simple_profile(),
+    }
+    results = pick_layout(
+        role="content-columns",
+        slot_lengths={"title": 80},
+        top_k=5,
+        profiles=profiles,
+    )
+    assert _score("decompiled", results) == _score("plain", results) - 2.0
+    decompiled = next(r for r in results if r["layout"] == "decompiled")
+    assert any("over-budget(text_1+100%)" in part for part in decompiled["rationale"])
+
+
+def test_budget_penalty_slot_name_match_wins_over_role_match():
+    """When slot_lengths carries both the literal slot name and a role-keyed
+    entry, the literal name takes precedence."""
+    profiles = {
+        "decompiled": _simple_profile(
+            slots={"text_1": {"role": "title", "chars": 40}},
+        ),
+    }
+    # text_1 is within budget by name; the role-keyed "title" entry is over
+    # budget but must be ignored because the name match takes precedence.
+    results = pick_layout(
+        role="content-columns",
+        slot_lengths={"text_1": 30, "title": 999},
+        top_k=5,
+        profiles=profiles,
+    )
+    decompiled = next(r for r in results if r["layout"] == "decompiled")
+    assert not any("over-budget" in part for part in decompiled["rationale"])

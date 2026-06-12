@@ -412,22 +412,30 @@ def pick_layout(
         # char budgets fit the content being placed. Only the intersection of
         # slots with an int `chars` budget in the profile AND a length in
         # slot_lengths is evaluated — absence means unknown constraints, not
-        # a violation. Max penalty (−_BUDGET_PENALTY_SCALE) sits below the
-        # role-match weight (+3): structural fitness wins, budgets break ties.
+        # a violation. A budgeted slot is matched by its name OR by its
+        # declared `role` (decompiled brand packs name slots text_1, text_2…
+        # and carry the semantic role in `slots.*.role` — callers supply
+        # lengths keyed by semantic name, e.g. "title"). Max penalty
+        # (−_BUDGET_PENALTY_SCALE) sits below the role-match weight (+3):
+        # structural fitness wins, budgets break ties.
         if slot_lengths:
-            budgeted_slots = {
-                name: meta["chars"]
-                for name, meta in (profile.get("slots") or {}).items()
-                if isinstance(meta, dict)
-                and isinstance(meta.get("chars"), int)
-                and meta["chars"] > 0
-                and isinstance(slot_lengths.get(name), int)
-            }
+            budgeted_slots: dict[str, tuple[int, int]] = {}
+            for name, meta in (profile.get("slots") or {}).items():
+                if not (
+                    isinstance(meta, dict)
+                    and isinstance(meta.get("chars"), int)
+                    and meta["chars"] > 0
+                ):
+                    continue
+                length = slot_lengths.get(name)
+                if not isinstance(length, int):
+                    length = slot_lengths.get(meta.get("role"))
+                if isinstance(length, int):
+                    budgeted_slots[name] = (meta["chars"], length)
             if budgeted_slots:
                 overage_parts: list[str] = []
                 total_overage = 0.0
-                for sname, chars in budgeted_slots.items():
-                    length = slot_lengths[sname]
+                for sname, (chars, length) in budgeted_slots.items():
                     raw = max(0, length - chars) / chars
                     capped = min(raw, 1.0)
                     total_overage += capped
