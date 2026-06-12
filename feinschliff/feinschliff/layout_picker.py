@@ -398,10 +398,14 @@ def pick_layout(
 
         # Surface the layout's content description (decompiled brand packs
         # declare what the slide chrome depicts) in the rationale, so a
-        # planning LLM reading pick output sees what's on the slide.
+        # planning LLM reading pick output sees what's on the slide — and
+        # its curated when-to-use guidance right next to it.
         desc = profile.get("description")
         if isinstance(desc, str) and desc:
             rationale_parts.append(f"desc:{desc[:80]}")
+        use = profile.get("when_to_use")
+        if isinstance(use, str) and use:
+            rationale_parts.append(f"use:{use[:80]}")
 
         # Include layouts with positive score, OR layouts that received a
         # when_not_to_use penalty / fixed-chrome guard / baked-text guard

@@ -35,10 +35,12 @@ The internal profile dict mirrors the keys the picker's scoring loop reads:
 Decompiled brand-pack layouts may additionally carry content metadata —
 ``fixed_chrome`` (bool), ``chrome_text`` (bool — native chrome draws its
 own baked labels), ``description`` (str), ``chrome_subject`` (str),
-``slots`` (per-slot role/chars/class map), ``image_queries`` (slot → query
-hint) — which is passed through verbatim when well-typed and silently
-omitted otherwise (type-or-ignore; never required, never validated beyond
-type).
+``when_to_use`` (str — curated positive pick guidance), ``family`` (str —
+the slide-type: framing/process/organizational/…), ``element_tree`` (list
+of str — one line per slide element in reading order), ``slots`` (per-slot
+role/chars/class map), ``image_queries`` (slot → query hint) — which is
+passed through verbatim when well-typed and silently omitted otherwise
+(type-or-ignore; never required, never validated beyond type).
 """
 from __future__ import annotations
 
@@ -159,10 +161,14 @@ def parse_profile(frontmatter_text: str, *, source: str) -> dict:
     for key in ("fixed_chrome", "chrome_text"):
         if isinstance(raw.get(key), bool):
             profile[key] = raw[key]
-    for key in ("description", "chrome_subject"):
+    for key in ("description", "chrome_subject", "when_to_use", "family"):
         val = raw.get(key)
         if isinstance(val, str) and val:
             profile[key] = val
+    tree = raw.get("element_tree")
+    if (isinstance(tree, list) and tree
+            and all(isinstance(e, str) for e in tree)):
+        profile["element_tree"] = tree
 
     # `slots:` (per-slot role/chars/class metadata) and `image_queries`
     # pass through the same tolerant way so deck-build slot auto-binding

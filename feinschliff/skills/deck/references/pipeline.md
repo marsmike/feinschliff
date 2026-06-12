@@ -303,6 +303,17 @@ Decompiled brand packs carry planning metadata — consume it here:
   layouts whose depicted subject clashes with the deck topic — e.g.
   off-topic decorative illustrations for a sports brief — and fall back to
   toolkit layouts rendered in brand tokens instead.
+- **`when_to_use`** is the curated positive pick guidance (echoed as
+  `use:…` in the picker rationale) and **`family`** the slide-type
+  (framing / process / organizational / comparison / data /
+  image-driven / voice / closing; `family_curated: true` marks a
+  vision-verified type). Prefer layouts whose `when_to_use` matches the
+  slide's job over a bare role match.
+- **`element_tree`** lists every element on the slide in reading order
+  with geometry (`text text_1 role=title @76,76 922x122 20pt`,
+  `image image class=replace @1008,0 912x1080`, `native illustration …
+  baked-text`). Read it to judge content fit — column widths, where the
+  photo sits, what chrome surrounds the slots — before binding.
 - **`fixed_chrome: true`** marks layouts whose decoration is carried
   verbatim and cannot reflow. Use at most 1–2 per deck, only as
   deliberate brand moments (section breaks, covers) — never for

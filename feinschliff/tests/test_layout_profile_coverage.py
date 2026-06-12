@@ -120,19 +120,28 @@ def test_parse_profile_passes_through_content_metadata():
         + "fixed_chrome: true\n"
         + "chrome_text: true\n"
         + "description: Workshop illustrations left, text column right\n"
-        + "chrome_subject: courtyard planters\n",
+        + "chrome_subject: courtyard planters\n"
+        + "when_to_use: KPI walls for quarterly reviews\n"
+        + "family: data\n"
+        + "element_tree: ['text text_1 role=title @76,76 922x122 20pt']\n",
         source="t",
     )
     assert profile["fixed_chrome"] is True
     assert profile["chrome_text"] is True
     assert profile["description"] == "Workshop illustrations left, text column right"
     assert profile["chrome_subject"] == "courtyard planters"
+    assert profile["when_to_use"] == "KPI walls for quarterly reviews"
+    assert profile["family"] == "data"
+    assert profile["element_tree"] == [
+        "text text_1 role=title @76,76 922x122 20pt"
+    ]
 
 
 def test_parse_profile_content_metadata_absent_is_omitted():
     """Optional means optional: absent fields don't appear at all."""
     profile = parse_profile(_MINIMAL_FM, source="t")
-    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject"):
+    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject",
+                "when_to_use", "family", "element_tree"):
         assert key not in profile
 
 
@@ -144,10 +153,14 @@ def test_parse_profile_content_metadata_wrong_type_is_ignored():
         + "fixed_chrome: maybe\n"   # str, not bool
         + "chrome_text: sometimes\n"  # str, not bool
         + "description: [a, b]\n"   # list, not str
-        + "chrome_subject: 7\n",    # int, not str
+        + "chrome_subject: 7\n"     # int, not str
+        + "when_to_use: [x]\n"      # list, not str
+        + "family: 3\n"             # int, not str
+        + "element_tree: {a: b}\n",  # dict, not list of str
         source="t",
     )
-    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject"):
+    for key in ("fixed_chrome", "chrome_text", "description", "chrome_subject",
+                "when_to_use", "family", "element_tree"):
         assert key not in profile
     # Existing strictness is untouched.
     with pytest.raises(ProfileError):

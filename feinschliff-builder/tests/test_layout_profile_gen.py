@@ -416,6 +416,85 @@ def test_apply_profile_ignores_empty_annotations_in_old_fence():
     assert apply_profile(once, p) == once  # still idempotent with the merge
 
 
+# --- element tree ------------------------------------------------------------------
+
+def test_element_tree_records_reading_order_geometry_and_kinds():
+    """Every slide element — native chrome, image slots, text slots — lands
+    in `element_tree` as one compact line with role/class/kind + geometry,
+    sorted into reading order (top→bottom, left→right). This is the
+    structural 'what is where' a deck planner reads alongside description."""
+    dsl = (HEADER + native(illu_xml(), "deko") + FULL_BLEED_PICTURE
+           + slot(1, "Garden stories", pt=40) + prose_slots(2, 2))
+    p = classify(dsl, name="garden")
+    tree = p["element_tree"]
+    assert len(tree) == 5  # 1 native + 1 image slot + 3 text slots
+    assert "native illustration @0,0 960x540" in tree
+    assert "image image class=replace @0,0 1920x1080" in tree
+    title = "text text_1 role=title @152,260 1600x200 40pt"
+    assert title in tree
+    # reading order: the @0,0 background elements come before the title text
+    assert tree.index(title) > tree.index("image image class=replace @0,0 1920x1080")
+
+
+def test_element_tree_marks_baked_text_native():
+    dsl = (HEADER + native(BAKED_TEXT_ILLU_XML)
+           + prose_slots(1, 3) + footer_slots(4))
+    p = classify(dsl)
+    line = next(ln for ln in p["element_tree"] if ln.startswith("native"))
+    assert "baked-text" in line
+
+
+# --- when_to_use + curated family --------------------------------------------------
+
+def test_when_to_use_annotation_slot_and_merge():
+    """`when_to_use` is an annotation slot like description: emitted empty,
+    non-empty values survive a generator re-run."""
+    p = classify(HEADER + slot(1, "Plain"), name="plain")
+    assert p["when_to_use"] == ""
+    once = apply_profile(ANNOTATED_DSL, classify(ANNOTATED_DSL, name="garden"))
+    annotated = _annotate_fence(
+        once, when_to_use="Brand-moment divider for garden chapters")
+    out = yaml.safe_load(split_frontmatter(
+        apply_profile(annotated, classify(ANNOTATED_DSL, name="garden")))[0])
+    assert out["when_to_use"] == "Brand-moment divider for garden chapters"
+
+
+def test_curated_family_survives_rerun_only_with_marker():
+    """A vision pass may overrule the heuristic slide-type (`family`) — but
+    only an explicit `family_curated: true` survives regeneration; a bare
+    hand-edit is mechanical tampering and reverts."""
+    once = apply_profile(ANNOTATED_DSL, classify(ANNOTATED_DSL, name="garden"))
+    tampered = _annotate_fence(once, family="process")
+    out = yaml.safe_load(split_frontmatter(
+        apply_profile(tampered, classify(ANNOTATED_DSL, name="garden")))[0])
+    assert out["family"] == "organizational"
+    assert "family_curated" not in out
+
+    curated = _annotate_fence(once, family="process", family_curated=True)
+    out2 = yaml.safe_load(split_frontmatter(
+        apply_profile(curated, classify(ANNOTATED_DSL, name="garden")))[0])
+    assert out2["family"] == "process"
+    assert out2["family_curated"] is True
+
+
+def test_annotate_cli_when_to_use_and_family(tmp_path):
+    f = tmp_path / "garden.slide.dsl"
+    f.write_text(apply_profile(ANNOTATED_DSL, classify(ANNOTATED_DSL, name="garden")),
+                 encoding="utf-8")
+    rc = gen_main(["annotate", str(f),
+                   "--when-to-use", "Use for garden chapter intros",
+                   "--family", "process"])
+    assert rc == 0
+    d = yaml.safe_load(split_frontmatter(f.read_text(encoding="utf-8"))[0])
+    assert d["when_to_use"] == "Use for garden chapter intros"
+    assert d["family"] == "process"
+    assert d["family_curated"] is True
+    # unknown family rejected, file untouched
+    before = f.read_text(encoding="utf-8")
+    assert gen_main(["annotate", str(f), "--family", "banana"]) == 2
+    assert f.read_text(encoding="utf-8") == before
+
+
 # --- annotate CLI ------------------------------------------------------------------
 
 def test_annotate_cli_round_trip(tmp_path):

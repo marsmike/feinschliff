@@ -134,6 +134,29 @@ def test_description_shows_in_rationale():
     assert not any(p.startswith("desc:") for p in plain["rationale"])
 
 
+def test_when_to_use_shows_in_rationale():
+    """Positive selection guidance rides next to desc: — a planner reading
+    pick output sees when the layout is meant to be used."""
+    profiles = {
+        "guided": {
+            "role": "content-columns", "ideal_count": (2, 4),
+            "data": "none", "comp": False,
+            "when_to_use": "KPI walls for quarterly reviews",
+        },
+        "unguided": {
+            "role": "content-columns", "ideal_count": (2, 4),
+            "data": "none", "comp": False,
+        },
+    }
+    ranked = pick_layout(
+        role="content-columns", concept_count=3, top_k=5, profiles=profiles,
+    )
+    guided = _entry(ranked, "guided")
+    assert "use:KPI walls for quarterly reviews" in guided["rationale"]
+    unguided = _entry(ranked, "unguided")
+    assert not any(p.startswith("use:") for p in unguided["rationale"])
+
+
 def test_description_truncated_to_80_chars():
     long_desc = "x" * 200
     profiles = {
