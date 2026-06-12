@@ -32,6 +32,7 @@ except ImportError:  # structural_validator lives in feinschliff-builder
 from feinschliff.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,
+    apply_slot_debug_color,
     interpolate_nodes,
     interpolate_native_text,
     load_compounds_for_brand,
@@ -87,11 +88,18 @@ def compile_slide(
     for cd in layout_compounds:
         compounds[cd.name] = cd
 
+    # Slot-coverage debugging (deck build --slot-debug-color): every
+    # slot-sourced text renders in this colour, so a render diff against the
+    # defaults build shows exactly which text is bindable vs baked chrome.
+    debug_color = ctx.get("_slot_debug_color") if isinstance(ctx, dict) else None
+    if debug_color:
+        layout_nodes = apply_slot_debug_color(layout_nodes, debug_color)
     interp = interpolate_nodes(layout_nodes, ctx)
     # Resolve {{ slot }} templates that the slotify pass planted INSIDE native
     # payloads (carried tables / grouped shapes) — they ride in the b64 blob /
     # sidecar XML and are invisible to interpolate_nodes above.
-    interp = interpolate_native_text(interp, ctx, asset_root=brand_dir / "assets")
+    interp = interpolate_native_text(interp, ctx, asset_root=brand_dir / "assets",
+                                     debug_color=debug_color)
     interp = expand_diagram_blocks(
         interp,
         brand_dir=brand_dir,

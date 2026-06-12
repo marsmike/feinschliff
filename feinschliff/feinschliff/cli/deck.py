@@ -166,6 +166,14 @@ def register(parser: argparse.ArgumentParser) -> None:
              "For emergency overrides only.",
     )
     p_build.add_argument(
+        "--slot-debug-color",
+        metavar="#RRGGBB",
+        help="Slot-coverage debugging: render every slot-sourced text "
+             "(regular text slots AND native-payload slots) in this colour. "
+             "Diff against a defaults build to see which text is bindable "
+             "vs baked chrome.",
+    )
+    p_build.add_argument(
         "--allow-diagram-warnings",
         action="store_true",
         help="Ship even when diagram-overflow or diagram-text-too-small "
@@ -640,7 +648,12 @@ def cmd_build(args) -> int:
     # degrades to a no-op — same optional-import pattern as pipeline.py's
     # structural validators (never crash, never delegate for a default build).
     _validate_static_gate = None
-    if not getattr(args, "strict_static", False):
+    # --slot-debug-color builds are diagnostic renders (every slot bound to
+    # its own default to visualise coverage) — slot-overflow there reflects
+    # the pack's showcase copy, not deck content. Skip the fatal gate.
+    if getattr(args, "slot_debug_color", None):
+        pass
+    elif not getattr(args, "strict_static", False):
         try:
             from feinschliff_builder.verify.static import (  # type: ignore[import]
                 validate as _validate_static_gate,
@@ -735,6 +748,9 @@ def cmd_build(args) -> int:
                         print(f"deck: slide {i}: content_file not found: {spec['content_file']}", file=sys.stderr)
                         return 2
                 ctx = yaml.safe_load(content_path.read_text()) or {}
+            if getattr(args, "slot_debug_color", None):
+                ctx = dict(ctx)
+                ctx["_slot_debug_color"] = args.slot_debug_color
 
             # Brand-layout slot metadata: auto-bind footer / page-number
             # slots (from deck-level `vars:` / the slide index) and derive

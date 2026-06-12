@@ -76,3 +76,33 @@ def test_non_native_nodes_pass_through():
                    label="hi", line_no=1, source='text 76,76 "hi"')
     out = interpolate_native_text([node], {"text_5": "x"})
     assert out[0] is node
+
+
+def test_slot_debug_color_on_text_nodes():
+    from feinschliff.dsl.expander import apply_slot_debug_color
+    slot_node = DSLNode(kind="text", pos_args=["76,76"], kw_args={},
+                        label='{{ text_1 | default("T") }}', line_no=1,
+                        source="layout.slide.dsl")
+    baked = DSLNode(kind="text", pos_args=["76,200"], kw_args={},
+                    label="fixed", line_no=2, source="layout.slide.dsl")
+    apply_slot_debug_color([slot_node, baked], "#E6007E")
+    assert slot_node.kw_args["color"] == "#E6007E"
+    assert "color" not in baked.kw_args
+
+
+def test_native_debug_color_tints_slot_runs_only():
+    xml = (
+        '<p:sp xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"'
+        ' xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main">'
+        "<p:txBody><a:p>"
+        "<a:r><a:t>{{ text_5 | default(&quot;Headline&quot;) }}</a:t></a:r>"
+        "<a:r><a:t>baked label</a:t></a:r>"
+        "</a:p></p:txBody></p:sp>"
+    )
+    node = _native_node(xml)
+    interpolate_native_text([node], {}, debug_color="#E6007E")
+    out = _decoded(node)
+    assert "<a:t>Headline</a:t>" in out
+    assert out.count('srgbClr val="E6007E"') == 1
+    # baked run untinted: the tinted fill must precede the Headline run only
+    assert out.index("E6007E") < out.index("baked label")

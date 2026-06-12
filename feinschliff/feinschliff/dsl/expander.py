@@ -388,8 +388,23 @@ def interpolate_nodes(nodes: list[DSLNode], ctx: dict) -> list[DSLNode]:
 _NATIVE_T_RE = re.compile(r"(<a:t>)(.*?)(</a:t>)", re.S)
 
 
+def apply_slot_debug_color(nodes: list[DSLNode], color: str) -> list[DSLNode]:
+    """Force every slot-bearing `text` node to render in ``color``.
+
+    Slot-coverage debugging: build once with defaults, once with every slot
+    bound + a debug color — text that stays brand-colored in the second
+    render is NOT slot-covered (baked chrome). MUST run BEFORE
+    `interpolate_nodes`: detection is by the node's label still carrying a
+    `{{ … }}` slot marker, which interpolation resolves away."""
+    for n in nodes:
+        if n.kind == "text" and "{{" in (n.label or ""):
+            n.kw_args["color"] = color
+    return nodes
+
+
 def interpolate_native_text(
-    nodes: list[DSLNode], ctx: dict, *, asset_root: Path | None = None
+    nodes: list[DSLNode], ctx: dict, *, asset_root: Path | None = None,
+    debug_color: str | None = None,
 ) -> list[DSLNode]:
     """Resolve `{{ slot }}` templates inside `native` payloads' text runs.
 
@@ -407,6 +422,11 @@ def interpolate_native_text(
     sidecar without markers keeps its `xml_file:` reference. Interpolated
     values are XML-escaped; newlines flatten to spaces (an `<a:t>` run cannot
     span paragraphs).
+
+    ``debug_color`` (slot-coverage debugging, e.g. "#E6007E"): every run that
+    held a slot template additionally gets a solidFill of that colour on its
+    parent `<a:r>` run properties, so slot-covered native text is visually
+    separable from baked chrome in a render diff.
     """
     import base64
     from xml.sax.saxutils import escape as _xml_escape
@@ -441,9 +461,51 @@ def interpolate_native_text(
             return m.group(1) + _xml_escape(resolved) + m.group(3)
 
         new_xml = _NATIVE_T_RE.sub(repl, xml)
+        if debug_color is not None:
+            new_xml = _tint_slot_runs(xml, new_xml, debug_color)
         n.kw_args["b64"] = base64.b64encode(new_xml.encode("utf-8")).decode("ascii")
         n.kw_args.pop("xml_file", None)
     return nodes
+
+
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def _tint_slot_runs(template_xml: str, resolved_xml: str, color: str) -> str:
+    """Set a solidFill on every run whose text came from a slot template.
+
+    Walks the TEMPLATE and RESOLVED documents in parallel (same shape — only
+    text content differs) and tints the resolved run when the template run
+    carried a `{{ … }}` marker. lxml-based; on any parse error the resolved
+    XML is returned untinted (debug aid, never a build blocker)."""
+    try:
+        from lxml import etree
+        tmpl = etree.fromstring(template_xml.encode("utf-8"))
+        out = etree.fromstring(resolved_xml.encode("utf-8"))
+    except Exception:
+        return resolved_xml
+    hexval = color.lstrip("#").upper()
+    t_runs = tmpl.iter("{%s}t" % _A_NS)
+    o_runs = out.iter("{%s}t" % _A_NS)
+    for t_el, o_el in zip(t_runs, o_runs):
+        if "{{" not in (t_el.text or ""):
+            continue
+        run = o_el.getparent()
+        if run is None or not run.tag.endswith("}r"):
+            continue
+        rpr = run.find("{%s}rPr" % _A_NS)
+        if rpr is None:
+            rpr = etree.SubElement(run, "{%s}rPr" % _A_NS)
+            run.remove(rpr)
+            run.insert(0, rpr)
+        for fill in rpr.findall("{%s}solidFill" % _A_NS):
+            rpr.remove(fill)
+        fill = etree.SubElement(rpr, "{%s}solidFill" % _A_NS)
+        etree.SubElement(fill, "{%s}srgbClr" % _A_NS).set("val", hexval)
+        # solidFill must precede latin/cs font tags per schema; move first.
+        rpr.remove(fill)
+        rpr.insert(0, fill)
+    return etree.tostring(out, encoding="unicode")
 
 
 # ---------------------------------------------------------------------------
