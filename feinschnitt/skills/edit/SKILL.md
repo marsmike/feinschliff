@@ -59,7 +59,9 @@ React code — the shared engine in `edit-engine/` renders it.
    only file you write. (One exception: `zoom_plan.json` in the workdir is
    generated once and may be hand-tuned afterwards.)
 8. **Text placement:** `word_pop` default `vertical` 0.72, `hook_title` 0.66 —
-   lower third, never over the face. Lint errors below 0.58 and above 0.9.
+   lower third, never over the face (`inline_chart` card top defaults to 0.62).
+   Lint errors below 0.58 and above 0.9 (`inline_chart`: above 0.74 — the
+   26%-tall card would clip).
 9. **When a transcription mishearing surfaces** (brand names especially), the
    durable fix is a new entry in `src/feinschnitt/edit/corrections.py` — never a
    hand-edit of `words.json`. Tell the user you added it.

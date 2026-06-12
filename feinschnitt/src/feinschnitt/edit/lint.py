@@ -347,7 +347,7 @@ def lint_beats(
     if takeovers and takeovers[0]["start_sec"] < FIRST_TAKEOVER_FLOOR:
         errors.append(f"first takeover starts at {takeovers[0]['start_sec']}s — "
                       f"floor is {FIRST_TAKEOVER_FLOOR}s of speaker face-time "
-                      "(hook_title overlay is exempt)")
+                      "(overlay kinds are exempt)")
 
     hooks = [b for b in timed if b["kind"] == "hook_title"]
     if not hooks:
