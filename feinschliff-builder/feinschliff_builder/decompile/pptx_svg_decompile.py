@@ -2048,9 +2048,15 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     native_media = None
     _partname = str(getattr(media_part, "partname", "")).lower()
     _is_photo = _partname.endswith((".jpg", ".jpeg"))
+    # Template-chrome detection by MARK SHAPE, not area: logos / stamps are
+    # tiny in at least one dimension (B/S/H mark: 119x36). Anything at
+    # content size (tile thumbnails, photo strips, illustration icons) is a
+    # CHANGEABLE asset and must stay a picture slot — the old <12%-area rule
+    # carried 400px photo strips as fixed chrome. JPEG media is always
+    # content regardless of size.
+    _is_mark = min(cmap.w(w), cmap.h(h)) <= 64
     if (ph_type is None and media_part is not None and len(offset) == 2
-            and not _is_photo
-            and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
+            and not _is_photo and _is_mark):
         try:
             import base64 as _b64
             pic_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
