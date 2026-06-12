@@ -412,13 +412,21 @@ def _element_tree(
 
 # --- Slot roles -------------------------------------------------------------
 
-def _char_capacity(slot: dict) -> int:
-    """Rough text capacity of the slot box (chars/line × lines), per the
-    0.55 em average glyph width / 1.5 em line height rule of thumb."""
-    pt_px = slot["pt"] * 96.0 / 72.0
-    cols = math.floor(slot["maxw"] / (0.55 * pt_px))
-    rows = max(1, math.floor(slot["maxh"] / (1.5 * pt_px)))
-    return cols * rows
+def _char_capacity(slot: dict, *, px_per_pt: float = 2.0, tokens=None,
+                   face: str | None = None) -> int:
+    """Honest capacity of the slot box: measured chars/line × FULL lines.
+
+    Char width: measured avg glyph advance for the resolved brand face
+    (fallback 0.55em). pt→px: the pack's real slide scale — never the CSS
+    96/72-DPI convention. 0 rows is an honest 0: a box shorter than one
+    line holds no wrapped text (slot_warnings carries IMPOSSIBLE_BOX)."""
+    line_height, style_face = _style_metrics(slot.get("style", ""), tokens)
+    size_px = slot["pt"] * px_per_pt
+    if size_px <= 0:
+        return 0
+    cols = math.floor(slot["maxw"] / (_char_ratio(face or style_face) * size_px))
+    rows = math.floor(slot["maxh"] / (line_height * size_px))
+    return max(0, cols) * max(0, rows)
 
 
 def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
@@ -766,7 +774,7 @@ def classify_layout(
         profile["slots"] = {
             t["name"]: {
                 "role": slot_roles[t["name"]],
-                "chars": _char_capacity(t),
+                "chars": _char_capacity(t, px_per_pt=px_per_pt, tokens=tokens),
                 # Preview only — truncated so a lorem paragraph cannot bloat
                 # the frontmatter; the authoritative default stays in the DSL.
                 "default": (t["default"][:77] + "…"

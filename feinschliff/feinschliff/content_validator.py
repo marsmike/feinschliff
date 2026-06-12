@@ -11,7 +11,7 @@ import os
 import re
 import sys
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from feinschliff.slot_budget import SlotBudget
@@ -35,7 +35,7 @@ class ContentDefect:
     slide_index: int    # 1-based
     slot: str           # e.g. "title", "actions[0].verb"
     message: str
-    severity: str = "fatal"  # "fatal" (aborts build) | "warn" (logged, build continues)
+    severity: Literal["fatal", "warn"] = "fatal"  # "fatal" (aborts build) | "warn" (logged, build continues)
 
     def __str__(self) -> str:
         return f"slide {self.slide_index} [{self.kind}] {self.slot}: {self.message}"
@@ -476,6 +476,9 @@ def check_slot_collisions(
     overlap analysis without content. However, declared-box overlaps
     (pack-lint territory) also fire here once both slots are bound — bound
     content makes the overlap real.
+
+    Requires SlotBudget.x_px/y_px from the DSL 'X,Y' positional; budgets
+    without coordinates anchor at the origin and will false-positive.
     """
     from feinschliff.textfit import measure_height_emu as _measure
 
