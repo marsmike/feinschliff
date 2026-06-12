@@ -419,13 +419,19 @@ def _char_capacity(slot: dict, *, px_per_pt: float = 2.0, tokens=None,
     Char width: measured avg glyph advance for the resolved brand face
     (fallback 0.55em). pt→px: the pack's real slide scale — never the CSS
     96/72-DPI convention. 0 rows is an honest 0: a box shorter than one
-    line holds no wrapped text (slot_warnings carries IMPOSSIBLE_BOX)."""
+    line holds no wrapped text (slot_warnings carries IMPOSSIBLE_BOX).
+    Exception: a borderline-tight box that passes the soft-clip grace
+    (_fits_one_line_soft) budgets one row — coherent with IMPOSSIBLE_BOX."""
     line_height, style_face = _style_metrics(slot.get("style", ""), tokens)
     size_px = slot["pt"] * px_per_pt
     if size_px <= 0:
         return 0
     cols = math.floor(slot["maxw"] / (_char_ratio(face or style_face) * size_px))
     rows = math.floor(slot["maxh"] / (line_height * size_px))
+    if rows == 0 and _fits_one_line_soft(line_height * size_px, slot["maxh"]):
+        # Borderline-tight box: one soft-clipped line renders fine (same
+        # grace as the IMPOSSIBLE_BOX lint) — budget a single row.
+        rows = 1
     return max(0, cols) * max(0, rows)
 
 
@@ -461,6 +467,16 @@ def _assign_slot_roles(texts: list[dict], canvas_h: float) -> dict[str, str]:
 
 _MIN_CHARS_PER_LINE = 8
 _FALLBACK_CHAR_RATIO = 0.55
+
+# PPT soft-clips a line that exceeds its box by up to ~10% without visual
+# damage (native bboxes routinely run that tight). Shared by the
+# IMPOSSIBLE_BOX lint and _char_capacity so the two can never disagree on
+# whether a box holds one line.
+_LINE_FIT_GRACE = 1.10
+
+
+def _fits_one_line_soft(line_h_px: float, maxh: float) -> bool:
+    return maxh > 0 and line_h_px <= maxh * _LINE_FIT_GRACE + 0.5
 
 # Roles that legitimately hold a digit or fixed short string — exempt from
 # the NARROW_BOX chars-per-line lint.
@@ -526,11 +542,9 @@ def _slot_warnings(
         # 1-2 char defaults are decorative display glyphs (oversized quote marks
         # etc.) — overflow is the design.
         is_decorative_glyph = len(t["default"].strip()) <= 2
-        # 10% grace: native bboxes run a few % tighter than the line; PPT
-        # soft-clips that much without visual damage. The incident class
-        # (16pt in 27px = 59% over) still fires.
-        if (t["maxh"] > 0 and line_h_px > t["maxh"] * 1.10 + 0.5
-                and not is_decorative_glyph):
+        # Grace shared with _char_capacity via _fits_one_line_soft / _LINE_FIT_GRACE.
+        if t["maxh"] > 0 and not _fits_one_line_soft(line_h_px, t["maxh"]) \
+                and not is_decorative_glyph:
             _add(t["name"], (
                 f"IMPOSSIBLE_BOX: one line at {t['pt']:g}pt is ~{line_h_px:.0f}px "
                 f"tall but the box is {t['maxh']:g}px"

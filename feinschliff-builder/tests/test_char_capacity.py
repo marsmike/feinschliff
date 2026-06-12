@@ -13,8 +13,18 @@ def _require_font():
         pytest.skip("DejaVu Sans not resolvable")
 
 
-def test_zero_rows_is_honest_zero():
-    """Box shorter than one line → 0 chars, no max(1, rows) lie."""
+def test_borderline_box_budgets_one_row():
+    """A box a few % shorter than one line soft-clips fine — one-row budget,
+    coherent with the IMPOSSIBLE_BOX grace (annual-review title class)."""
+    slot = {"pt": 44.0, "maxw": 1748.0, "maxh": 102.0, "style": ""}
+    cap = _char_capacity(slot, px_per_pt=2.0)
+    cols = math.floor(1748.0 / (0.55 * 88.0))
+    assert cap == cols  # exactly one row
+
+
+def test_truly_impossible_box_stays_zero():
+    """16pt in a 27px box (the slide-30 class) is far past the grace — 0.
+    (Formerly test_zero_rows_is_honest_zero — same geometry, merged here.)"""
     slot = {"pt": 16.0, "maxw": 300.0, "maxh": 27.0, "style": ""}
     assert _char_capacity(slot, px_per_pt=2.2229) == 0
 
