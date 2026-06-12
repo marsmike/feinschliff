@@ -45,6 +45,35 @@ def test_text_box_extends_down_to_neighbour():
     assert 300 < mh < 700, f"box not extended to neighbour clearance: maxheight={mh}"
 
 
+def test_text_inside_card_rect_clamps_to_card():
+    """A filled card rect that contains the text box caps growth at the card's
+    edges — text in an org-chart card must not grow across the slide even when
+    nothing else shares its row (slide-45 root-body regression)."""
+    import re as _re
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.dml.color import RGBColor
+
+    prs, slide = _blank_16x9()
+    card = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Emu(1_000_000), Emu(1_000_000),
+        Emu(2_200_000), Emu(1_000_000))
+    card.fill.solid()
+    card.fill.fore_color.rgb = RGBColor(0xE0, 0xE0, 0xE0)
+    card.line.fill.background()
+    tb = slide.shapes.add_textbox(Emu(1_100_000), Emu(1_100_000),
+                                  Emu(2_000_000), Emu(800_000))
+    tb.text_frame.text = "Card body"
+    dsl = _derive(prs)
+    line = next(ln for ln in dsl.splitlines()
+                if ln.startswith("text ") and "Card body" in ln)
+    mw = int(_re.search(r"maxwidth:(\d+)", line).group(1))
+    mh = int(_re.search(r"maxheight:(\d+)", line).group(1))
+    # card right edge = 3_200_000 EMU ≈ 504px; text starts at ≈173px.
+    # growth must stop at the card (≤ ~331px wide), not run to the slide edge.
+    assert mw <= 340, f"text grew past its containing card: maxwidth={mw}"
+    assert mh <= 170, f"text grew past its containing card: maxheight={mh}"
+
+
 def test_text_box_extends_to_slide_edge_when_alone():
     """With no neighbour below, the box grows toward the slide bottom — strictly
     more room than when a neighbour caps it."""

@@ -9,6 +9,7 @@ import argparse
 import sys
 
 from feinschliff_builder.cli import (
+    audit as audit_cmd,
     brand as brand_cmd,
     compile as compile_cmd,
     decompile as decompile_cmd,
@@ -27,6 +28,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command")
     sub.required = True
 
+    audit_cmd.register(sub.add_parser("audit", help="Slot-coverage acceptance check for a brand pack"))
     brand_cmd.register(sub.add_parser("brand", help="Brand pack utilities"))
     compile_cmd.register(sub.add_parser("compile-html", help="Compile HTML to DSL skeletons"))
     decompile_cmd.register(sub.add_parser("decompile", help="Decompile a .pptx to DSL"))

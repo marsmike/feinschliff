@@ -32,7 +32,10 @@ except ImportError:  # structural_validator lives in feinschliff-builder
 from feinschliff.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,
+    apply_slot_debug_color,
+    mark_native_replaceables,
     interpolate_nodes,
+    interpolate_native_text,
     load_compounds_for_brand,
 )
 from feinschliff.dsl.parser import parse_file
@@ -86,7 +89,29 @@ def compile_slide(
     for cd in layout_compounds:
         compounds[cd.name] = cd
 
+    # Slot-coverage debugging (deck build --slot-debug-color): every
+    # slot-sourced text renders in this colour, so a render diff against the
+    # defaults build shows exactly which text is bindable vs baked chrome.
+    debug_color = ctx.get("_slot_debug_color") if isinstance(ctx, dict) else None
+    if debug_color:
+        layout_nodes = apply_slot_debug_color(layout_nodes, debug_color)
     interp = interpolate_nodes(layout_nodes, ctx)
+    # Resolve {{ slot }} templates that the slotify pass planted INSIDE native
+    # payloads (carried tables / grouped shapes) — they ride in the b64 blob /
+    # sidecar XML and are invisible to interpolate_nodes above.
+    interp = interpolate_native_text(interp, ctx, asset_root=brand_dir / "assets",
+                                     debug_color=debug_color)
+    if debug_color:
+        # Charts / SmartArt: data-replaceable post-export but not bindable —
+        # outline them so the coverage render marks every replaceable region.
+        try:
+            _w_emu = float(tokens.slide("width_emu") or 0)
+        except Exception:
+            _w_emu = 0.0
+        _cw, _ch = _slide_canvas(interp)
+        interp = mark_native_replaceables(
+            interp, debug_color, asset_root=brand_dir / "assets",
+            emu_to_px=(_cw / _w_emu) if _w_emu else 0.0)
     interp = expand_diagram_blocks(
         interp,
         brand_dir=brand_dir,

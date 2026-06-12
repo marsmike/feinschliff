@@ -166,6 +166,23 @@ def register(parser: argparse.ArgumentParser) -> None:
              "For emergency overrides only.",
     )
     p_build.add_argument(
+        "--no-image-provider",
+        action="store_true",
+        help="Ignore the brand's $image_provider: unbound image slots render "
+             "their carried default path (or the placeholder) instead of a "
+             "provider search. For showcase/fidelity builds, where a stale "
+             "asset_lock.json or image cache must never override the pack's "
+             "own assets.",
+    )
+    p_build.add_argument(
+        "--slot-debug-color",
+        metavar="#RRGGBB",
+        help="Slot-coverage debugging: render every slot-sourced text "
+             "(regular text slots AND native-payload slots) in this colour. "
+             "Diff against a defaults build to see which text is bindable "
+             "vs baked chrome.",
+    )
+    p_build.add_argument(
         "--allow-diagram-warnings",
         action="store_true",
         help="Ship even when diagram-overflow or diagram-text-too-small "
@@ -208,6 +225,14 @@ def register(parser: argparse.ArgumentParser) -> None:
              "enlarges the file). "
              "No font-license (fsType) check is performed — verify your "
              "brand fonts permit embedding.",
+    )
+    p_build.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Parallel slide-compile workers (DSL expand + diagram render "
+             "fan out across processes; the final PPTX assembly stays "
+             "serial). 0 = auto (min(8, cpu/2)); default 1 = sequential.",
     )
     p_build.set_defaults(func=cmd_build)
 
@@ -535,7 +560,8 @@ def cmd_build(args) -> int:
     except ValueError as e:
         print(f"deck: {e}", file=sys.stderr)
         return 2
-    if default_brand_obj.image_provider_config:
+    if (default_brand_obj.image_provider_config
+            and not getattr(args, "no_image_provider", False)):
         cfg = default_brand_obj.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
 
@@ -640,7 +666,12 @@ def cmd_build(args) -> int:
     # degrades to a no-op — same optional-import pattern as pipeline.py's
     # structural validators (never crash, never delegate for a default build).
     _validate_static_gate = None
-    if not getattr(args, "strict_static", False):
+    # --slot-debug-color builds are diagnostic renders (every slot bound to
+    # its own default to visualise coverage) — slot-overflow there reflects
+    # the pack's showcase copy, not deck content. Skip the fatal gate.
+    if getattr(args, "slot_debug_color", None):
+        pass
+    elif not getattr(args, "strict_static", False):
         try:
             from feinschliff_builder.verify.static import (  # type: ignore[import]
                 validate as _validate_static_gate,
@@ -679,6 +710,7 @@ def cmd_build(args) -> int:
 
     plan_dir = plan_path.parent
     slides_payload: list[tuple[list, object, Path]] = []
+    compile_jobs: list[tuple[int, object, Path, dict]] = []
     content_defects_by_slide: dict[int, list] | None = (
         {} if not args.skip_content_lint else None
     )
@@ -735,6 +767,9 @@ def cmd_build(args) -> int:
                         print(f"deck: slide {i}: content_file not found: {spec['content_file']}", file=sys.stderr)
                         return 2
                 ctx = yaml.safe_load(content_path.read_text()) or {}
+            if getattr(args, "slot_debug_color", None):
+                ctx = dict(ctx)
+                ctx["_slot_debug_color"] = args.slot_debug_color
 
             # Brand-layout slot metadata: auto-bind footer / page-number
             # slots (from deck-level `vars:` / the slide index) and derive
@@ -787,26 +822,30 @@ def cmd_build(args) -> int:
                 if fatal_defects:
                     content_defects_by_slide[slide_index] = fatal_defects
 
-            _slide_t0 = _time.perf_counter()
-            log_event(plan_dir, "build:slide", "start", slide=i + 1,
-                      layout=Path(spec["layout"]).name)
-            slide_result = compile_slide(
-                layout_path=layout_path,
-                ctx=ctx,
-                brand_dir=brand_dir,
-                slide_index=i + 1,
-                diagrams_out_dir=diagrams_out,
-            )
-            log_event(
-                plan_dir, "build:slide", "end", slide=i + 1,
-                layout=Path(spec["layout"]).name,
-                elapsed_ms=int((_time.perf_counter() - _slide_t0) * 1000),
-                defects=len(slide_result.defects),
-            )
+            compile_jobs.append((
+                i, spec.get("notes"), brand_dir,
+                dict(layout_path=layout_path, ctx=ctx, brand_dir=brand_dir,
+                     slide_index=i + 1, diagrams_out_dir=diagrams_out),
+            ))
+
+        if content_defects_by_slide:
+            emit_defects_and_abort_message(content_defects_by_slide, cli_name="deck build")
+            return 1
+
+        # Compile every slide — DSL expand + diagram rendering. Slides are
+        # independent (the diagram cache keys on slide_index, so output
+        # files are disjoint); with --workers > 1 they fan out across
+        # processes and only the PPTX assembly below stays serial.
+        _workers = getattr(args, "workers", 1)
+        if _workers == 0:
+            import os as _os
+            _workers = min(8, max(1, (_os.cpu_count() or 2) // 2))
+        _workers = min(_workers, max(1, len(compile_jobs)))
+
+        def _join(i: int, notes, brand_dir: Path, slide_result) -> None:
             for d in slide_result.defects:
                 print(f"deck: slide {i + 1}: {format_defect(d)}", file=sys.stderr)
             all_diagram_defects.extend(slide_result.defects)
-            notes = spec.get("notes")
             if notes is not None:
                 slides_payload.append(
                     (slide_result.primitives, slide_result.tokens,
@@ -818,9 +857,35 @@ def cmd_build(args) -> int:
                      brand_dir / "assets")
                 )
 
-        if content_defects_by_slide:
-            emit_defects_and_abort_message(content_defects_by_slide, cli_name="deck build")
-            return 1
+        if _workers <= 1:
+            for i, notes, brand_dir, kwargs in compile_jobs:
+                _slide_t0 = _time.perf_counter()
+                log_event(plan_dir, "build:slide", "start", slide=i + 1,
+                          layout=kwargs["layout_path"].name)
+                slide_result = compile_slide(**kwargs)
+                log_event(
+                    plan_dir, "build:slide", "end", slide=i + 1,
+                    layout=kwargs["layout_path"].name,
+                    elapsed_ms=int((_time.perf_counter() - _slide_t0) * 1000),
+                    defects=len(slide_result.defects),
+                )
+                _join(i, notes, brand_dir, slide_result)
+        else:
+            from concurrent.futures import ProcessPoolExecutor
+            log_event(plan_dir, "build:compile-pool", "start",
+                      slides=len(compile_jobs), workers=_workers)
+            _pool_t0 = _time.perf_counter()
+            with ProcessPoolExecutor(max_workers=_workers) as _pool:
+                _futs = [(i, notes, brand_dir,
+                          _pool.submit(compile_slide, **kwargs))
+                         for i, notes, brand_dir, kwargs in compile_jobs]
+                # Join in submission order — defect output and the slide
+                # payload sequence stay identical to a sequential build.
+                for i, notes, brand_dir, fut in _futs:
+                    _join(i, notes, brand_dir, fut.result())
+            log_event(plan_dir, "build:compile-pool", "end",
+                      slides=len(compile_jobs), workers=_workers,
+                      elapsed_ms=int((_time.perf_counter() - _pool_t0) * 1000))
 
         allowed_to_skip: set[str] = set()
         if getattr(args, "allow_diagram_warnings", False):

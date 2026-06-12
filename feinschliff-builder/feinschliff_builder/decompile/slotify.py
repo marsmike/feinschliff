@@ -134,7 +134,9 @@ def _fmt_num(v: float) -> str:
     return str(int(v)) if float(v).is_integer() else f"{v:g}"
 
 
-def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
+def clip_text_to_images(dsl_text: str,
+                        extra_images: list[dict] | None = None
+                        ) -> tuple[str, list[str]]:
     """Shrink slot-bearing text boxes that cross a picture slot's edge so the
     box ends at the image boundary (with a small gutter).
 
@@ -150,6 +152,10 @@ def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
     Idempotent: a clipped box no longer crosses the edge -> second run is a no-op.
     """
     pics = _parse_pictures_for_clip(dsl_text)
+    if extra_images:
+        # native content photos (tile thumbnails etc.) clip exactly like
+        # picture slots — see cleanup.native_pic_rects
+        pics = pics + [dict(r, _line="") for r in extra_images]
     if not pics:
         return dsl_text, []
 
@@ -198,7 +204,29 @@ def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
                 new_val = iy0 - ty0 - _CLIP_GUTTER
                 old_val = current["maxh"]
             else:
-                # Origin inside picture on both candidate axes -> warn-only.
+                # Origin inside the picture. Tile layouts (thumbnail left,
+                # text spanning the whole tile) are fixable by SHIFTING the
+                # box to the photo's right edge when that leaves a usable
+                # column; everything else stays warn-only.
+                ix1 = pic["x"] + pic["w"]
+                tx1 = tx0 + current["maxw"]
+                new_x = ix1 + _CLIP_GUTTER
+                new_w = tx1 - new_x
+                if (ix1 < tx1 and new_w >= max(_CLIP_MIN_W, 0.25 * current["maxw"])):
+                    new_line = re.sub(
+                        r"^(text\s+)(-?\d+(?:\.\d+)?),",
+                        lambda m: f"{m.group(1)}{_fmt_num(new_x)},",
+                        current_line, count=1)
+                    new_line = _GEO_MAXW_RE.sub(
+                        f"maxwidth:{_fmt_num(new_w)}", new_line, count=1)
+                    logs.append(
+                        f"{current['name']}: x {_fmt_num(tx0)} -> {_fmt_num(new_x)}, "
+                        f"maxwidth {_fmt_num(current['maxw'])} -> {_fmt_num(new_w)}"
+                        f" (shifted right of picture '{pic['name']}')")
+                    current["x"] = new_x
+                    current["maxw"] = new_w
+                    replacements[t["_line"]] = new_line
+                    current_line = new_line
                 continue
 
             # Usability guards.
@@ -361,3 +389,158 @@ def add_autoshrink(dsl_text: str, slot_roles: dict[str, str]) -> str:
         new_body = f"{m.group(1)} autoshrink:true {m.group(2)}"
         out_lines.append(new_body + ("\n" if line.endswith("\n") else ""))
     return "".join(out_lines)
+
+
+# ---------------------------------------------------------------------------
+# Native-payload text slotification
+# ---------------------------------------------------------------------------
+
+# A `native` line and its kwargs. Payload may be inline (`b64:"…"`) or a
+# sidecar reference (`xml_file:"…"` under the brand pack's assets dir).
+_NATIVE_LINE_RE = re.compile(r"^native\s+(\w+)\s+(.*)$")
+_NATIVE_KW_RE = re.compile(r'(\w+):"([^"]*)"')
+_NATIVE_T_RE = re.compile(r"(<a:t>)([^<]+)(</a:t>)")
+
+# Chart / SmartArt payloads keep their text native for now: their labels live
+# in external parts (`parts:`/`parts_file:`), not in the frame XML — a future
+# pass can extend slotification into the part graph.
+_NATIVE_SKIP_MARKERS = ("<c:chart", "<dgm:", "relIds")
+
+
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def _coalesce_runs(xml: str) -> str:
+    """Merge ADJACENT runs with identical run properties inside each
+    paragraph. Source decks split sentences into per-word runs (spellcheck /
+    incremental-edit artifacts); slotifying those yields one useless slot
+    per word with a chars budget of that word's length. Identical-rPr
+    neighbours are visually one run — merge before slotification."""
+    from lxml import etree
+    try:
+        root = etree.fromstring(xml.encode("utf-8"))
+    except Exception:
+        return xml
+    changed = False
+    for para in root.iter(f"{{{_A_NS}}}p"):
+        prev = None       # (run element, rPr signature)
+        for run in list(para):
+            if run.tag != f"{{{_A_NS}}}r":
+                prev = None
+                continue
+            t = run.find(f"{{{_A_NS}}}t")
+            if t is None:
+                prev = None
+                continue
+            rpr = run.find(f"{{{_A_NS}}}rPr")
+            if rpr is not None:
+                # proofing/edit artifacts (spellcheck err, dirty, smtClean,
+                # noProof) split visually identical runs — ignore them
+                _clean = etree.fromstring(etree.tostring(rpr))
+                for _attr in ("err", "dirty", "smtClean", "noProof"):
+                    _clean.attrib.pop(_attr, None)
+                sig = etree.tostring(_clean)
+            else:
+                sig = b""
+            if prev is not None and prev[1] == sig:
+                pt = prev[0].find(f"{{{_A_NS}}}t")
+                pt.text = (pt.text or "") + (t.text or "")
+                para.remove(run)
+                changed = True
+            else:
+                prev = (run, sig)
+    return etree.tostring(root, encoding="unicode") if changed else xml
+
+
+def _slotify_native_xml(
+    xml: str, next_idx: int
+) -> tuple[str, list[dict]]:
+    """Replace literal `<a:t>` runs with `{{ text_N | default("…") }}`.
+
+    Returns ``(new_xml, slot_dicts)``; each slot dict is
+    ``{"name", "default"}`` with the default already XML-unescaped (the DSL
+    frontmatter wants the human literal, the XML keeps the escaped form).
+    Runs that are whitespace-only, already slotified, or contain braces /
+    ASCII quotes that cannot ride the slot grammar stay literal.
+    """
+    from xml.sax.saxutils import escape as _xml_escape
+    from xml.sax.saxutils import unescape as _xml_unescape
+
+    xml = _coalesce_runs(xml)
+    slots: list[dict] = []
+
+    def repl(m: re.Match) -> str:
+        literal = _xml_unescape(m.group(2))
+        if not literal.strip() or "{" in literal or "}" in literal:
+            return m.group(0)
+        if '"' in literal:
+            literal = _curlify(literal.replace('"', '\\"'))
+        name = f"text_{next_idx + len(slots)}"
+        slots.append({"name": name, "default": literal})
+        template = f'{{{{ {name} | default("{literal}") }}}}'
+        return m.group(1) + _xml_escape(template) + m.group(3)
+
+    return _NATIVE_T_RE.sub(repl, xml), slots
+
+
+def slotify_native_text(
+    dsl_text: str, asset_root: Path | None
+) -> tuple[str, list[dict], list[str]]:
+    """Slotify the text runs of every `native` payload in one layout's DSL.
+
+    Inline payloads are rewritten in place (re-encoded `b64:`); sidecar
+    payloads (`xml_file:`) are rewritten on disk under ``asset_root``. Slot
+    numbering continues after the highest existing ``text_N`` in the DSL.
+    Charts and SmartArt are skipped (labels live in external parts).
+
+    Returns ``(new_dsl, slot_dicts, log_lines)`` where slot dicts carry
+    ``{"name", "default", "native_id"}``.
+    """
+    import base64
+
+    existing = [int(m.group(1)) for m in re.finditer(r"\btext_(\d+)\b", dsl_text)]
+    next_idx = max(existing, default=0) + 1
+
+    out_lines: list[str] = []
+    all_slots: list[dict] = []
+    logs: list[str] = []
+    for line in dsl_text.splitlines(keepends=True):
+        body = line.rstrip("\n")
+        m = _NATIVE_LINE_RE.match(body)
+        if m is None:
+            out_lines.append(line)
+            continue
+        native_id, rest = m.group(1), m.group(2)
+        kwargs = dict(_NATIVE_KW_RE.findall(rest))
+        xml: str | None = None
+        sidecar: Path | None = None
+        if kwargs.get("b64"):
+            try:
+                xml = base64.b64decode(kwargs["b64"]).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                xml = None
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / kwargs["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8")
+        if xml is None or any(s in xml for s in _NATIVE_SKIP_MARKERS):
+            out_lines.append(line)
+            continue
+        new_xml, slots = _slotify_native_xml(xml, next_idx)
+        if not slots:
+            out_lines.append(line)
+            continue
+        next_idx += len(slots)
+        for s in slots:
+            s["native_id"] = native_id
+        all_slots.extend(slots)
+        logs.append(f"{native_id}: {len(slots)} text run(s) slotified "
+                    f"({', '.join(s['name'] for s in slots)})")
+        if sidecar is not None:
+            sidecar.write_text(new_xml, encoding="utf-8")
+            out_lines.append(line)
+        else:
+            new_b64 = base64.b64encode(new_xml.encode("utf-8")).decode("ascii")
+            new_body = body.replace(kwargs["b64"], new_b64, 1)
+            out_lines.append(new_body + ("\n" if line.endswith("\n") else ""))
+    return "".join(out_lines), all_slots, logs

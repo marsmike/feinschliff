@@ -33,12 +33,14 @@ from feinschliff_builder.decompile.layout_profile_gen import (
     classify_layout,
     derive_deck_map,
 )
+from feinschliff_builder.decompile.cleanup import native_pic_rects, strip_native_text_doubles
 from feinschliff_builder.decompile.slotify import (
     add_autoshrink,
     autoshrink_enabled,
     clip_text_to_images,
     clip_to_images_enabled,
     slotify_dsl,
+    slotify_native_text,
 )
 from feinschliff_builder.verify.verify_map import load_verify_map
 
@@ -65,6 +67,39 @@ def _slide_indices(brand_pack: Path, names: list[str]) -> tuple[dict[str, int], 
     return indices, total
 
 
+def _apply_deck_map_pins(brand_pack: Path, deck_map: dict) -> tuple[dict, bool]:
+    """Merge `<brand-pack>/deck-map.pins.yaml` over the generated deck-map.
+
+    Pins survive every regeneration: scalar roles (cover/agenda/closer)
+    override, a pinned `section:` list replaces the generated one, and all
+    pinned layouts are removed from `content`. Returns (map, pinned?)."""
+    pins_path = brand_pack / "deck-map.pins.yaml"
+    if not pins_path.is_file():
+        return deck_map, False
+    pins = yaml.safe_load(pins_path.read_text(encoding="utf-8")) or {}
+    for key in ("cover", "agenda", "closer"):
+        if pins.get(key):
+            deck_map[key] = pins[key]
+    if pins.get("section"):
+        deck_map["section"] = list(pins["section"])
+    pinned = {deck_map.get("cover"), deck_map.get("agenda"), deck_map.get("closer"),
+              *(deck_map.get("section") or [])}
+    deck_map["content"] = [x for x in (deck_map.get("content") or [])
+                           if x not in pinned]
+    return deck_map, True
+
+
+def _pack_width_emu(brand_pack: Path) -> float:
+    """slide.width_emu from tokens.json (0.0 when absent — geometry check
+    in strip_native_text_doubles then falls back to literal-only match)."""
+    import json
+    try:
+        raw = json.loads((brand_pack / "tokens.json").read_text(encoding="utf-8"))
+        return float(raw["slide"]["width_emu"]["$value"])
+    except Exception:
+        return 0.0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("--brand-pack", required=True, type=Path)
@@ -87,8 +122,28 @@ def main() -> int:
     for path in sorted(layouts_dir.glob("*.slide.dsl")):
         text = path.read_text(encoding="utf-8")
         new_text, slots = slotify_dsl(text)
+        if not args.dry_run:
+            # Native runs that double a regular text line's label render
+            # stacked once a deck binds either copy — blank the native run
+            # (the text slot is the single binding point), THEN slotify the
+            # remaining native payload text. Sidecar payloads rewrite on
+            # disk, so both passes are skipped on dry runs.
+            new_text, doubles = strip_native_text_doubles(
+                new_text, brand_pack / "assets",
+                width_emu=_pack_width_emu(brand_pack))
+            if doubles:
+                print(f"  {path.name}: blanked {doubles} native text double(s)")
+            new_text, native_slots, native_logs = slotify_native_text(
+                new_text, brand_pack / "assets")
+            for line in native_logs:
+                print(f"  {path.name}: {line}")
+            slots = slots + [ns["name"] for ns in native_slots]
         if clip_enabled:
-            new_text, clips = clip_text_to_images(new_text)
+            new_text, clips = clip_text_to_images(
+                new_text,
+                extra_images=native_pic_rects(
+                    new_text, brand_pack / "assets",
+                    width_emu=_pack_width_emu(brand_pack)))
             if clips:
                 clip_log[path.name[: -len(".slide.dsl")]] = clips
         leftovers = [ln for ln in new_text.splitlines()
@@ -104,7 +159,7 @@ def main() -> int:
         if bare_pics:
             flag += f"  [{len(bare_pics)} picture without slot]"
         print(f"  {path.name}: {len(slots)} text slots{flag}")
-        if not args.dry_run and slots:
+        if not args.dry_run and new_text != text:
             path.write_text(new_text, encoding="utf-8")
         slotified[path.name[: -len(".slide.dsl")]] = new_text
 
@@ -154,9 +209,14 @@ def main() -> int:
                     for msg in msgs:
                         print(f"  {name}.{slot}: {msg}")
         deck_map = derive_deck_map(profiles)
+        deck_map, pinned = _apply_deck_map_pins(brand_pack, deck_map)
         if not args.dry_run:
+            header = _DECK_MAP_HEADER
+            if pinned:
+                header += ("# Roles merged from deck-map.pins.yaml — edit pins "
+                           "there, they survive regeneration.\n")
             (brand_pack / "deck-map.yaml").write_text(
-                _DECK_MAP_HEADER + yaml.safe_dump(
+                header + yaml.safe_dump(
                     deck_map, sort_keys=False, allow_unicode=True,
                     default_flow_style=None),
                 encoding="utf-8")

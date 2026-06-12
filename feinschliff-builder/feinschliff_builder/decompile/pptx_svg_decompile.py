@@ -97,9 +97,49 @@ def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
     name = f"{hashlib.sha1(payload).hexdigest()[:12]}.{ext}"
     native_dir.mkdir(parents=True, exist_ok=True)
     target = native_dir / name
-    if not target.exists():
-        target.write_bytes(payload)
+    # Unconditional write: the slotify pass REWRITES sidecars in place
+    # (planting {{ text_N }} templates), so an exists-skip would freeze a
+    # previous run's slotified state under the fresh payload's hash name —
+    # re-derives could never refresh it. Write-to-temp + atomic rename:
+    # parallel decompile workers deriving sibling slides can hit the same
+    # content-hash name simultaneously (shared template chrome) — a direct
+    # write would interleave the two byte streams.
+    import os
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=native_dir, prefix=f".{name}.")
+    try:
+        os.write(fd, payload)
+    finally:
+        os.close(fd)
+    os.replace(tmp, target)
     return f"{(native_rel or 'native').rstrip('/')}/{name}"
+
+
+def _rasterize_svg_bytes(blob: bytes) -> bytes | None:
+    """Rasterize SVG bytes to PNG bytes via a temp file; None on failure."""
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        svg = Path(td) / "m.svg"
+        svg.write_bytes(blob)
+        png = _rasterize_svg(svg)
+        return png.read_bytes() if png is not None else None
+
+
+def _rasterize_svg(svg_path: Path) -> Path | None:
+    """soffice-rasterize an extracted SVG to a sibling PNG; None on failure."""
+    import subprocess
+    import tempfile
+    try:
+        with tempfile.TemporaryDirectory() as profile:
+            subprocess.run(
+                ["soffice", f"-env:UserInstallation=file://{profile}",
+                 "--headless", "--convert-to", "png", str(svg_path),
+                 "--outdir", str(svg_path.parent)],
+                check=True, capture_output=True, timeout=120)
+        png = svg_path.with_suffix(".png")
+        return png if png.is_file() else None
+    except Exception:
+        return None
 
 
 def _media_ext(blob: bytes) -> str:
@@ -165,6 +205,14 @@ class Shape:
     # placeholder's text fits its box instead of overflowing the final render.
     autoshrink: bool = False
     font_scale: float = 1.0
+    # Paragraph line spacing from `<a:pPr><a:lnSpc><a:spcPct val="N"/>`:
+    # multiplier (N/100000), or None when the source paragraph carries no
+    # explicit lnSpc — PowerPoint then uses the font's native single
+    # spacing. None must round-trip to an emitted text frame WITHOUT a
+    # lnSpc element (`linespacing:native`), NOT to the toolkit's 1.2
+    # default: writing 120% onto source-default paragraphs pushed every
+    # decompiled headline a quarter-line down the slide.
+    line_spacing: float | None = None
     # Text-frame internal insets as (l, t, r, b) in design-px. Source carries
     # these on `<a:bodyPr lIns="..." tIns="..." rIns="..." bIns="...">` in EMU.
     # When absent on source, defaults to PowerPoint's published 91440 / 45720
@@ -750,6 +798,39 @@ def _layout_placeholder_autofit(slide, ph_type: str | None, ph_idx: str | None) 
     return False
 
 
+def _layout_placeholder_line_spacing(slide, ph_type: str | None,
+                                     ph_idx: str | None) -> float | None:
+    """Effective INHERITED paragraph line spacing for a placeholder: the
+    layout / master placeholder's lvl1pPr lnSpc, then the master txStyles
+    (titleStyle for titles, bodyStyle for everything else). Corporate
+    masters routinely set spacing ONLY here (Bosch: bodyStyle 107%,
+    titleStyle 89%) — a slide paragraph with no own lnSpc must inherit it,
+    not fall through to `linespacing:native`. Returns the multiplier or
+    None when no ancestor specifies one (true native single spacing)."""
+    layout = getattr(slide, "slide_layout", None)
+    master = getattr(layout, "slide_master", None) if layout is not None else None
+
+    def _pct(el) -> float | None:
+        if el is not None and el.get("val"):
+            try:
+                return int(el.get("val")) / 100000.0
+            except (TypeError, ValueError):
+                pass
+        return None
+
+    for parent in (p for p in (layout, master) if p is not None):
+        for sp in _matching_placeholders(parent, ph_type, ph_idx):
+            v = _pct(sp.find(".//p:txBody/a:lstStyle/a:lvl1pPr/a:lnSpc/a:spcPct", NS))
+            if v is not None:
+                return v
+    style_name = {"title": "titleStyle",
+                  "ctrTitle": "titleStyle"}.get(ph_type or "", "bodyStyle")
+    if master is not None:
+        return _pct(master.element.find(
+            f".//p:txStyles/p:{style_name}/a:lvl1pPr/a:lnSpc/a:spcPct", NS))
+    return None
+
+
 def _layout_placeholder_color(slide, ph_type: str | None, ph_idx: str | None,
                               theme: dict[str, str],
                               palette: dict[str, tuple[int, int, int]]) -> str | None:
@@ -1227,9 +1308,12 @@ def _shape_geometry_kind(spPr: etree._Element) -> str:
     return "rect"
 
 
-# Presets whose geometry is a fixed closed polygon (no adjustment values
-# read from <a:avLst>). For each, `_preset_geom_path` returns the SVG `d`
-# string in the shape's local 0..w × 0..h pixel coordinate space.
+# Presets whose geometry is a closed polygon synthesized by
+# `_preset_geom_path`, which returns the SVG `d` string in the shape's
+# local 0..w × 0..h pixel coordinate space. Adjustment values from
+# <a:avLst> are honoured for the presets whose ECMA-376 guide formulas
+# use them (chevron, homePlate, parallelogram, trapezoid, hexagon,
+# octagon, arrows); the spec defaults apply when absent.
 _PRESET_PATH_PRESETS: frozenset[str] = frozenset({
     "triangle", "rtTriangle", "diamond",
     "parallelogram", "trapezoid",
@@ -1239,17 +1323,19 @@ _PRESET_PATH_PRESETS: frozenset[str] = frozenset({
 })
 
 
-def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
+def _preset_geom_path(preset: str, w: float, h: float,
+                      adj: dict[str, float] | None = None) -> str | None:
     """SVG `d` string for the known closed-polygon presets, in local px.
 
-    The shapes use PowerPoint's default unadjusted geometry — the
-    `<a:avLst>` adjustment slider values are ignored. For the simple
-    convex polygons in `_PRESET_PATH_PRESETS` the unadjusted form is
-    visually correct in the vast majority of decks. Arrows use 50%
-    barb / 50% shaft as the PowerPoint default.
+    Guide formulas follow ECMA-376 presetShapeDefinitions: adjustment
+    values are fractions of `ss` (the SHORTEST side), not of the width —
+    a wide flat chevron keeps a compact notch instead of one stretched
+    to 30% of its width. `adj` maps gd name → value/100000.
     """
     if w <= 0 or h <= 0:
         return None
+    adj = adj or {}
+    ss = min(w, h)
     if preset == "triangle":
         return f"M {w/2:.1f},0 L {w:.1f},{h:.1f} L 0,{h:.1f} Z"
     if preset == "rtTriangle":
@@ -1258,20 +1344,32 @@ def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
         return (f"M {w/2:.1f},0 L {w:.1f},{h/2:.1f} "
                 f"L {w/2:.1f},{h:.1f} L 0,{h/2:.1f} Z")
     if preset == "parallelogram":
-        # Default skew = 25% from left.
-        skew = w * 0.25
+        # x1 = ss * adj (default 25000) — skew from the left, per spec.
+        skew = min(w, ss * adj.get("adj", 0.25))
         return (f"M {skew:.1f},0 L {w:.1f},0 L {w-skew:.1f},{h:.1f} "
                 f"L 0,{h:.1f} Z")
     if preset == "trapezoid":
-        # Default top is 75% of bottom, centered.
-        inset = w * 0.125
+        # x1 = ss * adj (default 25000) — top inset on each side.
+        inset = min(w / 2, ss * adj.get("adj", 0.25))
         return (f"M {inset:.1f},0 L {w-inset:.1f},0 L {w:.1f},{h:.1f} "
                 f"L 0,{h:.1f} Z")
-    if preset in ("pentagon", "homePlate", "hexagon"):
-        # PowerPoint's `pentagon` and `homePlate` differ in spec but render
-        # similarly to `hexagon` — same convex outline for all three here.
-        return (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
-                f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
+    if preset == "pentagon":
+        # Regular pentagon inscribed in the bbox: top vertex centred, side
+        # vertices at 38.2% height, base at 19.1% / 80.9% width. (The spec's
+        # hf/vf factors reduce to this once normalised to the bbox.)
+        return (f"M {w*0.5:.1f},0 L {w:.1f},{h*0.382:.1f} "
+                f"L {w*0.809:.1f},{h:.1f} L {w*0.191:.1f},{h:.1f} "
+                f"L 0,{h*0.382:.1f} Z")
+    if preset == "homePlate":
+        # x1 = ss * adj (default 50000) — point length; flat left edge.
+        x1 = min(w, ss * adj.get("adj", 0.5))
+        return (f"M 0,0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L 0,{h:.1f} Z")
+    if preset == "hexagon":
+        # x1 = ss * adj (default 25000) — corner inset.
+        x1 = min(w / 2, ss * adj.get("adj", 0.25))
+        return (f"M {x1:.1f},0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L {x1:.1f},{h:.1f} "
                 f"L 0,{h*0.5:.1f} Z")
     if preset == "heptagon":
         # Regular-ish 7-gon inscribed in the bbox.
@@ -1284,38 +1382,46 @@ def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
             pts.append(f"{cx + rx * _m.cos(ang):.1f},{cy + ry * _m.sin(ang):.1f}")
         return "M " + " L ".join(pts) + " Z"
     if preset == "octagon":
-        # Regular octagon — inset 0.2929 of bbox dimension on each corner.
-        c = 0.2929
-        return (f"M {w*c:.1f},0 L {w-w*c:.1f},0 L {w:.1f},{h*c:.1f} "
-                f"L {w:.1f},{h-h*c:.1f} L {w-w*c:.1f},{h:.1f} "
-                f"L {w*c:.1f},{h:.1f} L 0,{h-h*c:.1f} L 0,{h*c:.1f} Z")
+        # x1 = ss * adj (default 29289) — corner cut on the shortest side.
+        x1 = min(ss / 2, ss * adj.get("adj", 0.29289))
+        return (f"M {x1:.1f},0 L {w-x1:.1f},0 L {w:.1f},{x1:.1f} "
+                f"L {w:.1f},{h-x1:.1f} L {w-x1:.1f},{h:.1f} "
+                f"L {x1:.1f},{h:.1f} L 0,{h-x1:.1f} L 0,{x1:.1f} Z")
     if preset == "chevron":
-        # Right-pointing chevron (arrow head + notch in tail).
-        return (f"M 0,0 L {w*0.7:.1f},0 L {w:.1f},{h*0.5:.1f} "
-                f"L {w*0.7:.1f},{h:.1f} L 0,{h:.1f} "
-                f"L {w*0.3:.1f},{h*0.5:.1f} Z")
-    if preset == "rightArrow":
-        # 50% shaft height, 50% arrowhead length.
-        sy0, sy1 = h * 0.25, h * 0.75
-        ax = w * 0.5
-        return (f"M 0,{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
-                f"L {w:.1f},{h*0.5:.1f} L {ax:.1f},{h:.1f} "
-                f"L {ax:.1f},{sy1:.1f} L 0,{sy1:.1f} Z")
-    if preset == "leftArrow":
-        sy0, sy1 = h * 0.25, h * 0.75
-        ax = w * 0.5
-        return (f"M {w:.1f},{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
-                f"L 0,{h*0.5:.1f} L {ax:.1f},{h:.1f} "
-                f"L {ax:.1f},{sy1:.1f} L {w:.1f},{sy1:.1f} Z")
-    if preset == "upArrow":
-        sx0, sx1 = w * 0.25, w * 0.75
-        ay = h * 0.5
-        return (f"M {sx0:.1f},{h:.1f} L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
-                f"L {w*0.5:.1f},0 L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
-                f"L {sx1:.1f},{h:.1f} Z")
-    if preset == "downArrow":
-        sx0, sx1 = w * 0.25, w * 0.75
-        ay = h * 0.5
+        # x1 = ss * adj (default 50000) — point AND notch depth. The old
+        # hardcoded 30%-of-WIDTH notch stretched wide process-step chevrons
+        # into near-triangles.
+        x1 = min(w, ss * adj.get("adj", 0.5))
+        return (f"M 0,0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L 0,{h:.1f} "
+                f"L {x1:.1f},{h*0.5:.1f} Z")
+    if preset in ("rightArrow", "leftArrow", "upArrow", "downArrow"):
+        # adj1 = shaft thickness as a fraction of the cross dimension
+        # (default 50000); adj2 = head length = ss * adj2 (default 50000).
+        a1 = adj.get("adj1", 0.5)
+        a2 = adj.get("adj2", 0.5)
+        if preset in ("rightArrow", "leftArrow"):
+            head = min(w, ss * a2)
+            sy0 = h * (0.5 - a1 / 2)
+            sy1 = h * (0.5 + a1 / 2)
+            if preset == "rightArrow":
+                ax = w - head
+                return (f"M 0,{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                        f"L {w:.1f},{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                        f"L {ax:.1f},{sy1:.1f} L 0,{sy1:.1f} Z")
+            ax = head
+            return (f"M {w:.1f},{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                    f"L 0,{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                    f"L {ax:.1f},{sy1:.1f} L {w:.1f},{sy1:.1f} Z")
+        head = min(h, ss * a2)
+        sx0 = w * (0.5 - a1 / 2)
+        sx1 = w * (0.5 + a1 / 2)
+        if preset == "upArrow":
+            ay = head
+            return (f"M {sx0:.1f},{h:.1f} L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
+                    f"L {w*0.5:.1f},0 L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
+                    f"L {sx1:.1f},{h:.1f} Z")
+        ay = h - head
         return (f"M {sx0:.1f},0 L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
                 f"L {w*0.5:.1f},{h:.1f} L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
                 f"L {sx1:.1f},0 Z")
@@ -1707,6 +1813,16 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     )
     runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz,
                       inherited_caps=inherited_caps, inherited_bold=inherited_bold)
+    # Scaled group: PowerPoint scales text with the group resize, but runs
+    # keep their NOMINAL sz in the XML — apply the group's vertical scale so
+    # tile text doesn't render at pre-scale size (slide-48/49 class: 12pt
+    # nominal inside a 0.6x group renders ~7pt in the source).
+    if len(offset) == 8:
+        _gsy = offset[7]
+        if abs(_gsy - 1.0) > 0.01:
+            for _r in runs:
+                if _r.pt:
+                    _r.pt = round(_r.pt * _gsy, 1)
     # G3 — capture text colour the slide run INHERITS rather than states. When a
     # run carries no explicit `<a:rPr><a:solidFill>`, fall back to (a) the shape's
     # `<p:style><a:fontRef>` (decorative styled shapes) then (b) the layout/master
@@ -1739,6 +1855,38 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         fill = _resolve_fill(spPr, theme, palette={})
     else:
         fill = _resolve_fill(spPr, theme, palette)
+    if fill is None and spPr is not None and spPr.find("a:noFill", NS) is None:
+        # Master-styled shape: `<p:style><a:fillRef idx="N"><a:schemeClr
+        # val="accent1"/>` carries the fill when spPr declares none — the
+        # theme fill style at idx substitutes the ref's color for its
+        # `phClr` placeholder. Solid approximation: resolve the ref color
+        # itself (fillStyleLst[0] IS a plain phClr solid; gradient styles
+        # approximate to their base color). Without this, styled shapes
+        # silently lost their fill (spec-audit phClr gap).
+        _style = ch.find("p:style", NS)
+        _fref = _style.find("a:fillRef", NS) if _style is not None else None
+        if _fref is not None:
+            try:
+                _fidx = int(_fref.get("idx") or 0)
+            except ValueError:
+                _fidx = 0
+            if 1 <= _fidx <= 999:
+                _pal = {} if kind == "shape" else palette
+                _srgb = _fref.find("a:srgbClr", NS)
+                _scheme = _fref.find("a:schemeClr", NS)
+                if _srgb is not None and _srgb.get("val"):
+                    hx = _srgb.get("val")
+                    rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+                    rgb = _apply_color_mods(rgb, _srgb)
+                    rgb = _blend_on_white(rgb, _alpha_for_color(_srgb))
+                    fill = nearest_token(rgb, _pal)
+                elif _scheme is not None and theme.get(_scheme.get("val")):
+                    hex_str = theme[_scheme.get("val")]
+                    rgb = (int(hex_str[1:3], 16), int(hex_str[3:5], 16),
+                           int(hex_str[5:7], 16))
+                    rgb = _apply_color_mods(rgb, _scheme)
+                    rgb = _blend_on_white(rgb, _alpha_for_color(_scheme))
+                    fill = nearest_token(rgb, _pal)
     gradient = _resolve_gradient(spPr, theme, palette)
     # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
     # this the rendered text lands at frame-top even when source centers
@@ -1748,6 +1896,7 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     padding_emu: tuple[int, int, int, int] | None = None
     autoshrink = False
     font_scale = 1.0
+    line_spacing: float | None = None
     # NOT `find(...) or find(...)` — lxml element truthiness is based on
     # child count, so a childless <p:txBody/> would falsily fall through.
     txBody = ch.find(".//p:txBody", NS)
@@ -1801,6 +1950,17 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
                         font_scale = int(na.get("fontScale")) / 100000.0
                     except (TypeError, ValueError):
                         pass
+        # Explicit paragraph line spacing — first paragraph's
+        # <a:pPr><a:lnSpc><a:spcPct val="N"/> wins (consistent with how
+        # color/size/align pick the first content run). Absent → None →
+        # the emitter writes NO lnSpc so the renderer's native single
+        # spacing applies, exactly like the source.
+        spc = txBody.find("a:p/a:pPr/a:lnSpc/a:spcPct", NS)
+        if spc is not None and spc.get("val"):
+            try:
+                line_spacing = int(spc.get("val")) / 100000.0
+            except (TypeError, ValueError):
+                pass
     # Vertical anchor also inherits: a slide title with no own bodyPr anchor still
     # renders bottom/centre-anchored when the layout/master placeholder bodyPr sets
     # it (MS Geometric: master title placeholder anchor="b" → titles sit at the box
@@ -1813,6 +1973,11 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     # still shrinks-to-fit — capture that (autoshrink) or the text overflows.
     if not autoshrink and (ph_type or ph_idx):
         autoshrink = _layout_placeholder_autofit(slide, ph_type, ph_idx)
+    # Line spacing inherits like anchor / autofit / insets: a placeholder
+    # paragraph with no own lnSpc takes the layout/master placeholder value,
+    # then the master txStyles (Bosch: bodyStyle 107%, titleStyle 89%).
+    if line_spacing is None and (ph_type or ph_idx):
+        line_spacing = _layout_placeholder_line_spacing(slide, ph_type, ph_idx)
     # Convert insets EMU → design-px for the Shape (CanvasMap-relative).
     padding_px: tuple[float, float, float, float] | None = None
     if padding_emu is not None:
@@ -1850,7 +2015,10 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         pg = spPr.find("a:prstGeom", NS)
         if pg is not None and pg.get("prst") == "roundRect":
             gd = pg.find(".//a:gd[@name='adj']", NS)
-            adj_frac = 0.10  # PowerPoint default when omitted
+            # ECMA-376 default when adj is omitted: 16667/100000 of the
+            # shortest side (NOT 0.10 — that undersized default-rounded
+            # corners by ~40%).
+            adj_frac = 0.16667
             if gd is not None and gd.get("fmla"):
                 m = re.search(r"val (\d+)", gd.get("fmla"))
                 if m:
@@ -1929,9 +2097,41 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             kind="text", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
             text_runs=runs, ph_type=ph_type, ph_idx=ph_idx, valign=valign,
             autoshrink=autoshrink, font_scale=font_scale,
-            padding=padding_px,
+            padding=padding_px, line_spacing=line_spacing,
         ))
         return
+
+    # FILLED rect carrying multi-style text (Bosch tile cards: bold 18pt
+    # "Placeholder" lead-in over regular 12pt body inside one filled
+    # shape). Collapsing to a single text primitive emits the body at the
+    # lead-in's max size and bold weight. Split exactly like the fill-None
+    # case above: the rect emits on its own (no runs), each text block
+    # keeps its own size / colour / weight at its own y-offset.
+    if runs and fill is not None and kind == "rect":
+        blocks = _split_runs_by_color(runs)
+        if len(blocks) > 1:
+            shapes.append(Shape(
+                kind="rect", x=cmap.x(x), y=cmap.y(y),
+                w=cmap.w(w), h=cmap.h(h),
+                fill=fill, stroke=stroke, stroke_width=stroke_width,
+                stroke_dash=stroke_dash, corner_radius=corner_radius,
+                shadow=shadow, gradient=gradient,
+            ))
+            cursor = cmap.y(y)
+            for block_runs in blocks:
+                block_pts = [r.pt for r in block_runs if r.text and r.text != "\n"]
+                primary_pt = max(block_pts) if block_pts else 12
+                line_count = sum(1 for r in block_runs if r.text and r.text != "\n")
+                block_h_px = max(int(round(primary_pt * (4 / 3) * 1.25 * max(line_count, 1))), 24)
+                shapes.append(Shape(
+                    kind="text", x=cmap.x(x), y=cursor,
+                    w=cmap.w(w), h=block_h_px,
+                    text_runs=block_runs, ph_type=ph_type, ph_idx=ph_idx,
+                    valign=None, padding=padding_px,
+                    line_spacing=line_spacing,
+                ))
+                cursor += block_h_px
+            return
 
     # custGeom paths convert directly to SVG path `d`. Build it in
     # canvas-pixel space so the surrounding svg-block can simply
@@ -1950,7 +2150,19 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             if pg is not None:
                 preset = pg.get("prst")
                 if preset:
-                    svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h))
+                    adj: dict[str, float] = {}
+                    av = pg.find("a:avLst", NS)
+                    if av is not None:
+                        for gd in av.findall("a:gd", NS):
+                            fmla = gd.get("fmla") or ""
+                            if fmla.startswith("val "):
+                                try:
+                                    adj[gd.get("name") or ""] = \
+                                        int(fmla[4:]) / 100000.0
+                                except ValueError:
+                                    pass
+                    svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h),
+                                              adj)
         # Prefer carrying the native <p:sp> verbatim for TOP-LEVEL complex chrome:
         # a real, editable vector spliced straight into the output deck — NO
         # svg → raster → picture round-trip (which both distorts the shape and is
@@ -1992,6 +2204,13 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     blip = ch.find(".//a:blip", NS)
     if blip is not None:
         rid = blip.get(f"{{{NS['r']}}}embed")
+        if rid is None:
+            # SVG-only pictures: PowerPoint may leave <a:blip> bare and put
+            # the reference solely in the <asvg:svgBlip> extension.
+            _svg = ch.find(
+                ".//{http://schemas.microsoft.com/office/drawing/2016/SVG/main}svgBlip")
+            if _svg is not None:
+                rid = _svg.get(f"{{{NS['r']}}}embed")
         # Resolve the related part NOW against the source object that
         # actually owns the rId (the slide, layout, or master `slide`
         # param of this call). Storing only the rId and re-resolving on
@@ -2003,19 +2222,48 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
                 media_part = slide.part.related_part(rid)
             except (KeyError, AttributeError):
                 media_part = None
-    # Template image: a small, non-placeholder <p:pic> (logo, mark, brand chrome)
-    # is fixed corporate-design identity — carry it natively (verbatim element +
-    # its media, base64-inline) rather than a fillable picture slot. Large or
-    # placeholder pics are CHANGEABLE topical content → they stay slots.
+    # Template image: changeability follows the SOURCE AUTHOR'S OWN MARKERS
+    # (provenance + media type), not a size heuristic:
+    #   placeholder pic        → picture slot — the template explicitly
+    #                            offers it for replacement. Detected by
+    #                            <p:ph> (ph_type) OR by the placeholder-
+    #                            derived shape NAME: filling a content
+    #                            placeholder with a picture can drop the
+    #                            <p:ph> element but keeps the name
+    #                            ("Content Placeholder 5",
+    #                            "Inhaltsplatzhalter 6", "Bildplatzhalter");
+    #   plain pic, JPEG media  → picture slot — photographs are topical
+    #                            content even when placed outside a
+    #                            placeholder (photo strips, cover shots);
+    #   plain pic, PNG/SVG/…   → fixed corporate-design graphic (logo,
+    #                            supergraphic, icon, illustration band,
+    #                            "Grafik N") — carry it natively (verbatim
+    #                            element + media) so it is NOT bindable.
+    # The previous mark-shape rule (min dimension ≤ 64px) left every
+    # content-sized PNG illustration as a bindable slot, which the audit
+    # then flagged and template users rightly complained about ("this CD
+    # band must not be replaceable").
     native_xml = None
     native_media = None
-    if (ph_type is None and media_part is not None and len(offset) == 2
-            and cmap.w(w) * cmap.h(h) < _TEMPLATE_IMG_MAX_AREA * (cmap.cw * cmap.ch)):
+    _partname = str(getattr(media_part, "partname", "")).lower()
+    _is_photo = _partname.endswith((".jpg", ".jpeg"))
+    _cnvpr = ch.find(".//p:nvPicPr/p:cNvPr", NS)
+    _shape_name = _cnvpr.get("name", "") if _cnvpr is not None else ""
+    _is_named_placeholder = bool(
+        re.search(r"placeholder|platzhalter", _shape_name, re.IGNORECASE))
+    if (ph_type is None and not _is_named_placeholder
+            and media_part is not None and len(offset) == 2
+            and not _is_photo):
         try:
             import base64 as _b64
             pic_el = _carry_element(ch, theme, offset, "p:spPr/a:xfrm/a:off")
             native_xml = etree.tostring(pic_el).decode("utf-8")
-            native_media = _b64.b64encode(media_part.blob).decode("ascii")
+            media_blob = media_part.blob
+            if str(getattr(media_part, "partname", "")).lower().endswith(".svg"):
+                # python-pptx cannot re-embed SVG bytes at build time —
+                # carry a rasterized PNG (emit drops the svgBlip sidecar).
+                media_blob = _rasterize_svg_bytes(media_blob) or media_blob
+            native_media = _b64.b64encode(media_blob).decode("ascii")
         except Exception:
             native_xml = native_media = None
     shapes.append(Shape(
@@ -2025,12 +2273,35 @@ def _emit_pic(ch, offset, shapes, slide, cmap, theme, palette):
     ))
 
 
+def _bent_route_local(prst: str, w: float, h: float,
+                      adj: dict[str, float]) -> list[tuple[float, float]] | None:
+    """Polyline route of a bentConnectorN preset in LOCAL (unrotated,
+    unflipped) shape coordinates, per the OOXML preset definitions. adj
+    values are fractions of w/h (val 50000 → 0.5)."""
+    a1 = adj.get("adj1", 0.5)
+    a2 = adj.get("adj2", 0.5)
+    a3 = adj.get("adj3", 0.5)
+    if prst == "bentConnector2":
+        return [(0, 0), (w, 0), (w, h)]
+    if prst == "bentConnector3":
+        x1 = a1 * w
+        return [(0, 0), (x1, 0), (x1, h), (w, h)]
+    if prst == "bentConnector4":
+        x1, y1 = a1 * w, a2 * h
+        return [(0, 0), (x1, 0), (x1, y1), (w, y1), (w, h)]
+    if prst == "bentConnector5":
+        x1, y1, x2 = a1 * w, a2 * h, a3 * w
+        return [(0, 0), (x1, 0), (x1, y1), (x2, y1), (x2, h), (w, h)]
+    return None
+
+
 def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
     spPr = ch.find("p:spPr", NS)
     xfrm = _get_xfrm(spPr)
     if xfrm is None:
         return
-    x, y, w, h = xfrm
+    x0, y0, w0, h0 = xfrm
+    x, y, w, h = x0, y0, w0, h0
     # Offset is a 2-tuple (translation-only ancestor groups) or an 8-tuple
     # (scaled-group affine). Apply it exactly like _shape_bbox so a connector
     # inside a SCALED group doesn't crash (`ox, oy = offset` blew up on the
@@ -2043,6 +2314,13 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
         x = ax + (x - chox) * sx + ox
         y = ay + (y - choy) * sy + oy
         w, h = w * sx, h * sy
+
+    def _apply_offset(px: float, py: float) -> tuple[float, float]:
+        if len(offset) == 2:
+            return px + offset[0], py + offset[1]
+        ox, oy, ax, ay, chox, choy, sx, sy = offset
+        return ax + (px - chox) * sx + ox, ay + (py - choy) * sy + oy
+
     # Stroke color + width + dash from <a:ln w="..."><a:solidFill .../><a:prstDash .../></a:ln>.
     ln = spPr.find("a:ln", NS)
     stroke = None
@@ -2061,6 +2339,82 @@ def _emit_cxn(ch, offset, shapes, cmap, theme, palette):
         dash = ln.find("a:prstDash", NS)
         if dash is not None and dash.get("val"):
             stroke_dash = dash.get("val")
+
+    # Bent connectors (the elbow trees of org charts and hierarchies): a
+    # straight line between the bbox corners misrepresents the route —
+    # PowerPoint draws axis-aligned H/V segments under a rot/flip transform.
+    # Decompile the preset route into explicit `line` segments instead.
+    # (Carrying the cxnSp verbatim does NOT work: LibreOffice routes a
+    # connector by its a:stCxn/a:endCxn shape references when present —
+    # in the rebuilt deck those IDs point at unrelated shapes — and its
+    # pure xfrm+rot+flip rendering of bent presets is wrong even in the
+    # unmodified source once the references are stripped.)
+    _geom = spPr.find("a:prstGeom", NS) if spPr is not None else None
+    _prst = (_geom.get("prst") or "") if _geom is not None else ""
+    if _prst.startswith("bentConnector") and w0 >= 0 and h0 >= 0:
+        adj: dict[str, float] = {}
+        av = _geom.find("a:avLst", NS)
+        if av is not None:
+            for gd in av.findall("a:gd", NS):
+                fmla = gd.get("fmla") or ""
+                if fmla.startswith("val "):
+                    try:
+                        adj[gd.get("name") or ""] = int(fmla[4:]) / 100000.0
+                    except ValueError:
+                        pass
+        pts = _bent_route_local(_prst, float(w0), float(h0), adj)
+        if pts is not None:
+            xfrm_el = spPr.find("a:xfrm", NS)
+            flip_h = xfrm_el.get("flipH") in ("1", "true")
+            flip_v = xfrm_el.get("flipV") in ("1", "true")
+            try:
+                rot_deg = int(xfrm_el.get("rot") or 0) / 60000.0
+            except ValueError:
+                rot_deg = 0.0
+            if flip_h:
+                pts = [(w0 - px, py) for px, py in pts]
+            if flip_v:
+                pts = [(px, h0 - py) for px, py in pts]
+            # Rotate about the local box center (clockwise in y-down slide
+            # coordinates, like OOXML rot), then translate into slide space
+            # and through the group offset/affine.
+            rad = math.radians(rot_deg)
+            cosr, sinr = math.cos(rad), math.sin(rad)
+            ccx, ccy = w0 / 2.0, h0 / 2.0
+            abs_pts = []
+            for px, py in pts:
+                dx, dy = px - ccx, py - ccy
+                rx = dx * cosr - dy * sinr
+                ry = dx * sinr + dy * cosr
+                abs_pts.append(_apply_offset(x0 + ccx + rx, y0 + ccy + ry))
+            # Dedupe across sibling connectors too — two elbows fanning out
+            # of the same parent share their trunk segment verbatim.
+            seen_segs: set[tuple[int, int, int, int]] = {
+                (s.x, s.y, s.x + s.w, s.y + s.h)
+                for s in shapes if s.kind == "line"
+            }
+            for (ax1, ay1), (ax2, ay2) in zip(abs_pts, abs_pts[1:]):
+                # Normalise direction (full-endpoint swap, so diagonals
+                # keep their slope) — downstream treats lines as x,y + w,h
+                # and expects non-negative extents where possible.
+                if (ax2, ay2) < (ax1, ay1):
+                    (ax1, ay1), (ax2, ay2) = (ax2, ay2), (ax1, ay1)
+                px1, py1 = cmap.x(ax1), cmap.y(ay1)
+                px2, py2 = cmap.x(ax2), cmap.y(ay2)
+                # Skip segments that collapse to a point at canvas resolution
+                # (a degenerate connector axis, adj at 0/100%) and exact
+                # duplicates (sibling elbows share their trunk segment).
+                if (px1, py1) == (px2, py2) or (px1, py1, px2, py2) in seen_segs:
+                    continue
+                seen_segs.add((px1, py1, px2, py2))
+                shapes.append(Shape(
+                    kind="line", x=px1, y=py1, w=px2 - px1, h=py2 - py1,
+                    stroke=stroke or "fog",
+                    stroke_width=stroke_width,
+                    stroke_dash=stroke_dash,
+                ))
+            return
+
     shapes.append(Shape(
         kind="line", x=cmap.x(x), y=cmap.y(y), w=cmap.w(w), h=cmap.h(h),
         stroke=stroke or "fog",
@@ -3498,6 +3852,57 @@ def _is_placeholder_line(line: str) -> bool:
     return False
 
 
+# Unambiguous master/outline prompts — imperative UI copy that is NEVER
+# legitimate slide-authored content (unlike "Headline"/"Welcome"/"Title",
+# which a deck may genuinely ship as example copy). These are suppressed even
+# when a shape looks slide-authored, because pptx_flatten_inherited.py
+# materialises inherited master/layout placeholders as slide-level shapes —
+# clearing the `from_chain` flag the normal placeholder suppression relies on,
+# so the outline prompt ("Add Text\nZweite Ebene\n…") would otherwise survive
+# and render on every flattened slide.
+_STRONG_PROMPT_EXACT: frozenset[str] = frozenset(map(str.lower, [
+    "add text", "add title", "add headline", "add subheadline",
+    "click to edit master title style", "click to edit master text styles",
+    "click here to add text", "click to add text",
+    "second level", "third level", "fourth level", "fifth level",
+    "text hinzufügen", "text hinzufuegen",
+    "zweite ebene", "dritte ebene", "vierte ebene", "fünfte ebene", "fuenfte ebene",
+    "klicken sie, um einen titel hinzuzufügen",
+    "klicken sie, um titel hinzuzufügen",
+    "insert photo", "insert picture", "insert image",
+    "your text here", "insert text here",
+]))
+_STRONG_PROMPT_PREFIXES: tuple[str, ...] = (
+    "click to edit master", "click here to add", "double-click to edit",
+)
+
+
+def _is_strong_prompt_line(line: str) -> bool:
+    norm = line.strip().lower().rstrip(".!?:;,")
+    if not norm:
+        return True   # blank line inside an otherwise all-prompt block is noise
+    if norm in _STRONG_PROMPT_EXACT:
+        return True
+    return any(norm.startswith(p) for p in _STRONG_PROMPT_PREFIXES)
+
+
+def _is_strong_prompt(text_runs: list["TextRun"]) -> bool:
+    """True iff every non-blank line is an unambiguous master/outline prompt.
+
+    Stricter than `_is_placeholder_text`: applied to slide-AUTHORED text too
+    (post-flatten placeholders), so it must only match copy that can never be
+    real content — outline levels, "Click to edit Master…", "Add Text",
+    "Insert photo". One real line spares the shape.
+    """
+    if not text_runs:
+        return False
+    raw = "".join(r.text or "" for r in text_runs)
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    return all(_is_strong_prompt_line(ln) for ln in lines)
+
+
 def _is_placeholder_text(text_runs: list["TextRun"]) -> bool:
     """Return True iff the concatenated run text is recognizable demo /
     template-prompt copy that should NOT survive the decompile round-trip.
@@ -3645,6 +4050,13 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # shows; string-matching it as a prompt wrongly deleted it. (MS-gallery prompts
         # are inherited and already blanked in walk_slide, so this doesn't regress them.)
         if not t.from_chain:
+            # pptx_flatten_inherited materialises inherited master/layout
+            # placeholders as slide-level shapes, clearing from_chain. Their
+            # outline-prompt copy ("Add Text\nZweite Ebene\n…") is never real
+            # content, so suppress it even though it now looks slide-authored.
+            # Genuine example copy is left untouched (strict matcher).
+            if _is_strong_prompt(t.text_runs):
+                continue
             filtered.append(t)
             continue
         if _is_placeholder_text(t.text_runs):
@@ -3669,11 +4081,17 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # area-descending sort wrongly buried a large CONTENT panel beneath a smaller
     # decorative panel drawn ON TOP of it (MS Geometric: the cream content card
     # sank under the accent strip, so the whole slide read as the accent colour).
-    # Only a near-full-bleed background rect is still forced to the bottom; a
-    # STABLE sort keeps every other rect in the order PowerPoint draws it.
+    # Only a near-full-bleed background rect is still forced to the bottom.
+    # Rects interleave with shapes / pics / natives via the shared `_layers`
+    # stream below — emitting ALL rects before the pic section painted
+    # native-carried background art (Bosch slide 34's banner wave, spTree
+    # position BEFORE the tiles) on top of the content rects it underlies
+    # in the source.
     # Stroke / dash / radius are captured so framed cards + dividers round-trip.
     _canvas_area = max(1, cmap.cw * cmap.ch)
-    for r in sorted(rects, key=lambda s: 0 if (s.w * s.h) >= 0.9 * _canvas_area else 1):
+    _src_pos = {id(_s): _i for _i, _s in enumerate(shapes)}
+    _layers: list[tuple[int, list[str]]] = []
+    for r in rects:
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
         if r.gradient is not None:
             stops, angle = r.gradient
@@ -3691,7 +4109,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             blur, dist, angle, color, alpha = r.shadow
             line += (f" shadow:blur:{blur:g},dist:{dist:g},"
                      f"angle:{angle:g},color:{color},alpha:{alpha:.2f}")
-        out.append(line)
+        if (r.w * r.h) >= 0.9 * _canvas_area:
+            out.append(line)    # full-bleed background stays at the bottom
+        else:
+            _layers.append((_src_pos.get(id(r), 0), [line]))
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring
     # sectors, etc.). When we recovered an SVG `d` string from the source
@@ -3702,7 +4123,15 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # `stroke:<token>` with no fill; otherwise fill (or fog fallback).
     # When no path data is available we keep the lossy bbox-rect fallback
     # so the DSL still builds.
+    # Custom shapes / graphic frames / ovals / pictures interleave in SOURCE
+    # z-order: PowerPoint draws them as one stream, and grouping by kind put
+    # e.g. the BSH parallelogram OUTLINE (a custGeom drawn ON TOP of the
+    # photo) underneath the picture slot. Each shape's lines collect into a
+    # chunk tagged with its position in `shapes` (already spTree order);
+    # the chunks emit sorted at the end. (`_src_pos` / `_layers` are
+    # initialised above the rect loop, which feeds the same stream.)
     for i, s in enumerate(custs, 1):
+        chunk: list[str] = []
         if s.native_xml:
             # Native vector chrome carried verbatim from the source (editable,
             # pixel-exact). Small fragments ride inline as base64 so the DSL
@@ -3712,10 +4141,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             _xb = s.native_xml.encode("utf-8")
             _ref = _native_sidecar_ref(_xb, "xml", native_dir, native_rel)
             if _ref:
-                out.append(f'native shape{i} xml_file:"{_ref}"')
+                chunk.append(f'native shape{i} xml_file:"{_ref}"')
             else:
                 _enc = _b64.b64encode(_xb).decode("ascii")
-                out.append(f'native shape{i} b64:"{_enc}"')
+                chunk.append(f'native shape{i} b64:"{_enc}"')
         elif s.svg_path_d:
             # `none` is not in the SVG DSL's 17-name semantic colour
             # vocabulary, so we omit `fill:` entirely when the source has
@@ -3728,15 +4157,16 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             if s.stroke:
                 attrs.append(f"stroke:{_svg_color_token(s.stroke)}")
             attr_str = (" " + " ".join(attrs)) if attrs else ""
-            out.append(f"svg shape{i} {s.x},{s.y} {s.w}x{s.h} {{")
+            chunk.append(f"svg shape{i} {s.x},{s.y} {s.w}x{s.h} {{")
             # Path coordinates are already in svg-block-local pixels (the
             # converter scales from path-local space to the shape's bbox).
-            out.append(f"  path p \"{s.svg_path_d}\"{attr_str}")
-            out.append("}")
+            chunk.append(f"  path p \"{s.svg_path_d}\"{attr_str}")
+            chunk.append("}")
         elif s.fill is None and s.stroke:
-            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
+            chunk.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect stroke:{s.stroke}")
         else:
-            out.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
+            chunk.append(f"shape {s.x},{s.y} {s.w}x{s.h} kind:rect fill:{s.fill or 'fog'}")
+        _layers.append((_src_pos.get(id(s), 0), chunk))
 
     # Native graphic frames carried verbatim — pixel-exact, vs the lossy
     # re-synthesis. Tables ship inline (<a:tbl>, no external parts → b64 only).
@@ -3744,6 +4174,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # chartColorStyle / embedded-xlsx) as a base64-of-json `parts:` kwarg so the
     # emitter can re-create the parts + rewire rIds in the output deck.
     for i, s in enumerate(graphics, 1):
+        chunk = []
         if s.native_xml:
             import base64 as _b64
             _xb = s.native_xml.encode("utf-8")
@@ -3759,7 +4190,9 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                     line += f' parts_file:"{_pref}"'
                 else:
                     line += f' parts:"{_b64.b64encode(_pb).decode("ascii")}"'
-            out.append(line)
+            chunk.append(line)
+        if chunk:
+            _layers.append((_src_pos.get(id(s), 0), chunk))
 
     # Ovals (circles, decorative dots). Stroke-only ovals (callout
     # circles, annotation marks) emit as stroke without fill; fill-only
@@ -3774,7 +4207,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 line += f" stroke:{o.stroke}"
         if o.stroke_width is not None and o.stroke_width > 0:
             line += f" stroke-width:{o.stroke_width:g}"
-        out.append(line)
+        _layers.append((_src_pos.get(id(o), 0), [line]))
 
     # Pictures — default to the brand's generic placeholder (so a derived
     # layout works as a reusable template) OR, when derive() was called
@@ -3787,6 +4220,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # bbox confuses the visual-diff coverage gate (>90% triggers a
     # struct = total fallback that masks real text deficits).
     for i, p in enumerate(pics, 1):
+        chunk = []
         if p.native_xml and p.native_media:
             # Template image carried natively (fixed corporate-design chrome):
             # the emitter re-embeds the media + splices the <p:pic>. Big media
@@ -3804,7 +4238,8 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                 line += f' media_file:"{_mref}"'
             else:
                 line += f' media:"{p.native_media}"'
-            out.append(line)
+            chunk.append(line)
+            _layers.append((_src_pos.get(id(p), 0), chunk))
             continue
         slot = "image" if len(pics) == 1 else f"image{i}"
         cx0 = max(0, p.x)
@@ -3820,10 +4255,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # slot resolved to empty string and the build fell into the
         # "no image bound" placeholder-rect branch — exactly why pictures
         # rendered as grey rects even when the asset path was correct.
-        out.append(
+        chunk.append(
             f'picture {cx0},{cy0} {cw}x{ch} '
             f'path:"{{{{ {slot} | default(\\"{default_path}\\") }}}}" cover:true'
         )
+        _layers.append((_src_pos.get(id(p), 0), chunk))
+
+    for _pos, _chunk in sorted(_layers, key=lambda e: e[0]):
+        out.extend(_chunk)
 
     # Lines. Stroke-width preserves the source `<a:ln w="...">` value so
     # a 3pt horizontal divider survives the round-trip — the previous
@@ -3933,6 +4372,14 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         # autoshrink: source bodyPr had normAutofit — arm the emitter's fit as a
         # safety net (no-op when the scaled size already fits the box).
         autoshrink_attr = " autoshrink:true" if t.autoshrink else ""
+        # linespacing: explicit source spcPct → its multiplier; absent →
+        # `native` so the emitter writes NO lnSpc and the renderer's single
+        # spacing applies (the toolkit's 1.2 default pushed every
+        # source-default headline a quarter-line down).
+        linespacing_attr = (
+            f" linespacing:{t.line_spacing:g}" if t.line_spacing is not None
+            else " linespacing:native"
+        )
         valign_attr = f" valign:{t.valign}" if t.valign else ""
         # Horizontal align — pick the first non-None align from the runs.
         # PPTX stores it per-paragraph; for a single emitted `text` primitive
@@ -3964,8 +4411,32 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         for _o in shapes:
             if _o is t:
                 continue
-            if _o.x >= t.x + t.w and not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h):
-                _right = min(_right, _o.x)          # neighbour clear to the right
+            # A filled card rect that CONTAINS the text box bounds growth:
+            # text inside a card must not spill past the card's edges, even
+            # when nothing else shares the row (slide-45's org-chart root
+            # body grew across the whole slide once the elbow connectors
+            # stopped contributing a blocking bbox). Slide-sized panels
+            # (backgrounds, full-bleed bands ≥90% of both dimensions) don't
+            # count — text on those grows like background text.
+            if (_o.kind == "rect" and _o.fill
+                    and not (_o.w >= cmap.cw * 0.9 and _o.h >= cmap.ch * 0.9)
+                    and _o.x <= t.x + 2 and _o.y <= t.y + 2
+                    and _o.x + _o.w >= t.x + t.w - 2
+                    and _o.y + _o.h >= t.y + t.h - 2):
+                _right = min(_right, _o.x + _o.w)
+                _bottom = min(_bottom, _o.y + _o.h)
+                continue
+            _y_overlap = not (_o.y + _o.h <= t.y or _o.y >= t.y + t.h)
+            if _y_overlap:
+                if _o.x >= t.x + t.w:
+                    _right = min(_right, _o.x)      # neighbour clear to the right
+                elif _o.x + _o.w > t.x + t.w:
+                    # An element STARTS left of the text's right edge but
+                    # extends beyond it (full-height illustration sharing the
+                    # row, photo panel under a caption): the space to the
+                    # right is already occupied — no growth at all. Growing
+                    # there put slide-39's body column on top of its scene.
+                    _right = min(_right, t.x + t.w + _gap)
             if _o.y >= t.y + t.h and not (_o.x + _o.w <= t.x or _o.x >= t.x + t.w):
                 _bottom = min(_bottom, _o.y)         # neighbour clear below
         if run_align in (None, "left", "justify"):
@@ -3973,7 +4444,7 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
         if t.valign in (None, "top"):
             mh = max(mh, _bottom - t.y - _gap)
         out.append(
-            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{autoshrink_attr}{valign_attr}{align_attr}{padding_attr} '
+            f'text {t.x},{t.y} style:{style}{color_attr}{weight_attr}{size_attr}{autoshrink_attr}{linespacing_attr}{valign_attr}{align_attr}{padding_attr} '
             f'maxwidth:{mw} maxheight:{mh} "{text}"'
         )
 
@@ -4019,8 +4490,12 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
                     padding_attr = f" padding:{left:g}"
                 else:
                     padding_attr = f" padding:{left:g},{top:g},{right:g},{bottom:g}"
+            linespacing_attr = (
+                f" linespacing:{t.line_spacing:g}" if t.line_spacing is not None
+                else " linespacing:native"
+            )
             out.append(
-                f'text {t.x},{t.y} style:footer{color_attr}{size_attr}{padding_attr} '
+                f'text {t.x},{t.y} style:footer{color_attr}{size_attr}{linespacing_attr}{padding_attr} '
                 f'maxwidth:{mw} maxheight:{mh} "{text}"'
             )
 
@@ -4134,6 +4609,14 @@ def derive(
             stem = "image" if len(pics) == 1 else f"image{i}"
             out_name = f"{stem}.{ext}"
             (image_extract_dir / out_name).write_bytes(blob or b"")
+            if ext == "svg":
+                # The build's picture path needs a raster (PIL cannot read
+                # SVG) — rasterize next to the carried vector; on failure
+                # the DSL keeps the svg path and the build falls back to
+                # the brand placeholder.
+                png = _rasterize_svg(image_extract_dir / out_name)
+                if png is not None:
+                    out_name = png.name
             p.media_path = f"{image_extract_rel.rstrip('/')}/{out_name}"
 
     # Background artwork needs a file on disk — only materialisable when the

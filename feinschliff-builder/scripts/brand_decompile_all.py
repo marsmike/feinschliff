@@ -36,8 +36,91 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
+from feinschliff_builder.decompile.cleanup import cleanup_dsl, native_pic_rects, unslotified_text_report
 from feinschliff_builder.decompile.pptx_svg_decompile import derive
+from feinschliff_builder.decompile.slotify import clip_text_to_images, slotify_dsl, slotify_native_text
 from feinschliff_builder.verify.verify_map import load_verify_map
+
+
+def _cleanup_and_slotify_loop(dsl: str, *, asset_root, layout_name: str,
+                              width_emu: float = 0.0, canvas_w: float = 1920.0,
+                              max_rounds: int = 4) -> tuple[str, list[str]]:
+    """Per-slide decompile loop: cleanup -> slotify (text lines + native
+    payloads) -> re-check, until the unslotified-text report stops shrinking.
+
+    Every pass is idempotent, so the loop normally converges in one round;
+    the cap is a safety net. Returns ``(dsl, leftover report)`` — leftovers
+    are texts that CANNOT be slotified (chart/SmartArt part labels, labels
+    with braces), surfaced as warnings for the operator.
+    """
+    dsl, stats = cleanup_dsl(dsl, asset_root, width_emu=width_emu,
+                             canvas_w=canvas_w)
+    noise = {k: v for k, v in stats.items() if v}
+    if noise:
+        print(f"    cleanup {layout_name}: " +
+              ", ".join(f"{k}={v}" for k, v in noise.items()))
+    prev = None
+    for _ in range(max_rounds):
+        dsl, _slots = slotify_dsl(dsl)
+        dsl, clips = clip_text_to_images(
+            dsl, extra_images=native_pic_rects(
+                dsl, asset_root, width_emu=width_emu, canvas_w=canvas_w))
+        for line in clips:
+            print(f"    clip {layout_name}: {line}")
+        dsl, native_slots, logs = slotify_native_text(dsl, asset_root)
+        for line in logs:
+            print(f"    native-slotify {layout_name}: {line}")
+        report = unslotified_text_report(dsl, asset_root)
+        if prev is not None and len(report) >= len(prev):
+            break
+        prev = report
+    return dsl, prev or []
+
+
+def _derive_one(layout_name: str, slide_no: int, *, source_pptx: Path,
+                canvas_w: int, canvas_h: int, tokens_path: Path | None,
+                brand_pack: Path, brand_name: str, carry_images: bool,
+                raw: bool, src_w_emu: int) -> tuple[str, int, list[str]]:
+    """Derive + clean + slotify ONE slide and write its layout file.
+
+    Module-level (picklable) so a ProcessPoolExecutor can fan slides out
+    across workers — every slide is independent: it reads the shared source
+    PPTX, writes only its own `layouts/<name>.slide.dsl` and per-layout
+    asset dirs, and sha-named native sidecars are written atomically.
+    Returns (layout_name, bytes_written, log lines) for ordered printing
+    in the parent.
+    """
+    import contextlib
+    import io
+    log = io.StringIO()
+    image_extract_dir = image_extract_rel = None
+    if carry_images:
+        image_extract_dir = brand_pack / "assets" / "decompile" / layout_name
+        image_extract_rel = f"decompile/{layout_name}"
+    with contextlib.redirect_stdout(log):
+        dsl = derive(
+            source_pptx,
+            slide_idx=slide_no,
+            canvas_w=canvas_w,
+            canvas_h=canvas_h,
+            tokens_path=tokens_path,
+            layout_name=layout_name,
+            theme_name=brand_name,
+            image_extract_dir=image_extract_dir,
+            image_extract_rel=image_extract_rel,
+            native_extract_dir=brand_pack / "assets" / "native",
+            native_extract_rel="native",
+        )
+        if not raw:
+            dsl, leftovers = _cleanup_and_slotify_loop(
+                dsl, asset_root=brand_pack / "assets",
+                layout_name=layout_name,
+                width_emu=float(src_w_emu), canvas_w=canvas_w)
+            for msg in leftovers:
+                print(f"    ⚠ {layout_name}: unslotified {msg}")
+    target = brand_pack / "layouts" / f"{layout_name}.slide.dsl"
+    target.write_text(dsl, encoding="utf-8")
+    return layout_name, target.stat().st_size, log.getvalue().splitlines()
 
 
 def main() -> int:
@@ -46,12 +129,22 @@ def main() -> int:
                     help="Brand pack root (must contain verify-map.yaml and tokens.json)")
     ap.add_argument("--source-pptx", required=True, type=Path,
                     help="Source PPTX deck to decompile")
+    ap.add_argument("--workers", type=int, default=0,
+                    help="Parallel derive workers (0 = auto: min(8, cpu/2); "
+                         "1 = sequential)")
     ap.add_argument("--canvas", default="1920x1080",
                     help="Target DSL canvas size (default: 1920x1080)")
     ap.add_argument("--dry-run", action="store_true",
                     help="Print the layouts that would be derived, don't write")
     ap.add_argument("--only", nargs="*",
                     help="Restrict to a subset of layout names")
+    ap.add_argument("--raw", action="store_true",
+                    help="Skip the per-slide cleanup + slotify loop and emit the "
+                         "decompiler's raw first pass (for fidelity debugging). "
+                         "Default: each slide is cleaned (dup text lines, prompt "
+                         "copies, helper captions, stacked native pics), slotified "
+                         "(text lines AND native payload text runs), and checked "
+                         "until no bindable placeholder text is left unslotified.")
     ap.add_argument("--carry-images", action="store_true",
                     help="Pipeline-optimization mode: extract every <p:pic> "
                          "binary from the source slide into "
@@ -184,7 +277,7 @@ def main() -> int:
         layouts_dir.mkdir(parents=True, exist_ok=True)
         backup_dir.mkdir(parents=True, exist_ok=True)
 
-    derived = 0
+    todo: list[tuple[str, int]] = []
     for layout_name, slide_no in mapping.items():
         if requested is not None and layout_name not in requested:
             continue
@@ -194,38 +287,49 @@ def main() -> int:
             continue
         if target.exists():
             shutil.copy2(target, backup_dir / target.name)
-        image_extract_dir = None
-        image_extract_rel = None
-        if args.carry_images:
-            # The build resolves picture paths against `<brand>/assets` as
-            # the asset root (see cli/build.py:asset_root), so the DSL
-            # `default:` carries the relative path WITHOUT the `assets/`
-            # prefix. Filesystem path includes it.
-            image_extract_dir = brand_pack / "assets" / "decompile" / layout_name
-            image_extract_rel = f"decompile/{layout_name}"
-        dsl = derive(
-            source_pptx,
-            slide_idx=slide_no,
-            canvas_w=canvas_w,
-            canvas_h=canvas_h,
-            tokens_path=tokens_path if tokens_path.exists() else None,
-            layout_name=layout_name,
-            theme_name=brand_name,
-            image_extract_dir=image_extract_dir,
-            image_extract_rel=image_extract_rel,
-            # Big native-carry payloads (33 MB vector groups exist in the wild)
-            # land as sha-named sidecars instead of inline base64 — keeps
-            # .slide.dsl a readable text file and dedupes repeated chrome.
-            native_extract_dir=brand_pack / "assets" / "native",
-            native_extract_rel="native",
-        )
-        target.write_text(dsl, encoding="utf-8")
-        size = target.stat().st_size
-        print(f"  ✓ {layout_name} ← p{slide_no} ({size} bytes)")
-        derived += 1
+        todo.append((layout_name, slide_no))
 
-    print(f"\nderived {derived} layouts" if not args.dry_run
-          else f"(dry-run: {derived} layouts planned)")
+    if args.dry_run:
+        print(f"(dry-run: {len(todo)} layouts planned)")
+        return 0
+
+    import functools
+    import os
+    work = functools.partial(
+        _derive_one,
+        source_pptx=source_pptx, canvas_w=canvas_w, canvas_h=canvas_h,
+        tokens_path=tokens_path if tokens_path.exists() else None,
+        brand_pack=brand_pack, brand_name=brand_name,
+        carry_images=args.carry_images, raw=args.raw, src_w_emu=src_w_emu)
+
+    workers = args.workers or min(8, max(1, (os.cpu_count() or 2) // 2))
+    workers = min(workers, max(1, len(todo)))
+    derived = 0
+    if workers <= 1:
+        for layout_name, slide_no in todo:
+            name, size, lines = work(layout_name, slide_no)
+            for line in lines:
+                print(line)
+            print(f"  ✓ {name} ← p{slide_no} ({size} bytes)")
+            derived += 1
+    else:
+        # Slides are independent (disjoint output paths; sha-named native
+        # sidecars rename atomically; soffice rasterization runs with a
+        # throwaway profile per call) — fan out across processes. Results
+        # print in submission order so logs stay diffable run-to-run.
+        from concurrent.futures import ProcessPoolExecutor
+        print(f"  deriving {len(todo)} layouts on {workers} workers")
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futs = [(name, no, pool.submit(work, name, no))
+                    for name, no in todo]
+            for name, slide_no, fut in futs:
+                name, size, lines = fut.result()
+                for line in lines:
+                    print(line)
+                print(f"  ✓ {name} ← p{slide_no} ({size} bytes)")
+                derived += 1
+
+    print(f"\nderived {derived} layouts")
     return 0
 
 

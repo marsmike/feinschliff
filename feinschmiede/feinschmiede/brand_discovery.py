@@ -116,6 +116,32 @@ def _discovery_sources() -> list[tuple[str, Path]]:
     return items
 
 
+# Process-lifetime discovery cache. A full scan runs load_tokens (extends
+# walk + schema validation) for EVERY brand (~180 ms with ~17 packs), and
+# multi-slide deck builds call find_brand per slide — 120 slides paid ~22 s
+# of pure rescans. The key captures every input the scan reads: the source
+# roots, each brand dir, and its tokens.json / DESIGN.md mtimes — creating,
+# deleting, or editing a brand invalidates it (≈50 stat calls, <1 ms).
+_discovery_cache: tuple[tuple, list[BrandPack]] | None = None
+
+
+def _discovery_cache_key() -> tuple:
+    key: list = []
+    for _src, root in _discovery_sources():
+        if not root.is_dir():
+            continue
+        key.append(str(root))
+        for d in sorted(root.iterdir()):
+            if not d.is_dir():
+                continue
+            for marker in (d / "tokens.json", d / "DESIGN.md"):
+                try:
+                    key.append((str(marker), marker.stat().st_mtime_ns))
+                except OSError:
+                    pass
+    return tuple(key)
+
+
 def discover_brands() -> list[BrandPack]:
     """Returns all brands found across all discovery sources, deduped by name (first wins).
 
@@ -130,7 +156,14 @@ def discover_brands() -> list[BrandPack]:
          reachable by walking up from $CWD
       4. plugin — `~/.claude/plugins/.../brands/`
       5. user — `~/.feinschliff/brands/`
+
+    Results are cached for the life of the process, keyed on the marker-file
+    mtimes of every candidate brand dir (see `_discovery_cache_key`).
     """
+    global _discovery_cache
+    cache_key = _discovery_cache_key()
+    if _discovery_cache is not None and _discovery_cache[0] == cache_key:
+        return list(_discovery_cache[1])
     seen: dict[str, BrandPack] = {}
     for _src, root in _discovery_sources():
         if not root.is_dir():
@@ -186,6 +219,7 @@ def discover_brands() -> list[BrandPack]:
             # brand_discovery and we don't want to duplicate it.
             pack._image_provider_config = image_provider_config
             seen[d.name] = pack
+    _discovery_cache = (cache_key, list(seen.values()))
     return list(seen.values())
 
 

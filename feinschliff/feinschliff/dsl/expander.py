@@ -380,6 +380,199 @@ def interpolate_nodes(nodes: list[DSLNode], ctx: dict) -> list[DSLNode]:
 
 
 # ---------------------------------------------------------------------------
+# Native-payload slot interpolation
+# ---------------------------------------------------------------------------
+
+# Text runs inside a native payload's carried PPTX XML. DOTALL: a run may
+# legally contain newlines after XML unescaping (it cannot contain `<`).
+_NATIVE_T_RE = re.compile(r"(<a:t>)(.*?)(</a:t>)", re.S)
+
+
+def apply_slot_debug_color(nodes: list[DSLNode], color: str) -> list[DSLNode]:
+    """Force every slot-bearing `text` node to render in ``color``.
+
+    Slot-coverage debugging: build once with defaults, once with every slot
+    bound + a debug color — text that stays brand-colored in the second
+    render is NOT slot-covered (baked chrome). Replaceable pictures (path
+    carries an image slot) get a debug-coloured border via the
+    `_debug_border` kwarg the picture emitter honours. MUST run BEFORE
+    `interpolate_nodes`: detection is by the node's label / path kwarg
+    still carrying a `{{ … }}` slot marker, which interpolation resolves
+    away."""
+    for n in nodes:
+        if n.kind == "text" and "{{" in (n.label or ""):
+            n.kw_args["color"] = color
+        elif n.kind == "picture" and "{{" in (n.kw_args.get("path") or ""):
+            n.kw_args["_debug_border"] = color
+    return nodes
+
+
+def interpolate_native_text(
+    nodes: list[DSLNode], ctx: dict, *, asset_root: Path | None = None,
+    debug_color: str | None = None,
+) -> list[DSLNode]:
+    """Resolve `{{ slot }}` templates inside `native` payloads' text runs.
+
+    The slotify pass (feinschliff-builder) rewrites placeholder `<a:t>` runs in
+    carried tables / grouped shapes / custGeom chrome to
+    `{{ text_N | default("…") }}` templates. Those live inside the base64
+    `b64:` blob (or a sidecar `xml_file:`), so `interpolate_nodes` cannot see
+    them — this pass decodes each payload, interpolates every text run via
+    the same `_interp` slot grammar, and re-inlines the result as `b64:` so
+    the emitter stays payload-agnostic.
+
+    Sidecar payloads are read from `asset_root / xml_file` and inlined for
+    THIS build only — the pack's sidecar file (the template) is never
+    rewritten. Payloads without a `{{` marker pass through untouched, and a
+    sidecar without markers keeps its `xml_file:` reference. Interpolated
+    values are XML-escaped; newlines flatten to spaces (an `<a:t>` run cannot
+    span paragraphs).
+
+    ``debug_color`` (slot-coverage debugging, e.g. "#E6007E"): every run that
+    held a slot template additionally gets a solidFill of that colour on its
+    parent `<a:r>` run properties, so slot-covered native text is visually
+    separable from baked chrome in a render diff.
+    """
+    import base64
+    from xml.sax.saxutils import escape as _xml_escape
+    from xml.sax.saxutils import unescape as _xml_unescape
+
+    for n in nodes:
+        if n.kind != "native":
+            continue
+        if debug_color is not None and (
+                n.kw_args.get("media") or n.kw_args.get("media_file")):
+            # Carried template images keep their (often colourful) pixels and
+            # may have text BAKED into the bitmap — in the coverage render
+            # they grey out so nothing reads as bindable content.
+            n.kw_args["_debug_desat"] = "1"
+        xml: str | None = None
+        blob = n.kw_args.get("b64")
+        if blob:
+            try:
+                xml = base64.b64decode(blob).decode("utf-8")
+            except (ValueError, UnicodeDecodeError):
+                continue  # undecodable payload — emitter will report it
+        elif n.kw_args.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / n.kw_args["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8")
+        if xml is None or "{{" not in xml:
+            continue
+
+        def repl(m: re.Match) -> str:
+            # saxutils.unescape covers &amp;/&lt;/&gt; only — quote entities
+            # must be listed, else default("…") templates never match the
+            # slot grammar's ASCII-quote filter.
+            inner = _xml_unescape(m.group(2),
+                                  {"&quot;": '"', "&apos;": "'"})
+            if "{{" not in inner:
+                return m.group(0)
+            resolved = _interp(inner, ctx).replace("\n", " ")
+            return m.group(1) + _xml_escape(resolved) + m.group(3)
+
+        new_xml = _NATIVE_T_RE.sub(repl, xml)
+        if debug_color is not None:
+            new_xml = _tint_slot_runs(xml, new_xml, debug_color)
+        n.kw_args["b64"] = base64.b64encode(new_xml.encode("utf-8")).decode("ascii")
+        n.kw_args.pop("xml_file", None)
+    return nodes
+
+
+_A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+
+
+def _tint_slot_runs(template_xml: str, resolved_xml: str, color: str) -> str:
+    """Set a solidFill on every run whose text came from a slot template.
+
+    Walks the TEMPLATE and RESOLVED documents in parallel (same shape — only
+    text content differs) and tints the resolved run when the template run
+    carried a `{{ … }}` marker. lxml-based; on any parse error the resolved
+    XML is returned untinted (debug aid, never a build blocker)."""
+    try:
+        from lxml import etree
+        tmpl = etree.fromstring(template_xml.encode("utf-8"))
+        out = etree.fromstring(resolved_xml.encode("utf-8"))
+    except Exception:
+        return resolved_xml
+    hexval = color.lstrip("#").upper()
+    t_runs = tmpl.iter("{%s}t" % _A_NS)
+    o_runs = out.iter("{%s}t" % _A_NS)
+    for t_el, o_el in zip(t_runs, o_runs):
+        if "{{" not in (t_el.text or ""):
+            continue
+        run = o_el.getparent()
+        if run is None or not run.tag.endswith("}r"):
+            continue
+        rpr = run.find("{%s}rPr" % _A_NS)
+        if rpr is None:
+            rpr = etree.SubElement(run, "{%s}rPr" % _A_NS)
+            run.remove(rpr)
+            run.insert(0, rpr)
+        for fill in rpr.findall("{%s}solidFill" % _A_NS):
+            rpr.remove(fill)
+        fill = etree.SubElement(rpr, "{%s}solidFill" % _A_NS)
+        etree.SubElement(fill, "{%s}srgbClr" % _A_NS).set("val", hexval)
+        # solidFill must precede latin/cs font tags per schema; move first.
+        rpr.remove(fill)
+        rpr.insert(0, fill)
+    return etree.tostring(out, encoding="unicode")
+
+
+_NATIVE_REPLACEABLE_MARKERS = ("<c:chart", "<dgm:", "relIds")
+_XFRM_RE = re.compile(
+    r'<a:off x="(-?\d+)" y="(-?\d+)"/><a:ext cx="(\d+)" cy="(\d+)"/>')
+
+
+def mark_native_replaceables(
+    nodes: list[DSLNode], color: str, *, asset_root: Path | None = None,
+    emu_to_px: float = 0.0,
+) -> list[DSLNode]:
+    """Slot-coverage debugging: outline chart / SmartArt natives.
+
+    Their data is replaceable post-export (PowerPoint edits the carried
+    part graph) but not slot-bindable — in the coverage render they get a
+    debug-coloured outline rect at the native's frame geometry so they read
+    as "replaceable here" alongside magenta slot text and bordered picture
+    slots. Requires the EMU→canvas-px scale; 0.0 disables (no geometry, no
+    mark)."""
+    import base64
+
+    if not emu_to_px:
+        return nodes
+    out: list[DSLNode] = []
+    for n in nodes:
+        out.append(n)
+        if n.kind != "native":
+            continue
+        xml: str | None = None
+        if n.kw_args.get("b64"):
+            try:
+                xml = base64.b64decode(n.kw_args["b64"]).decode("utf-8", "replace")
+            except ValueError:
+                continue
+        elif n.kw_args.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / n.kw_args["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8", errors="replace")
+        if xml is None or not any(m in xml for m in _NATIVE_REPLACEABLE_MARKERS):
+            continue
+        g = _XFRM_RE.search(xml.replace("\n", ""))
+        if g is None:
+            continue
+        x, y, w, h = (float(v) * emu_to_px for v in g.groups())
+        if w < 4 or h < 4:
+            continue
+        out.append(DSLNode(
+            kind="rect",
+            pos_args=[f"{x:.0f},{y:.0f}", f"{w:.0f}x{h:.0f}"],
+            kw_args={"stroke": color, "stroke-width": "8"},
+            label=None, line_no=n.line_no, source=n.source,
+        ))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Compound resolution
 # ---------------------------------------------------------------------------
 

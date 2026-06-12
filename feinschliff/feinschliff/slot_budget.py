@@ -123,7 +123,13 @@ class SlotBudget:
 
     @property
     def max_lines(self) -> int:
-        """Maximum full lines that fit in height_px at this line-height.
+        """Maximum lines that fit in height_px at this line-height.
+
+        Mirrors :func:`feinschliff.textfit.measure_height_emu`: inter-line
+        leading applies only BETWEEN lines; the trailing line contributes
+        its em box (PowerPoint lets the last line's overshoot bleed past
+        the shape edge instead of clipping). n lines fit while
+        ``(n-1) * line_h + em <= height``.
 
         Returns a large sentinel (999) when height_px is 0 or very large,
         meaning the slot is effectively unconstrained vertically.
@@ -133,7 +139,8 @@ class SlotBudget:
         line_h_px = self.size_px * self.line_height
         if line_h_px <= 0:
             return 999
-        return max(1, math.floor(self.height_px / line_h_px))
+        em_px = min(line_h_px, self.size_px)
+        return max(1, math.floor((self.height_px - em_px) / line_h_px) + 1)
 
     @property
     def max_chars(self) -> int:

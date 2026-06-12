@@ -353,6 +353,12 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     `autoshrink:true` — shrink font from style size down to a 10pt floor until
         the label fits the `maxwidth × maxheight` box. Off by default; preserves
         byte-identical output for layouts that don't opt in.
+    `linespacing:N` / `linespacing:native` — paragraph line spacing. A float
+        multiplier writes `<a:lnSpc><a:spcPct>`; `native` writes NO lnSpc so
+        the renderer applies the font's single spacing (PowerPoint's default
+        for paragraphs without explicit spacing — what decompiled
+        source-default text must round-trip to). Omitted → the style
+        bundle's line_height (the toolkit default for authored layouts).
     `lang:LOCALE` — pyphen locale (e.g. `de_DE`). Inserts U+00AD soft hyphens
         into the label before emission so python-pptx can break long compound
         words at syllable boundaries. Applied BEFORE autoshrink so the shrink
@@ -418,6 +424,29 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             pad_left = pad_top = pad_right = pad_bottom = 0.0
 
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
+    # linespacing: explicit multiplier → <a:lnSpc spcPct>; `native` → write
+    # NO lnSpc so the renderer applies the font's single spacing (what
+    # PowerPoint does for paragraphs with no explicit spacing — decompiled
+    # source-default text must round-trip this way, or every headline drops
+    # by the 1.2x default's extra leading); absent → the style bundle's
+    # line_height, the long-standing toolkit default for authored layouts.
+    ls_raw = node.kw_args.get("linespacing")
+    if ls_raw is None:
+        line_spacing: float | None = style.line_height
+    elif str(ls_raw).lower() == "native":
+        line_spacing = None
+    else:
+        try:
+            line_spacing = float(ls_raw)
+        except ValueError:
+            raise DSLError(
+                f"text at line {node.line_no}: linespacing: must be a "
+                f"multiplier or 'native', got {ls_raw!r}"
+            )
+    # Fit predictions use the explicit multiplier when given; for `native`
+    # keep the style's line_height — a slight over-estimate vs the font's
+    # single spacing, which is the safe direction for overflow checks.
+    fit_line_height = line_spacing if line_spacing is not None else style.line_height
     # Resolve font face once for all fit/shrink paths (autoshrink, orphan
     # control, autofit gating). style.weight and style.font_family are
     # frozen at this point; only size_px changes below, which does not
@@ -436,7 +465,7 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             bold=fit_bold,
             width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             height_emu=max(1, int(h * _EMU_PER_PX) - inset_h_emu),
-            line_height=style.line_height,
+            line_height=fit_line_height,
         )
         if fitted_pt < max_pt:
             # Convert pt back to design-px at the build's px→pt scale.
@@ -531,12 +560,14 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
     p0.alignment = align
-    p0.line_spacing = style.line_height
+    if line_spacing is not None:
+        p0.line_spacing = line_spacing
     _style_run(p0.add_run(), lines[0], style, tokens=ctx.tokens)
     for extra in lines[1:]:
         p = tf.add_paragraph()
         p.alignment = align
-        p.line_spacing = style.line_height
+        if line_spacing is not None:
+            p.line_spacing = line_spacing
         # Inter-paragraph gap defaults to a fraction of font-size; zero it so
         # the visual gap matches CSS line-height applied across all lines.
         p.space_before = Pt(0)
@@ -1018,6 +1049,20 @@ def _placeholder_treatment(tokens) -> tuple[
     return "duotone", dark, light
 
 
+def _apply_debug_border(node: DSLNode, shape) -> None:
+    """Slot-coverage debugging: outline a slot-bound picture in the debug
+    colour (set by apply_slot_debug_color as `_debug_border`)."""
+    color = node.kw_args.get("_debug_border")
+    if not color:
+        return
+    try:
+        from pptx.util import Pt as _Pt
+        shape.line.color.rgb = _hex_to_rgb(color)
+        shape.line.width = _Pt(10)
+    except Exception:
+        pass  # debug aid only — never block a build
+
+
 def _emit_picture_placeholder(
     slide,
     *,
@@ -1036,26 +1081,35 @@ def _emit_picture_placeholder(
 
     Used exclusively by ``_emit_picture`` for all four fallback branches.
     """
+    debug = bool(node.kw_args.get("_debug_border"))
     placeholder = _placeholder_image_path(ctx)
     if placeholder is not None:
         try:
             x, y = parse_xy(pos_xy)
             w, h = parse_wh(pos_wh)
-            treatment, duo_dark, duo_light = _placeholder_treatment(ctx.tokens)
+            if debug:
+                # Coverage render: the gem fully desaturated — the SAME boring
+                # grey image in every replaceable slot, so nothing distracts
+                # from the magenta coverage marks.
+                treatment, duo_dark, duo_light = "desat(1.0)", None, None
+            else:
+                treatment, duo_dark, duo_light = _placeholder_treatment(ctx.tokens)
             bytes_io = _prepare_picture_bytes(
                 placeholder, target_aspect=(w / h),
                 treatment=treatment,
                 duotone_dark=duo_dark, duotone_light=duo_light,
             )
-            slide.shapes.add_picture(
+            _pic = slide.shapes.add_picture(
                 bytes_io, _px(x), _px(y), width=_px(w), height=_px(h)
             )
+            _apply_debug_border(node, _pic)
             return
         except Exception:
             pass  # any load/crop failure -> brand-tonal rect below
     _emit_rect(slide, DSLNode(
         kind="rect", pos_args=[pos_xy, pos_wh],
-        kw_args={"fill": "paper-2", "stroke": "fog"},
+        kw_args={"fill": "paper-2",
+                 "stroke": node.kw_args.get("_debug_border", "fog")},
         label=None, line_no=node.line_no, source=node.source,
     ), ctx)
 
@@ -1182,6 +1236,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         _pos_xy = node.pos_args[0]
         _pos_wh = node.pos_args[1]
 
+    # Slot-coverage render: every replaceable picture shows the SAME plain
+    # grey gem placeholder (uniform, non-distracting) with the debug border
+    # marking it replaceable — never the carried showcase photo.
+    if node.kw_args.get("_debug_border"):
+        _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh,
+                                  node=node, ctx=ctx)
+        return
+
     # `query:` alongside `path:` is a layered fallback: the file wins when
     # `path` resolves; the explicit `query:` is consulted only when the
     # path misses (see the provider branch below), taking precedence over
@@ -1285,7 +1347,8 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                                           treatment=treatment,
                                           duotone_dark=duotone_dark,
                                           duotone_light=duotone_light)
-        slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
+        _pic = slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
+        _apply_debug_border(node, _pic)
     else:
         # Contain: scale to fit the box preserving aspect ratio, center in the slot.
         try:
@@ -1301,10 +1364,12 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                                               treatment=treatment,
                                               duotone_dark=duotone_dark,
                                               duotone_light=duotone_light)
-            slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _pic = slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _apply_debug_border(node, _pic)
         else:
             # Fast path: no treatment — let python-pptx read the file directly.
-            slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _pic = slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _apply_debug_border(node, _pic)
 
 
 def _prepare_picture_bytes(
@@ -1314,6 +1379,15 @@ def _prepare_picture_bytes(
 ) -> io.BytesIO:
     """Load → optional center-crop → optional treatment → JPEG/PNG bytes."""
     with Image.open(image_path) as im:
+        # Pass-through fast path: no crop, no treatment → embed the file
+        # bytes verbatim. Re-encoding every untouched picture (PNG
+        # optimize=True ≈ 150 ms each) dominated multi-slide deck builds —
+        # 114 carried showcase images cost ~17 s of pure PIL encode.
+        if (not treatment or treatment == "none") and (
+            target_aspect is None
+            or abs((im.size[0] / im.size[1]) - target_aspect) < 1e-3
+        ) and (im.format or "").upper() in ("PNG", "JPEG", "GIF"):
+            return io.BytesIO(image_path.read_bytes())
         im.load()
         if target_aspect is not None:
             sw, sh = im.size
@@ -1340,7 +1414,12 @@ def _prepare_picture_bytes(
         if fmt in ("JPG", "JPEG"):
             im.save(out, format="JPEG", quality=92, optimize=True)
         else:
-            im.save(out, format="PNG", optimize=True)
+            # No optimize=True for PNG: it re-encodes with every filter
+            # strategy (~7× slower, 685 ms vs 91 ms on 1920px showcase
+            # illustrations) for single-digit-% size savings. The default
+            # zlib level keeps multi-slide builds fast; deck size is
+            # dominated by carried media anyway.
+            im.save(out, format="PNG")
         return io.BytesIO(out.getvalue())
 
 
@@ -1510,10 +1589,22 @@ def sanitize_chrome(slide_xml) -> None:
         grad_parent.remove(solid)
         grad_parent.insert(idx, solid)
 
-    # 3. Clamp outline widths > 1pt down to a 0.5pt hairline.
+    # 3. Clamp outline widths > 1pt down to a 0.5pt hairline — except
+    #    inside opted-in subtrees (native chrome carried verbatim from a
+    #    source deck: a thick brand outline like BSH's parallelogram IS the
+    #    corporate design, not an AI-template artefact).
     for ln in sptree.iter(f"{{{_NS_A}}}ln"):
         w_str = ln.get("w")
         if w_str is None:
+            continue
+        anc = ln.getparent()
+        allowed = False
+        while anc is not None:
+            if _effect_allowed(anc):
+                allowed = True
+                break
+            anc = anc.getparent()
+        if allowed:
             continue
         try:
             w = int(w_str)
@@ -1878,6 +1969,22 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
         raise DSLError(
             f"native shape (line {node.line_no}): unparseable embedded element — {exc}"
         )
+    # Carried tables referencing PowerPoint's BUILT-IN "No Style, No Grid"
+    # style: built-ins are never serialized, so renderers without the GUID
+    # fall back to their own default (solid banded fills) — covering any
+    # chrome drawn underneath. Register an EMPTY definition (= transparent,
+    # borderless) under the same GUID.
+    _NO_GRID_GUID = "{5C22544A-7EE6-4342-B048-85BDC9FD1C3A}"
+    xml_text = xml_bytes.decode("utf-8", "replace")
+    if "tableStyleId" in xml_text and _NO_GRID_GUID in xml_text:
+        import base64 as _b64s
+        _snippet = (
+            '<a:tblStyle xmlns:a="http://schemas.openxmlformats.org/'
+            f'drawingml/2006/main" styleId="{_NO_GRID_GUID}" '
+            'styleName="No Style, No Grid"/>')
+        _merge_table_style(slide, _b64s.b64encode(_snippet.encode()).decode("ascii"),
+                           node)
+
     parts_b64 = node.kw_args.get("parts")
     if not parts_b64 and node.kw_args.get("parts_file"):
         parts_b64 = base64.b64encode(
@@ -1893,12 +2000,39 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
                                             "media")
     else:
         media_bytes = None
+    if media_bytes is not None and node.kw_args.get("_debug_desat"):
+        # Slot-coverage render: grey the carried template image (baked text /
+        # photos are pixels, not bindable — they must read as dead chrome).
+        import io as _io
+        try:
+            with Image.open(_io.BytesIO(media_bytes)) as _im:
+                has_alpha = _im.mode in ("RGBA", "LA") or "transparency" in _im.info
+                if has_alpha:
+                    _rgba = _im.convert("RGBA")
+                    _grey = _rgba.convert("L").convert("RGBA")
+                    _grey.putalpha(_rgba.split()[3])
+                else:
+                    _grey = _im.convert("L").convert("RGB")
+                _buf = _io.BytesIO()
+                _grey.save(_buf, format="PNG")
+                media_bytes = _buf.getvalue()
+        except Exception:
+            pass  # debug aid only
     if media_bytes is not None:
         # Carried <p:pic>: the source rId is meaningless in this deck, so re-embed
         # the image here and re-point every <a:blip> to the fresh relationship.
         import io
         from pptx.oxml.ns import qn
-        _part, rid = slide.part.get_or_add_image_part(io.BytesIO(media_bytes))
+        try:
+            _part, rid = slide.part.get_or_add_image_part(io.BytesIO(media_bytes))
+        except Exception as exc:
+            # Unsupported media (e.g. raw SVG from an older pack) — emit the
+            # element without re-embedded media rather than crash the build.
+            print(f"native (line {node.line_no}): cannot re-embed carried media "
+                  f"({exc}); emitting without it", file=sys.stderr)
+            _remap_colliding_shape_ids(slide, el)
+            slide.shapes._spTree.append(el)
+            return
         # Drop the Microsoft svgBlip sidecar: we carry only the raster media, so
         # its stale rId would dangle / collide with another shape's relationship
         # (some renderers prefer the svgBlip and then show the WRONG image). The
@@ -1909,8 +2043,18 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
             if _ext is not None and _ext.getparent() is not None:
                 _ext.getparent().remove(_ext)
         for blip in el.iter(qn("a:blip")):
-            if blip.get(qn("r:embed")) is not None:
-                blip.set(qn("r:embed"), rid)
+            # Unconditional: SVG-only pictures carry a BARE <a:blip> (the
+            # reference lived in the svgBlip extension we just dropped) —
+            # leaving it without r:embed renders an invisible picture.
+            blip.set(qn("r:embed"), rid)
+    # Carried-verbatim chrome is source design by definition — opt the whole
+    # subtree out of sanitize_chrome (effects, gradients, outline clamp).
+    # Legacy bare attribute on purpose: the namespaced form adds an xmlns
+    # declaration LibreOffice treats as unknown content and DROPS the shape.
+    # <p:pic> elements skip the marker entirely (LO drops pics even for the
+    # bare form; pictures carry no clamped outlines anyway).
+    if not el.tag.endswith("}pic"):
+        el.set(_EFFECT_ALLOW_LEGACY, "1")
     _remap_colliding_shape_ids(slide, el)
     slide.shapes._spTree.append(el)
 
