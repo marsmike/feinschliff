@@ -98,8 +98,15 @@ class SlotBudget:
 
     # ── derived geometry ──────────────────────────────────────────────────
     @property
-    def size_pt(self) -> float:
+    def font_size_pt(self) -> float:
+        """Rendered font size in pt — size_px at the build's px→pt scale,
+        identical to what pptx_emit's Pt() conversion produces."""
         return self.size_px * self.px_to_pt
+
+    @property
+    def size_pt(self) -> float:
+        """Deprecated alias for :attr:`font_size_pt` (one release)."""
+        return self.font_size_pt
 
     @property
     def width_emu(self) -> int:
@@ -112,7 +119,7 @@ class SlotBudget:
     @property
     def chars_per_line(self) -> int:
         """Estimated characters that fit on one wrapped line."""
-        return _cpl(self.font_family, self.size_pt, self.bold, self.width_emu)
+        return _cpl(self.font_family, self.font_size_pt, self.bold, self.width_emu)
 
     @property
     def max_lines(self) -> int:
@@ -282,7 +289,8 @@ def compute_slot_budgets(
             )
             height_px = 0.0
 
-        # resolve_node_style raises on unknown style/color/weight/size tokens — such nodes are unbudgetable, skip them (the emitter will fail loudly on the same token).
+        # resolve_node_style raises on unknown style/color/weight/size tokens —
+        # such nodes are unbudgetable, skip them (the emitter will fail loudly on the same token).
         try:
             resolved = resolve_node_style(node, tokens, px_to_pt=px_to_pt)
         except (KeyError, ValueError):

@@ -12,9 +12,7 @@ _PKG = Path(__file__).resolve().parent.parent / "feinschliff"
 # module path -> regexes that must NOT match (locally-defined conversion constants)
 _FORBIDDEN = {
     _PKG / "slot_budget.py": [r"=\s*6350(\.0)?\b", r"(?:_PX_TO_PT|px_to_pt)\s*[:=][^#\n]*?\b0\.5\b", r"/\s*12700(\.0)?\b"],
-    # NOTE: the `fitted_pt * 2.0` autoshrink pattern is added in Task 5, where
-    # its behavior fix + test live — keep this list constants-only for now.
-    _PKG / "dsl" / "pptx_emit.py": [r"=\s*12_?192_?000\b", r"EMU_PER_PT\s*=\s*12700\b"],
+    _PKG / "dsl" / "pptx_emit.py": [r"=\s*12_?192_?000\b", r"EMU_PER_PT\s*=\s*12700\b", r"fitted_pt\s*\*\s*2\.0"],
     _PKG / "textfit.py": [r"_EMU_PER_PT\s*=\s*12700\b"],
 }
 

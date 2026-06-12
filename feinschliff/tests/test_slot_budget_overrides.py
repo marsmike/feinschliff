@@ -32,6 +32,7 @@ def test_size_pt_override_lands_exactly_in_budget():
 
 
 def test_size_px_override_lands_in_budget():
+    """size:56px passes through unscaled."""
     b = _budgets('text 100,100 "{{ t }}" style:body size:56px maxwidth:800')["t"]
     assert b.size_px == 56.0
 
@@ -39,6 +40,8 @@ def test_size_px_override_lands_in_budget():
 def test_weight_override_sets_bold():
     b = _budgets('text 100,100 "{{ t }}" style:body weight:bold maxwidth:800')["t"]
     assert b.bold is True
+    b = _budgets('text 100,100 "{{ t }}" style:body weight:regular maxwidth:800')["t"]
+    assert b.bold is False
 
 
 def test_no_override_unchanged_legacy():

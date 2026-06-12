@@ -444,8 +444,8 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             line_height=style.line_height,
         )
         if fitted_pt < max_pt:
-            # Convert pt back to design-px (2 design-px per pt).
-            style = _replace(style, size_px=fitted_pt * 2.0)
+            # Convert pt back to design-px at the build's px→pt scale.
+            style = _replace(style, size_px=fitted_pt / _PX_TO_PT)
 
     # Orphan control: per paragraph, if the greedy wrap would orphan one
     # word on the final line, replace its preceding space with NBSP so

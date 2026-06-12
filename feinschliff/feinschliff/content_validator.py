@@ -365,7 +365,7 @@ def check_slot_overflow(
     ok = _fits(
         value,
         font=budget.font_family,
-        size_pt=budget.size_pt,
+        size_pt=budget.font_size_pt,
         bold=budget.bold,
         width_emu=budget.width_emu,
         height_emu=budget.height_emu,
@@ -379,12 +379,12 @@ def check_slot_overflow(
     actual_h = _measure(
         value,
         font=budget.font_family,
-        size_pt=budget.size_pt,
+        size_pt=budget.font_size_pt,
         bold=budget.bold,
         width_emu=budget.width_emu,
         line_height=budget.line_height,
     )
-    line_h = budget.size_pt * budget.line_height * 12700  # EMU per line
+    line_h = budget.font_size_pt * budget.line_height * 12700  # EMU per line
     est_lines = max(1, round(actual_h / line_h)) if line_h > 0 else "?"
 
     # Skip vertical-clipping-only cases: the text fits on 1 line horizontally
