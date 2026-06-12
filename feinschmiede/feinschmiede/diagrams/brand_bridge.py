@@ -16,6 +16,7 @@ from __future__ import annotations
 import difflib
 import os
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -226,6 +227,70 @@ def _suggest(unknown: str) -> str | None:
     """Return the closest semantic name by edit distance, or None."""
     matches = difflib.get_close_matches(unknown.lower(), SEMANTIC_NAMES, n=1, cutoff=0.6)
     return matches[0] if matches else None
+
+
+# ---------------------------------------------------------------------------
+# Font resolution
+# ---------------------------------------------------------------------------
+
+# Generic CSS family keywords — never quoted, never treated as a brand face.
+_GENERIC_FAMILIES = frozenset({
+    "serif", "sans-serif", "monospace", "cursive", "fantasy",
+    "system-ui", "ui-monospace", "ui-serif", "ui-sans-serif", "ui-rounded",
+})
+
+
+@dataclass(frozen=True)
+class BrandFonts:
+    """Brand typography for the diagram pipeline (mirror of color resolve())."""
+    body: tuple[str, ...]
+    mono: tuple[str, ...]
+
+    @property
+    def svg_body(self) -> str:
+        return _css_stack(self.body, "sans-serif")
+
+    @property
+    def svg_mono(self) -> str:
+        return _css_stack(self.mono, "monospace")
+
+    @property
+    def primary_body(self) -> str | None:
+        """First concrete (non-generic) body face, or None."""
+        return next((f for f in self.body if f.lower() not in _GENERIC_FAMILIES), None)
+
+    @property
+    def primary_mono(self) -> str | None:
+        return next((f for f in self.mono if f.lower() not in _GENERIC_FAMILIES), None)
+
+
+def _css_stack(families: tuple[str, ...], generic: str) -> str:
+    """CSS font-family stack: concrete faces (multi-word quoted) + one generic."""
+    names = [f"'{f}'" if " " in f else f
+             for f in families if f.lower() not in _GENERIC_FAMILIES]
+    return ", ".join([*names, generic])
+
+
+def _font_family_values(tokens: dict, key: str) -> tuple[str, ...]:
+    raw = (tokens.get("font-family") or {}).get(key)
+    if isinstance(raw, dict):
+        raw = raw.get("$value")
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(f) for f in raw)
+    return ()
+
+
+def resolve_fonts(brand_dir: Path) -> BrandFonts:
+    """Resolve the brand's diagram typography from tokens ``font-family.body``
+    (fallback ``.display``) and ``.mono``. Missing keys/tokens degrade to the
+    bare generic family — a diagram never fails to render over fonts."""
+    try:
+        tokens = _load_tokens_with_extends(brand_dir)
+    except BrandBridgeError:
+        return BrandFonts(body=(), mono=())
+    body = _font_family_values(tokens, "body") or _font_family_values(tokens, "display")
+    mono = _font_family_values(tokens, "mono")
+    return BrandFonts(body=body, mono=mono)
 
 
 def relative_luminance(hex_color: str) -> float:
