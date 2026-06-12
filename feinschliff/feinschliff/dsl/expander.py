@@ -440,6 +440,12 @@ def interpolate_native_text(
     for n in nodes:
         if n.kind != "native":
             continue
+        if debug_color is not None and (
+                n.kw_args.get("media") or n.kw_args.get("media_file")):
+            # Carried template images keep their (often colourful) pixels and
+            # may have text BAKED into the bitmap — in the coverage render
+            # they grey out so nothing reads as bindable content.
+            n.kw_args["_debug_desat"] = "1"
         xml: str | None = None
         blob = n.kw_args.get("b64")
         if blob:

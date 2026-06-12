@@ -1927,6 +1927,24 @@ def _emit_native(slide, node: DSLNode, ctx: EmitContext) -> None:
                                             "media")
     else:
         media_bytes = None
+    if media_bytes is not None and node.kw_args.get("_debug_desat"):
+        # Slot-coverage render: grey the carried template image (baked text /
+        # photos are pixels, not bindable — they must read as dead chrome).
+        import io as _io
+        try:
+            with Image.open(_io.BytesIO(media_bytes)) as _im:
+                has_alpha = _im.mode in ("RGBA", "LA") or "transparency" in _im.info
+                if has_alpha:
+                    _rgba = _im.convert("RGBA")
+                    _grey = _rgba.convert("L").convert("RGBA")
+                    _grey.putalpha(_rgba.split()[3])
+                else:
+                    _grey = _im.convert("L").convert("RGB")
+                _buf = _io.BytesIO()
+                _grey.save(_buf, format="PNG")
+                media_bytes = _buf.getvalue()
+        except Exception:
+            pass  # debug aid only
     if media_bytes is not None:
         # Carried <p:pic>: the source rId is meaningless in this deck, so re-embed
         # the image here and re-point every <a:blip> to the fresh relationship.
