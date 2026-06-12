@@ -5,9 +5,11 @@ import {
 } from 'remotion';
 import {Beat, EditedVideoProps, Theme, ZoomWindow} from './theme';
 import {HookTitle} from './templates/HookTitle';
+import {ImageCard} from './templates/ImageCard';
 import {QuotePull} from './templates/QuotePull';
 import {StaticTakeover} from './templates/StaticTakeover';
 import {StatPunch} from './templates/StatPunch';
+import {VerticalTimeline} from './templates/VerticalTimeline';
 import {WordPop} from './templates/WordPop';
 
 // Template registry — beat.kind → component.
@@ -18,6 +20,8 @@ const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {
   stat_punch: StatPunch,
   quote_pull: QuotePull,
   static: StaticTakeover,
+  image_card: ImageCard, // overlay — NOT in TAKEOVER_KINDS
+  vertical_timeline: VerticalTimeline,
 };
 
 // Takeovers replace the frame. Every new takeover kind MUST be added here
