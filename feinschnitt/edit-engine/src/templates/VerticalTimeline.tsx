@@ -43,6 +43,10 @@ export const VerticalTimeline: React.FC<{beat: Beat; theme: Theme}> = ({beat, th
   const columnTop = height * 0.18; // below the title block
   const available = height * 0.74;
   const rowH = steps.length > 0 ? Math.min(height * 0.15, available / steps.length) : 0;
+  // Tight rows (landscape / many steps): a description would collide with
+  // the next row's heading — only render descriptions when the row fits
+  // heading line + 8px gap + one description line.
+  const showDescriptions = rowH >= headingLineH + 8 + width * 0.026 * 1.2;
   const rows = steps.map((step, i) => ({
     ...step,
     rowTop: columnTop + i * rowH,
@@ -150,7 +154,7 @@ export const VerticalTimeline: React.FC<{beat: Beat; theme: Theme}> = ({beat, th
             >
               {row.heading}
             </div>
-            {row.description ? (
+            {row.description && showDescriptions ? (
               <div
                 style={{
                   position: 'absolute',

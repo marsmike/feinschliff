@@ -6,14 +6,16 @@ import {
 import {Beat, EditedVideoProps, Theme, ZoomWindow} from './theme';
 import {HookTitle} from './templates/HookTitle';
 import {ImageCard} from './templates/ImageCard';
+import {InlineChart} from './templates/InlineChart';
 import {QuotePull} from './templates/QuotePull';
+import {RatioDots} from './templates/RatioDots';
 import {StaticTakeover} from './templates/StaticTakeover';
 import {StatPunch} from './templates/StatPunch';
 import {VerticalTimeline} from './templates/VerticalTimeline';
 import {WordPop} from './templates/WordPop';
 
-// Template registry — beat.kind → component.
-// Unknown kinds render nothing (the lint stage refuses them upstream).
+// Template registry — beat.kind → component. All 9 lint-known kinds have a
+// template; unknown kinds simply render nothing.
 const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {
   hook_title: HookTitle,
   word_pop: WordPop,
@@ -22,6 +24,8 @@ const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {
   static: StaticTakeover,
   image_card: ImageCard, // overlay — NOT in TAKEOVER_KINDS
   vertical_timeline: VerticalTimeline,
+  ratio_dots: RatioDots, // overlay — NOT in TAKEOVER_KINDS
+  inline_chart: InlineChart, // overlay — NOT in TAKEOVER_KINDS
 };
 
 // Takeovers replace the frame. Every new takeover kind MUST be added here

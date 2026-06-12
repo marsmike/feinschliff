@@ -1,16 +1,7 @@
 import React from 'react';
 import {Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {Beat, Theme} from '../theme';
-
-const CLAMP = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
-
-// Theme colors are hex strings like #1E2430. Append a two-digit hex alpha
-// byte ONLY when the value really is a 7-char #RRGGBB — anything else
-// (rgb(...), named colors) passes through unchanged so we never emit an
-// invalid color; the fallback degradation is "fully opaque", which still
-// reads fine behind the backdrop blur.
-const withAlpha = (color: string, alphaHex: string): string =>
-  /^#[0-9a-fA-F]{6}$/.test(color) ? `${color}${alphaHex}` : color;
+import {CLAMP, withAlpha} from './util';
 
 // image_card — OVERLAY: a frosted card pinned to the bottom ~48% of the
 // frame. The speaker stays visible above it (invariant 3: overlays never

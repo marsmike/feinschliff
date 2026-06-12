@@ -60,7 +60,7 @@ IMAGE_BREATH = 1.5   # speaker breathing room between image beats
 
 # Three places must agree per kind: this dict, props.py injection, and the
 # template's fallback — update all when adding an overlay kind.
-DEFAULT_VERTICAL = {"word_pop": 0.72, "hook_title": 0.66}
+DEFAULT_VERTICAL = {"word_pop": 0.72, "hook_title": 0.66, "inline_chart": 0.62}
 
 
 def _num(beat: dict, field: str) -> float | None:
@@ -165,6 +165,11 @@ def _check_ratio_dots(beat: dict, tag: str, start: float, end: float) -> list[st
         errs.append(f"{tag}: 'total' must be a positive number")
     elif total <= 0:
         errs.append(f"{tag}: 'total' must be a positive number")
+    elif total > 100:
+        errs.append(
+            f"{tag}: total {total:g} exceeds 100 — the template clamps at 100 "
+            "and the rendered ratio would be wrong"
+        )
     if marked is None:
         errs.append(f"{tag}: 'marked' must be a number")
     elif marked < 0:
@@ -239,6 +244,35 @@ def lint_beats(
 
         if kind in _KIND_CHECKS:
             errors.extend(_KIND_CHECKS[kind](b, tag, start, end))
+
+        # Taste signal, not a blocker (the per-kind helpers return errors
+        # only, so this lives here where the warnings list is in scope).
+        if (
+            kind == "vertical_timeline"
+            and isinstance(b.get("steps"), list)
+            and len(b["steps"]) > 6
+        ):
+            warnings.append(
+                f"{tag}: {len(b['steps'])} steps — more than 6 reads cramped; "
+                "consider splitting"
+            )
+
+        if kind == "ratio_dots":
+            total_val = _num(b, "total")
+            if total_val is not None and 25 < total_val <= 100:
+                warnings.append(
+                    f"{tag}: total {total_val:g} — dots get small and creep toward "
+                    "the face zone above ~25; consider a smaller total"
+                )
+
+        if kind == "inline_chart":
+            draw_dur = _num(b, "draw_duration")
+            beat_dur = end - start
+            if draw_dur is not None and draw_dur > beat_dur:
+                warnings.append(
+                    f"{tag}: draw_duration {draw_dur:g}s > beat duration {beat_dur:g}s "
+                    "— the line never finishes drawing inside the beat"
+                )
 
         if kind in IMAGE_KINDS:
             image_path = b.get("image_path")

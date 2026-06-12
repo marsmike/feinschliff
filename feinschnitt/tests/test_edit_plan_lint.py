@@ -266,6 +266,16 @@ def test_lint_vertical_timeline_appear_sec_outside_window_is_error():
     assert any("appear_sec" in e and "outside the beat window" in e for e in errors)
 
 
+def test_lint_vertical_timeline_more_than_6_steps_warns():
+    steps = [{"heading": f"Step {i}", "appear_sec": 2.0 + i * 0.8}
+             for i in range(7)]
+    beat = {"kind": "vertical_timeline", "start_sec": 2.0, "end_sec": 10.0,
+            "steps": steps, "reason": "roadmap walkthrough"}
+    errors, warnings = lintmod.lint_beats([beat], duration=20.0)
+    assert errors == []
+    assert any("more than 6 reads cramped" in w for w in warnings)
+
+
 def test_lint_ratio_dots_marked_exceeds_total_is_error():
     beat = {"kind": "ratio_dots", "start_sec": 2.0, "end_sec": 7.0,
             "total": 10, "marked": 12, "polarity": "positive",
@@ -378,6 +388,24 @@ def test_lint_mark_at_outside_window_is_error():
     assert any("mark_at" in e for e in errors)
 
 
+def test_lint_ratio_dots_total_over_100_is_error():
+    beat = {"kind": "ratio_dots", "start_sec": 2.0, "end_sec": 7.0,
+            "total": 150, "marked": 10, "polarity": "positive",
+            "mark_at": 3.5, "reason": "stat"}
+    errors, _ = lintmod.lint_beats([beat], duration=20.0)
+    assert any("100" in e for e in errors)
+    assert errors  # must be an error, not just a warning
+
+
+def test_lint_ratio_dots_total_40_warns_not_errors():
+    beat = {"kind": "ratio_dots", "start_sec": 2.0, "end_sec": 7.0,
+            "total": 40, "marked": 10, "polarity": "positive",
+            "mark_at": 3.5, "reason": "stat"}
+    errors, warnings = lintmod.lint_beats([beat], duration=20.0)
+    assert errors == []
+    assert any("dots get small" in w for w in warnings)
+
+
 def test_lint_authored_low_vertical_on_new_overlay_is_error():
     beats = [{"kind": "image_card", "start_sec": 2.0, "end_sec": 5.0,
               "reason": "broll", "image_path": "x.png", "vertical": 0.2}]
@@ -390,3 +418,12 @@ def test_lint_image_path_without_extension_is_error():
               "reason": "screenshot", "image_path": "shot"}]
     errors, _ = lintmod.lint_beats(beats, duration=20.0)
     assert any("extension" in e for e in errors)
+
+
+def test_lint_inline_chart_draw_duration_exceeds_beat_warns():
+    beat = {"kind": "inline_chart", "start_sec": 2.0, "end_sec": 4.0,
+            "title": "Growth", "data": [10, 20, 30],
+            "draw_duration": 5.0, "reason": "trend"}
+    errors, warnings = lintmod.lint_beats([beat], duration=20.0)
+    assert errors == []
+    assert any("never finishes drawing" in w for w in warnings)

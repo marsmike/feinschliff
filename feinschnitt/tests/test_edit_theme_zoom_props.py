@@ -96,3 +96,15 @@ def test_props_injects_vertical_defaults():
     assert out["beats"][0]["vertical"] == 0.72   # injected default
     assert out["beats"][1]["vertical"] == 0.8    # authored value untouched
     assert "vertical" not in aligned["beats"][0]  # input not mutated
+
+
+def test_props_injects_inline_chart_vertical_default():
+    aligned = {"beats": [
+        {"kind": "inline_chart", "start_sec": 2.0, "end_sec": 8.0,
+         "title": "Growth", "data": [10, 25, 40], "reason": "r"},
+    ]}
+    meta = {"duration": 20.0, "width": 1080, "height": 1920}
+    out = propsmod.build_props("clip.mp4", aligned, [], thememod.resolve_theme(None),
+                               meta)
+    assert out["beats"][0]["vertical"] == 0.62   # injected default
+    assert "vertical" not in aligned["beats"][0]  # input not mutated
