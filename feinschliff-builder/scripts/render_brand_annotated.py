@@ -90,6 +90,81 @@ def split_doc(p: Path):
     return {}, t
 
 
+_TEXT_ATTR_RE = re.compile(
+    r'^text\s+[\d,]+\s+(?P<rest>.*?)"\{\{\s*(?P<slot>\w+)[\s|]')
+_STYLE_RE = re.compile(r"style:(\S+)")
+_SIZE_RE = re.compile(r"size:([\d.]+)pt")
+_WEIGHT_RE = re.compile(r"weight:(\S+)")
+_COVER_RE = re.compile(r"cover:true")
+_PIC_SLOT_RE = re.compile(r'^picture\s+[\d,]+\s+(?P<rest>.*?\{\{\s*(?P<slot>\w+)[\s|].*)$')
+_RPR_SZ_RE = re.compile(r'<a:rPr[^>]*\bsz="(\d+)"')
+_RPR_FACE_RE = re.compile(r'<a:latin[^>]*\btypeface="([^"]+)"')
+
+
+def text_slot_typography(body: str, tokens) -> dict[str, str]:
+    """slot → concise typography label ('Noto Sans 24pt bold') for the
+    overlay's orange text tags. Size/weight come from the DSL text node
+    (the decompiler locks `size:<pt>pt` to the source); the concrete font
+    face resolves through the brand's style bundle (tokens.resolve_style),
+    with an explicit `weight:` attr overriding the bundle weight."""
+    out: dict[str, str] = {}
+    for ln in body.splitlines():
+        m = _TEXT_ATTR_RE.match(ln.strip())
+        if not m:
+            continue
+        rest, slot = m.group("rest"), m.group("slot")
+        style = (_STYLE_RE.search(rest) or [None, "body"])[1]
+        face = None
+        weight = None
+        try:
+            rs = tokens.resolve_style(style)
+            face = rs.font_family[0]
+            weight = rs.weight
+        except Exception:
+            pass
+        wm = _WEIGHT_RE.search(rest)
+        if wm:
+            weight = {"light": 300, "regular": 400, "medium": 500,
+                      "semibold": 600, "bold": 700, "black": 900}.get(wm.group(1), weight)
+        sm = _SIZE_RE.search(rest)
+        parts = []
+        if face:
+            parts.append(face)
+        if sm:
+            parts.append(f"{float(sm.group(1)):g}pt")
+        if weight is not None and weight != 400:
+            parts.append({300: "light", 500: "medium", 600: "semibold",
+                          700: "bold", 900: "black"}.get(weight, str(weight)))
+        if parts:
+            out[slot] = " ".join(parts)
+    return out
+
+
+def image_slot_params(body: str) -> dict[str, str]:
+    """slot → extra params for the overlay's blue image tags (cover mode,
+    default asset's source pixel size when resolvable is left to the box
+    label — here we flag the fit behaviour)."""
+    out: dict[str, str] = {}
+    for ln in body.splitlines():
+        m = _PIC_SLOT_RE.match(ln.strip())
+        if m:
+            out[m.group("slot")] = "cover" if _COVER_RE.search(m.group("rest")) else "fit"
+    return out
+
+
+def _payload_typography(xml: str) -> str:
+    """Concise typography hint for a native-text frame: emitted only when
+    the payload is unambiguous (a single font size / face across runs)."""
+    sizes = {int(s) for s in _RPR_SZ_RE.findall(xml)}
+    faces = {f for f in _RPR_FACE_RE.findall(xml) if not f.startswith("+")}
+    parts = []
+    if len(faces) == 1:
+        parts.append(next(iter(faces)))
+    if len(sizes) == 1:
+        parts.append(f"{next(iter(sizes)) / 100:g}pt")
+    return " ".join(parts)
+
+
 def slots_from_body(body: str) -> list[tuple]:
     out = []
     for ln in body.splitlines():
@@ -142,7 +217,7 @@ def native_slot_frames(body: str, asset_root: Path | None,
         if g is None:
             continue
         x, y, w, h = (float(v) * emu_to_canvas for v in g.groups())
-        frames.append((slots, (x, y, w, h)))
+        frames.append((slots, (x, y, w, h), _payload_typography(xml)))
     return frames
 
 
@@ -321,6 +396,7 @@ def main() -> int:
     scale = (DPI * (page_w_pt / 72.0)) / 1920.0
 
     pages_html = []
+    _tokens_cache: dict[Path, object] = {}
     for i, lp in enumerate(layouts, 1):
         name = lp.name[: -len(".slide.dsl")] if lp.name.endswith(".slide.dsl") else lp.stem
         fm, body = split_doc(lp)
@@ -338,7 +414,19 @@ def main() -> int:
         if not elements:
             elements = slots_from_body(body)
 
+        # Concrete typography per text slot + fit params per image slot for
+        # the tag labels (font face via the brand's style bundles).
+        try:
+            from feinschmiede.dsl.tokens import load_tokens as _lt
+            _tokens = _tokens_cache.setdefault(
+                lp.parent.parent, _lt(lp.parent.parent))
+        except Exception:
+            _tokens = None
+        typo = text_slot_typography(body, _tokens) if _tokens else {}
+        img_params = image_slot_params(body)
+
         for k, sid, meta, x, y, w, h in elements:
+            box_px = f"{w:g}×{h:g}px"
             x, y, w, h = x * scale, y * scale, w * scale, h * scale
             if k == "text":
                 role = meta or ""
@@ -347,10 +435,16 @@ def main() -> int:
                     tag(draw, x, y, f"{sid} · {role}", GRAY)
                 else:
                     draw.rectangle([x, y, x + w, y + h], outline=ORANGE, width=3)
-                    tag(draw, x, y, f"{sid} · {role or 'text'}", ORANGE)
+                    label = f"{sid} · {role or 'text'}"
+                    if typo.get(sid):
+                        label += f" · {typo[sid]}"
+                    tag(draw, x, y, label, ORANGE)
             elif k == "image":
                 draw.rectangle([x, y, x + w, y + h], outline=BLUE, width=3)
-                tag(draw, x, y, f"{sid} · image ({meta or 'replace'})", BLUE)
+                ar = (w / h) if h else 0
+                label = (f"{sid} · image ({meta or 'replace'}) · {box_px} "
+                         f"AR {ar:.2f} · {img_params.get(sid, 'cover')}")
+                tag(draw, x, y, label, BLUE)
             else:
                 for xx in range(int(x), int(x + w), 10):
                     draw.line([xx, y, min(xx + 5, x + w), y], fill=GRAY, width=1)
@@ -363,13 +457,15 @@ def main() -> int:
             x, y, w, h = x * scale, y * scale, w * scale, h * scale
             draw.rectangle([x, y, x + w, y + h], outline=VIOLET, width=3)
             tag(draw, x, y, f"{kind} · data replaceable (edit in PowerPoint)", VIOLET)
-        for slot_names, (x, y, w, h) in native_slot_frames(
+        for slot_names, (x, y, w, h), frame_typo in native_slot_frames(
                 body, lp.parent.parent / "assets",
                 (1920.0 / w_emu) if w_emu else 0.0):
             x, y, w, h = x * scale, y * scale, w * scale, h * scale
             draw.rectangle([x, y, x + w, y + h], outline=ORANGE, width=3)
             label = (f"{slot_names[0]}–{slot_names[-1]} · native-text"
                      if len(slot_names) > 1 else f"{slot_names[0]} · native-text")
+            if frame_typo:
+                label += f" · {frame_typo}"
             tag(draw, x, y + h + 19, label, ORANGE)
 
         ann_png = pages_dir / f"ann-{i:0{digits}d}.png"
