@@ -5,7 +5,7 @@ bundle, builds a single-slide Presentation, returns it.
 
 Coordinate system: DSL uses design pixels in a 1920×1080 frame, matching
 the existing brand-pack convention. We map 1 design-px → 6350 EMU
-(same as gs-ramspau's `px()` helper).
+(legacy baseline; per-build scale is reconfigured from tokens slide.width_emu by _configure_slide_scale).
 
 Primitives implemented:
   canvas WxH                 — set slide size
@@ -785,7 +785,7 @@ def _px_to_pt(px: float) -> float:
     """Design-px (1920×1080 baseline) → PowerPoint points.
 
     A standard 16:9 PPT slide is 13.33×7.5in = 960×540pt. The 1920-wide
-    design baseline maps 2 design-px per point (960/1920 = 0.5).
+    design baseline maps 2 design-px per point (960/1920 = 0.5) at the 1920-wide legacy baseline; the actual scale is set per build by _configure_slide_scale.
     """
     return px * _PX_TO_PT
 
