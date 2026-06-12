@@ -397,6 +397,13 @@ def lint_captions_config(config) -> list[str]:
     if not isinstance(config, dict):
         errs.append("captions config must be a dict/object")
         return errs
+    _ALLOWED_CAPTIONS_KEYS = {"enabled", "emphasis"}
+    for k in config:
+        if k not in _ALLOWED_CAPTIONS_KEYS:
+            errs.append(
+                f"captions config: unknown key {k!r} "
+                f"(allowed: {', '.join(sorted(_ALLOWED_CAPTIONS_KEYS))})"
+            )
     enabled = config.get("enabled")
     if enabled is not None and not isinstance(enabled, bool):
         errs.append("captions.enabled must be a boolean when present")

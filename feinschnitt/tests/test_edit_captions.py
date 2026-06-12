@@ -363,3 +363,50 @@ def test_build_captions_to_props_compose():
     result = propsmod.build_props("src.mp4", _minimal_aligned_plan(), [],
                                   {}, _minimal_meta(), captions=caps)
     assert result["captions"][0]["words"][0]["w"] == "hello"
+
+
+# ---------------------------------------------------------------------------
+# Fix 1: pass-1 scans RAW word stream (not pre-suppression chunks)
+# A phrase straddling a chunk boundary must NOT produce "not found in transcript"
+# ---------------------------------------------------------------------------
+
+def test_emphasis_phrase_straddling_chunk_boundary_gets_suppressed_not_notfound():
+    # "ship it today now" — chunked at max_words=3 in portrait:
+    #   chunk 0: ["ship", "it", "today"]  (hits max_words)
+    #   chunk 1: ["now"]
+    # phrase "today now" straddles the boundary — old code (chunk scan) would
+    # report "not found in transcript"; new code (raw word scan) sees it and
+    # instead reports the SUPPRESSED/SPLIT warning.
+    words_list = [
+        w("ship", 0.0, 0.2), w("it", 0.3, 0.4),
+        w("today", 0.5, 0.7), w("now", 0.8, 1.0),
+    ]
+    # portrait (1080x1920) → MAX_WORDS_PORTRAIT = 3
+    _, warnings = capmod.build_captions(words_list, [], {"emphasis": ["today now"]},
+                                        1080, 1920)
+    assert len(warnings) == 1
+    # Must NOT claim the phrase is absent from the transcript
+    assert "not found in transcript" not in warnings[0]
+    # Must say it is suppressed / split
+    assert "suppressed" in warnings[0] or "split" in warnings[0] or "only occurs" in warnings[0]
+
+
+def test_emphasis_truly_absent_phrase_still_gets_notfound():
+    # "yesterday" is not spoken at all → "not found in transcript"
+    words_list = [w("ship", 0.0, 0.2), w("it", 0.3, 0.4), w("now", 0.5, 0.7)]
+    _, warnings = capmod.build_captions(words_list, [], {"emphasis": ["yesterday"]},
+                                        1080, 1920)
+    assert len(warnings) == 1
+    assert "not found in transcript" in warnings[0]
+    assert "'yesterday'" in warnings[0]
+
+
+# ---------------------------------------------------------------------------
+# Fix 2: lint_captions_config rejects unknown keys
+# ---------------------------------------------------------------------------
+
+def test_lint_captions_config_unknown_key_error():
+    # "emphasise" is a common typo for "emphasis" — must be rejected
+    errors = lintmod.lint_captions_config({"emphasise": []})
+    assert len(errors) >= 1
+    assert any("emphasise" in e for e in errors)

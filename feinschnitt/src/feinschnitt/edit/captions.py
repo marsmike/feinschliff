@@ -25,13 +25,15 @@ assert CAPTION_SUPPRESSING_KINDS | CAPTION_FRIENDLY_KINDS == KNOWN_KINDS, (
 )
 
 STOPWORDS = {  # en + de function words — meaningful-word overlap only
-    "the", "a", "an", "and", "or", "but", "of", "in", "on", "at", "to", "for",
+    "the", "a", "and", "or", "but", "of", "on", "at", "to", "for",
     "with", "by", "is", "was", "are", "were", "be", "been", "it", "its", "my",
     "your", "our", "their", "this", "that", "these", "those", "i", "you", "he",
-    "she", "we", "they", "not", "no", "so", "as", "if", "then", "than", "too",
+    "she", "we", "they", "not", "no", "as", "if", "then", "than", "too",
+    "in", "an", "so",  # shared en/de
     "der", "die", "das", "ein", "eine", "und", "oder", "aber", "von", "im",
-    "in", "an", "auf", "zu", "fur", "mit", "bei", "ist", "war", "sind", "es",
-    "ich", "du", "wir", "sie", "nicht", "kein", "so", "als", "wenn", "dann",
+    "auf", "zu", "fur", "mit", "bei", "ist", "war", "sind", "es",
+    "ich", "du", "wir", "sie", "nicht", "kein", "wenn", "dann",
+    "als",  # shared en/de
     # contraction norms (apostrophes stripped by _norm)
     "dont", "doesnt", "didnt", "isnt", "arent", "wasnt", "werent",
     "thats", "youre", "theyre", "weve", "ive", "whats",
@@ -211,8 +213,17 @@ def build_captions(words: list[dict], beats: list[dict], config: dict | None,
     normalized = [[t for t in (_norm(p) for p in phrase.split()) if t]
                   for phrase in phrases]
 
-    # Pass 1: did the phrase appear ANYWHERE in the transcript (pre-suppression)?
-    spoken = _match_phrase_runs(all_chunks, normalized)
+    # Pass 1: did the phrase appear ANYWHERE in the raw word stream?
+    # Scan the flat words list so phrases straddling chunk boundaries are found.
+    wnorm = [_norm(w["w"]) for w in words]
+    spoken = [False] * len(normalized)
+    for pi, ptoks in enumerate(normalized):
+        if not ptoks:
+            continue
+        for i in range(len(wnorm) - len(ptoks) + 1):
+            if wnorm[i:i + len(ptoks)] == ptoks:
+                spoken[pi] = True
+                break
 
     # Pass 2: mark accents on kept chunks; learn which survive suppression.
     kept_chunks, _ = apply_emphasis(kept_chunks, phrases)
