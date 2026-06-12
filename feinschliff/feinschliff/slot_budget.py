@@ -67,12 +67,6 @@ def register_tokens_font_metrics(tokens) -> None:
             continue
 
 
-# Design-px → EMU and pt legacy defaults; values come from the shared units
-# module so there is no per-file drift.  compute_slot_budgets derives per-budget
-# scale from tokens slide.width_emu instead — see SlotBudget.emu_per_px / px_to_pt fields.
-_EMU_PER_PX: float = units.EMU_PER_PX_BASELINE
-_PX_TO_PT: float = units.PX_TO_PT_BASELINE
-
 # Slot interpolation — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{([^{}]+)\}\}")
 # Normalise array indices: cells[0].heading → cells[].heading
