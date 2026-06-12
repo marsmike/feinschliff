@@ -111,7 +111,8 @@ def default_bindings(fm: dict) -> dict:
             continue
         d = meta.get("default")
         if d not in (None, ""):
-            out[name] = str(d)
+            # frontmatter stores the DSL-escaped form — bind real newlines
+            out[name] = str(d).replace("\\n", "\n")
     return out
 
 
