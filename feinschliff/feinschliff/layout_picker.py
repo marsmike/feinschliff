@@ -136,7 +136,9 @@ def _default_profile_table() -> dict[str, dict]:
 # line between "legacy scoring" (inert against new signals) and "Phase 4
 # scoring" (affinity-driven by narrative_role / narrative_act /
 # time_axis_role). The list lives in source-of-truth here so callers
-# don't drift.
+# don't drift. Membership criterion: any layout whose frontmatter
+# declares one of those affinity fields belongs here, or the
+# legacy-inertness invariant in tests breaks.
 _PHASE4_LAYOUTS = frozenset({
     "recommendation",
     "next-steps",
@@ -145,6 +147,10 @@ _PHASE4_LAYOUTS = frozenset({
     "roadmap",
     "timeline",
     "excalidraw-diagram",
+    "key-takeaways",
+    "executive-summary",
+    "pyramid",
+    "action-title",
 })
 
 

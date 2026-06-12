@@ -3,6 +3,7 @@ role: content-columns
 ideal_count: [3, 3]
 data_band: none
 comparison: false
+narrative_act: resolution
 description: Three-tier pyramid graphic left; tier labels right in stacked rows with accent eyebrow and description per tier
 ---
 # pyramid — 3 stacked tiers: apex triangle + 2 trapezoids, sized to

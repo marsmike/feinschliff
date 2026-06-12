@@ -3,6 +3,7 @@ role: closer
 ideal_count: [2, 4]
 data_band: none
 comparison: false
+narrative_act: resolution
 description: 'Dark navy background, four takeaway cards across: gold rule, numbered index, bold heading, two-sentence elaboration
   each'
 ---

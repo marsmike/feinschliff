@@ -90,8 +90,9 @@ def signals_from_slide(slide: dict[str, Any]) -> dict[str, Any]:
         "narrative_act":   slide.get("narrative_act"),
         "time_axis_role":  slide.get("time_axis_role"),
         "audience_mode":   slide.get("audience_mode"),
-        "diagram_kind":    slide.get("diagram_kind"),
-        "layout":          slide.get("layout"),
+        "diagram_kind":       slide.get("diagram_kind"),
+        "diagram_complexity": slide.get("diagram_complexity"),
+        "layout":             slide.get("layout"),
     }
 
 

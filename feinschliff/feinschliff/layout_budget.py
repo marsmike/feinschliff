@@ -160,7 +160,8 @@ def plan_deck_layouts(
             "narrative_act":   signals.get("narrative_act"),
             "time_axis_role":  signals.get("time_axis_role"),
             "audience_mode":   signals.get("audience_mode"),
-            "diagram_kind":    signals.get("diagram_kind"),
+            "diagram_kind":       signals.get("diagram_kind"),
+            "diagram_complexity": signals.get("diagram_complexity"),
         }
         candidates = pick_layout(
             **kwargs,

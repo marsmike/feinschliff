@@ -3,6 +3,7 @@ role: title-primary
 ideal_count: [1, 2]
 data_band: kpi
 comparison: false
+narrative_act: resolution
 description: Large action-title headline top-left, supporting paragraph left, two jumbo KPI numerals with label and caption
   right
 ---
