@@ -12,7 +12,19 @@
         "type": "object",
         "required": ["kind", "start_sec", "end_sec", "reason"],
         "properties": {
-          "kind": {"enum": ["hook_title", "word_pop", "stat_punch"]},
+          "kind": {
+            "enum": [
+              "hook_title",
+              "word_pop",
+              "stat_punch",
+              "quote_pull",
+              "static",
+              "image_card",
+              "vertical_timeline",
+              "ratio_dots",
+              "inline_chart"
+            ]
+          },
           "start_sec": {"type": "number", "minimum": 0},
           "end_sec": {"type": "number", "exclusiveMinimum": 0},
           "reason": {"type": "string", "minLength": 8},
@@ -20,14 +32,88 @@
           "vertical": {"type": "number", "minimum": 0, "maximum": 1}
         },
         "allOf": [
-          {"if": {"required": ["kind"], "properties": {"kind": {"const": "hook_title"}}},
-           "then": {"required": ["title"]}},
-          {"if": {"required": ["kind"], "properties": {"kind": {"const": "word_pop"}}},
-           "then": {"required": ["items"],
-                    "properties": {"items": {"type": "array", "minItems": 1,
-                      "items": {"type": "object", "required": ["text", "appear_sec"]}}}}},
-          {"if": {"required": ["kind"], "properties": {"kind": {"const": "stat_punch"}}},
-           "then": {"required": ["value", "caption"]}}
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "hook_title"}}},
+            "then": {"required": ["title"]}
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "word_pop"}}},
+            "then": {
+              "required": ["items"],
+              "properties": {
+                "items": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {"type": "object", "required": ["text", "appear_sec"]}
+                }
+              }
+            }
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "stat_punch"}}},
+            "then": {"required": ["value", "caption"]}
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "quote_pull"}}},
+            "then": {
+              "required": ["quote_text"],
+              "properties": {
+                "quote_text": {"type": "string"}
+              }
+            }
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "static"}}},
+            "then": {"required": ["image_path"]}
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "image_card"}}},
+            "then": {"required": ["image_path"]}
+          },
+          {
+            "if": {
+              "required": ["kind"],
+              "properties": {"kind": {"const": "vertical_timeline"}}
+            },
+            "then": {
+              "required": ["steps"],
+              "properties": {
+                "steps": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "object",
+                    "required": ["heading", "appear_sec"]
+                  }
+                }
+              }
+            }
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "ratio_dots"}}},
+            "then": {
+              "required": ["total", "marked", "polarity", "mark_at"],
+              "properties": {
+                "total": {"type": "number"},
+                "marked": {"type": "number"},
+                "mark_at": {"type": "number"},
+                "polarity": {"enum": ["positive", "negative"]}
+              }
+            }
+          },
+          {
+            "if": {"required": ["kind"], "properties": {"kind": {"const": "inline_chart"}}},
+            "then": {
+              "required": ["title", "data"],
+              "properties": {
+                "data": {
+                  "type": "array",
+                  "minItems": 2,
+                  "items": {"type": "number"}
+                }
+              }
+            }
+          }
         ]
       }
     }

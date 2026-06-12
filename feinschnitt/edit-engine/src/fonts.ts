@@ -7,5 +7,13 @@
 import {loadFont as loadArchivo} from '@remotion/google-fonts/Archivo';
 import {loadFont as loadInter} from '@remotion/google-fonts/Inter';
 
-loadArchivo('normal', {weights: ['700', '900']});
-loadInter('normal', {weights: ['500']});
+const archivo = loadArchivo('normal', {weights: ['700', '900']});
+const inter = loadInter('normal', {weights: ['500']});
+
+// Resolves when both Google Fonts are fully loaded and available to
+// measureText. Templates gate their measuring on this promise via
+// useFontsReady() to avoid caching fallback-font metrics in a chunked render.
+export const fontsReady: Promise<unknown> = Promise.all([
+  archivo.waitUntilDone(),
+  inter.waitUntilDone(),
+]);

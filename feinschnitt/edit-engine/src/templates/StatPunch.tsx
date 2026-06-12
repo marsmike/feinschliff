@@ -1,7 +1,8 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {AbsoluteFill, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import {measureText} from '@remotion/layout-utils';
 import {Beat, Theme} from '../theme';
+import {useFontsReady} from '../use-fonts-ready';
 
 const CLAMP = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -9,6 +10,7 @@ const CLAMP = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 export const StatPunch: React.FC<{beat: Beat; theme: Theme}> = ({beat, theme}) => {
   const frame = useCurrentFrame();
   const {width} = useVideoConfig();
+  const fontsLoaded = useFontsReady();
 
   // Plans come from an LLM — `value: 10` (numeric) is typical output, so
   // coerce instead of trusting the string type.
@@ -23,17 +25,22 @@ export const StatPunch: React.FC<{beat: Beat; theme: Theme}> = ({beat, theme}) =
   // Auto-fit: MEASURE the longest authored line (not the longest token — a
   // line like "$400M REVENUE" wraps otherwise) and scale so it fits ~88% of
   // frame width — never overflow (invariant 1). measureText must see the
-  // exact fontFamily string the element renders with.
+  // exact fontFamily string the element renders with. Guard behind fontsLoaded
+  // so we never cache a fallback-font measurement (would cause inter-chunk size jumps).
   const base = width * 0.32;
-  const maxLineWidth = Math.max(
-    1,
-    ...value.split('\n').map(
-      (line) =>
-        measureText({text: line, fontFamily: titleFamily, fontWeight: '900', fontSize: base})
-          .width,
-    ),
-  );
-  const fontSize = base * Math.min(1, (width * 0.88) / maxLineWidth);
+  const fontSize = useMemo(() => {
+    if (!fontsLoaded) return base; // delayRender holds the frame; this is never captured
+    const maxLineWidth = Math.max(
+      1,
+      ...value.split('\n').map(
+        (line) =>
+          measureText({text: line, fontFamily: titleFamily, fontWeight: '900', fontSize: base})
+            .width,
+      ),
+    );
+    return base * Math.min(1, (width * 0.88) / maxLineWidth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontsLoaded, value, titleFamily, base, width]);
 
   // Entrance frame counts assume fps=30 (props.py pins it).
   const valueOpacity = interpolate(frame, [0, 10], [0, 1], CLAMP);

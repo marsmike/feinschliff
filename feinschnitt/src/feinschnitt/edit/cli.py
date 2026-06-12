@@ -32,7 +32,7 @@ def _cmd_transcribe(args) -> int:
 def _cmd_lint(args) -> int:
     plan = planmod.load_plan(args.plan)
     duration = rendermod.ffprobe_meta(args.video)["duration"]
-    errors, warnings = lint_beats(plan["beats"], duration)
+    errors, warnings = lint_beats(plan["beats"], duration, base_dir=args.plan.parent)
     for w in warnings:
         print(f"warning: {w}")
     if errors:

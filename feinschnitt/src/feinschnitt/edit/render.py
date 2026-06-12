@@ -31,7 +31,7 @@ from feinschnitt.edit import props as propsmod
 from feinschnitt.edit import theme as thememod
 from feinschnitt.edit import transcribe as transcribemod
 from feinschnitt.edit import zoom as zoommod
-from feinschnitt.edit.lint import lint_beats
+from feinschnitt.edit.lint import IMAGE_KINDS, lint_beats
 from feinschnitt.edit.workdir import (mark_stage_done, stage_is_fresh,
                                       stage_key, workdir_for)
 
@@ -91,7 +91,12 @@ def ensure_proxy(video: Path, wd: Path) -> Path:
     return proxy
 
 
-def render_fingerprint(props_bytes: bytes, quality: str, source_mtime: int) -> str:
+def render_fingerprint(
+    props_bytes: bytes,
+    quality: str,
+    source_mtime: int,
+    asset_stats: list[tuple[str, int]] | None = None,
+) -> str:
     h = hashlib.sha1()
     h.update(props_bytes)
     h.update(quality.encode())
@@ -105,21 +110,63 @@ def render_fingerprint(props_bytes: bytes, quality: str, source_mtime: int) -> s
     lock_file = engine_dir() / "package-lock.json"
     if lock_file.exists():
         h.update(str(lock_file.stat().st_mtime_ns).encode())
+    if asset_stats:
+        for path, mtime_ns in asset_stats:
+            h.update(path.encode())
+            h.update(str(mtime_ns).encode())
     return h.hexdigest()
 
 
-def _stage_source(video_or_proxy: Path, engine: Path, name: str) -> str:
-    """Hardlink (or copy) the render source into the engine's public/ dir."""
+def _stage_file(src: Path, engine: Path, name: str) -> str:
+    """Hardlink (or copy) src into engine/public/<name>; unlinks first."""
     public = engine / "public"
     public.mkdir(exist_ok=True)
     dest = public / name
     if dest.exists():
         dest.unlink()
     try:
-        os.link(video_or_proxy, dest)
+        os.link(src, dest)
     except OSError:
-        shutil.copy2(video_or_proxy, dest)
+        shutil.copy2(src, dest)
     return name
+
+
+def _stage_source(video_or_proxy: Path, engine: Path, name: str) -> str:
+    """Hardlink (or copy) the render source into the engine's public/ dir."""
+    return _stage_file(video_or_proxy, engine, name)
+
+
+def _stage_assets(
+    beats: list[dict],
+    plan_dir: Path,
+    engine: Path,
+    prefix: str,
+) -> tuple[list[dict], list[tuple[str, int]]]:
+    """Stage every image beat's file into edit-engine/public/ and return
+    (beats-copy with image_path rewritten to the bare staged name,
+     [(resolved_source_path, mtime_ns), ...] for fingerprinting).
+
+    The aligned plan on disk keeps authored paths (debuggability); only the
+    props copy gets staged names.  Staged names are collision-safe per
+    video+beat: <prefix>-asset-<index><suffix>.
+    """
+    staged: list[dict] = []
+    asset_stats: list[tuple[str, int]] = []
+    for i, beat in enumerate(beats):
+        b = dict(beat)
+        if b.get("kind") in IMAGE_KINDS:
+            raw = Path(str(b.get("image_path") or ""))
+            resolved = raw if raw.is_absolute() else plan_dir / raw
+            if not resolved.is_file():
+                raise EditError(
+                    f"beat {i}: image not found during staging: {resolved}")
+            name = f"{prefix}-asset-{i}{resolved.suffix.lower()}"
+            _stage_file(resolved, engine, name)
+            b["image_path"] = name
+            asset_stats.append((str(resolved.resolve()),
+                                 resolved.stat().st_mtime_ns))
+        staged.append(b)
+    return staged, asset_stats
 
 
 def _acquire_lock() -> None:
@@ -165,7 +212,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
 
     # 1. authored plan + lint gate (before expensive transcription)
     authored = planmod.load_plan(plan_path)
-    errors, warnings = lint_beats(authored["beats"], meta["duration"])
+    errors, warnings = lint_beats(authored["beats"], meta["duration"],
+                                   base_dir=plan_path.parent)
     for w in warnings:
         print(f"lint warning: {w}", file=sys.stderr)
     if errors:
@@ -183,7 +231,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
 
     # 2b. re-lint the ALIGNED beats — alignment shifts timing and may break
     # doctrine floors (e.g. a takeover snapping under the 1.5s floor).
-    a_errors, a_warnings = lint_beats(aligned["beats"], meta["duration"])
+    a_errors, a_warnings = lint_beats(aligned["beats"], meta["duration"],
+                                      base_dir=plan_path.parent)
     for w in a_warnings:
         print(f"lint (aligned) warning: {w}", file=sys.stderr)
     if a_errors:
@@ -205,7 +254,13 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
         render_meta["width"] = int(meta["width"] * scale) // 2 * 2
         render_meta["height"] = int(meta["height"] * scale) // 2 * 2
     staged_name = _stage_source(src_for_render, engine, f"{wd.name}-{quality}.mp4")
-    props = propsmod.build_props(staged_name, aligned, zoom,
+
+    beats_for_props, asset_stats = _stage_assets(
+        aligned["beats"], plan_path.parent, engine, wd.name)
+    aligned_for_props = dict(aligned)
+    aligned_for_props["beats"] = beats_for_props
+
+    props = propsmod.build_props(staged_name, aligned_for_props, zoom,
                                  thememod.resolve_theme(brand_dir), render_meta)
     props_path = wd / f"props.{quality}.json"
     props_bytes = json.dumps(props, indent=2).encode()
@@ -215,7 +270,8 @@ def render(video: Path, plan_path: Path, quality: str = "preview",
     suffix = "preview" if quality == "preview" else "enhanced"
     out = video.with_name(f"{video.stem}.{suffix}.mp4")
     fp_marker = wd / f".render.fp.{quality}"
-    fp = render_fingerprint(props_bytes, quality, video.stat().st_mtime_ns)
+    fp = render_fingerprint(props_bytes, quality, video.stat().st_mtime_ns,
+                             asset_stats=asset_stats)
     if not force and stage_is_fresh(fp_marker, fp) and out.exists():
         print(f"render cache hit — {out}", file=sys.stderr)
         return out

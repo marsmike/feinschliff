@@ -95,3 +95,45 @@ def test_ffprobe_meta_reports_audio_presence(monkeypatch):
     meta = rendermod.ffprobe_meta(Path("/x.mp4"))
     assert meta == {"duration": 5.0, "width": 720, "height": 1280,
                     "has_audio": True}
+
+
+def _engine(tmp_path):
+    engine = tmp_path / "engine"
+    engine.mkdir()
+    return engine
+
+
+def test_stage_assets_rewrites_copy_not_input(tmp_path):
+    engine = _engine(tmp_path)
+    (tmp_path / "shot.png").write_bytes(b"img")
+    beats = [{"kind": "static", "image_path": "shot.png"},
+             {"kind": "stat_punch", "value": "1", "caption": "c"}]
+    staged, stats = rendermod._stage_assets(beats, tmp_path, engine, "vid")
+    assert staged[0]["image_path"] == "vid-asset-0.png"
+    assert beats[0]["image_path"] == "shot.png"  # input untouched (D2)
+    assert staged[1] == beats[1]
+    assert (engine / "public" / "vid-asset-0.png").read_bytes() == b"img"
+    assert len(stats) == 1 and stats[0][0].endswith("shot.png")
+
+
+def test_stage_assets_absolute_path_and_missing(tmp_path):
+    engine = _engine(tmp_path)
+    img = tmp_path / "abs.jpg"
+    img.write_bytes(b"j")
+    beats = [{"kind": "image_card", "image_path": str(img)}]
+    staged, _ = rendermod._stage_assets(beats, tmp_path / "elsewhere", engine, "v")
+    assert staged[0]["image_path"] == "v-asset-0.jpg"
+    with pytest.raises(EditError):
+        rendermod._stage_assets(
+            [{"kind": "static", "image_path": "nope.png"}], tmp_path, engine, "v")
+
+
+def test_fingerprint_changes_with_asset_mtime(tmp_path, monkeypatch):
+    monkeypatch.setenv("FEINSCHNITT_EDIT_ENGINE", str(tmp_path))
+    (tmp_path / "src").mkdir()
+    fp1 = rendermod.render_fingerprint(b"{}", "preview", 1,
+                                       asset_stats=[("/a.png", 100)])
+    fp2 = rendermod.render_fingerprint(b"{}", "preview", 1,
+                                       asset_stats=[("/a.png", 200)])
+    fp3 = rendermod.render_fingerprint(b"{}", "preview", 1)
+    assert len({fp1, fp2, fp3}) == 3

@@ -124,3 +124,105 @@ def test_verify_duration_mismatch_fails():
 
 def test_verify_duration_within_tolerance_passes():
     assert verifymod.check_durations(20.0, 20.1) == []
+
+
+def test_vertical_timeline_extension_not_capped():
+    # Craft words that span > MAX_BEAT so a non-sequence kind would be capped.
+    long_words = [
+        {"w": "they", "s": 1.0, "e": 1.2},
+        {"w": "used", "s": 1.5, "e": 1.7},
+        {"w": "chatgpt", "s": 2.0, "e": 2.4},
+        {"w": "claude", "s": 4.0, "e": 4.5},
+        {"w": "and", "s": 5.5, "e": 5.7},
+        {"w": "grok", "s": 6.5, "e": 6.9},
+        {"w": "to", "s": 7.5, "e": 7.6},
+        {"w": "build", "s": 8.0, "e": 8.5},
+    ]
+    beat = {"kind": "vertical_timeline", "start_sec": 1.0, "end_sec": 2.0,
+            "speech_anchor": "they used chatgpt claude and grok to build"}
+    out = align.align_beats([beat], long_words)[0]
+    assert out["end_sec"] > out["start_sec"] + align.MAX_BEAT
+
+
+# ---------------------------------------------------------------------------
+# M2 Task 2 — quote_pull typewriter timing
+# ---------------------------------------------------------------------------
+
+QUOTE_WORDS = [
+    {"w": "the", "s": 10.0, "e": 10.2}, {"w": "plan", "s": 10.3, "e": 10.6},
+    {"w": "was", "s": 10.7, "e": 10.9}, {"w": "never", "s": 11.0, "e": 11.4},
+    {"w": "the", "s": 11.5, "e": 11.6}, {"w": "bottleneck", "s": 11.7, "e": 12.4},
+]
+
+
+def test_quote_cps_derived_from_anchor_span():
+    quote = "The plan was never the bottleneck."
+    beat = {"kind": "quote_pull", "start_sec": 9.0, "end_sec": 11.0,
+            "speech_anchor": "the plan was never the bottleneck",
+            "quote_text": quote}
+    out = align.align_beats([beat], QUOTE_WORDS)[0]
+    expected_cps = len(quote) / (12.4 - 10.0)
+    assert abs(out["chars_per_second"] - round(expected_cps, 2)) < 0.05
+
+
+LONG_QUOTE_WORDS = [
+    {"w": "the", "s": 10.0, "e": 10.2}, {"w": "plan", "s": 10.4, "e": 10.8},
+    {"w": "was", "s": 11.0, "e": 11.3}, {"w": "never", "s": 11.6, "e": 12.1},
+    {"w": "the", "s": 12.4, "e": 12.6}, {"w": "bottleneck", "s": 12.9, "e": 13.8},
+]
+
+
+def test_quote_dwell_extends_past_max_beat():
+    quote = "The plan was never the bottleneck. The setup was."
+    beat = {"kind": "quote_pull", "start_sec": 9.0, "end_sec": 10.0,
+            "speech_anchor": "the plan was never the bottleneck",
+            "quote_text": quote}
+    out = align.align_beats([beat], LONG_QUOTE_WORDS)[0]
+    typing_finish = (out["start_sec"] + align.QUOTE_GLYPH_LEAD
+                     + len(quote) / out["chars_per_second"])
+    assert out["end_sec"] >= typing_finish + align.QUOTE_DWELL_MIN - 0.01
+    assert out["end_sec"] > out["start_sec"] + align.MAX_BEAT
+
+
+def test_quote_without_anchor_uses_fallback_cps():
+    beat = {"kind": "quote_pull", "start_sec": 1.0, "end_sec": 2.0,
+            "quote_text": "Short quote."}
+    out = align.align_beats([beat], QUOTE_WORDS)[0]
+    assert out["chars_per_second"] == align.QUOTE_CPS_FALLBACK
+
+
+def test_quote_dwell_clamped_to_duration():
+    quote = "A quote near the very end of the video that wants more dwell."
+    beat = {"kind": "quote_pull", "start_sec": 9.0, "end_sec": 10.0,
+            "speech_anchor": "the plan was never the bottleneck",
+            "quote_text": quote}
+    out = align.align_beats([beat], QUOTE_WORDS, duration=12.0)[0]
+    assert out["end_sec"] == 12.0
+
+
+def test_quote_authored_long_end_never_shortened():
+    beat = {"kind": "quote_pull", "start_sec": 9.0, "end_sec": 30.0,
+            "quote_text": "Tiny."}
+    out = align.align_beats([beat], QUOTE_WORDS)[0]
+    assert out["end_sec"] == 30.0
+
+
+def test_non_quote_kinds_unaffected_by_quote_logic():
+    beat = {"kind": "stat_punch", "start_sec": 1.0, "end_sec": 2.0,
+            "value": "10x", "caption": "c"}
+    out = align.align_beats([beat], QUOTE_WORDS)[0]
+    assert "chars_per_second" not in out
+
+
+def test_quote_extension_never_shortens_anchor_extended_end():
+    # Slow delivery + tiny quote: the quote-side end (13.2) lands BEFORE the
+    # anchor-extended end (14.8). The floor must keep 14.8 — a regression that
+    # floors on the authored end (10.0) would shrink it to 13.2.
+    slow_words = [
+        {"w": "trust", "s": 10.0, "e": 11.0}, {"w": "the", "s": 11.8, "e": 12.2},
+        {"w": "process", "s": 13.0, "e": 14.0},
+    ]
+    beat = {"kind": "quote_pull", "start_sec": 9.5, "end_sec": 10.0,
+            "speech_anchor": "trust the process", "quote_text": "Trust."}
+    out = align.align_beats([beat], slow_words)[0]
+    assert abs(out["end_sec"] - 14.8) < 0.01
