@@ -16,6 +16,8 @@ from __future__ import annotations
 import difflib
 import os
 import re
+import sys
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING, Final
@@ -228,6 +230,76 @@ def _suggest(unknown: str) -> str | None:
     return matches[0] if matches else None
 
 
+# ---------------------------------------------------------------------------
+# Font resolution
+# ---------------------------------------------------------------------------
+
+# Generic CSS family keywords — never quoted, never treated as a brand face.
+_GENERIC_FAMILIES = frozenset({
+    "serif", "sans-serif", "monospace", "cursive", "fantasy",
+    "system-ui", "ui-monospace", "ui-serif", "ui-sans-serif", "ui-rounded",
+})
+
+
+@dataclass(frozen=True)
+class BrandFonts:
+    """Brand typography for the diagram pipeline (mirror of color resolve())."""
+    body: tuple[str, ...]
+    mono: tuple[str, ...]
+
+    @property
+    def svg_body(self) -> str:
+        return _css_stack(self.body, "sans-serif")
+
+    @property
+    def svg_mono(self) -> str:
+        return _css_stack(self.mono, "monospace")
+
+    @property
+    def primary_body(self) -> str | None:
+        """First concrete (non-generic) body face, or None."""
+        return next((f for f in self.body if f.lower() not in _GENERIC_FAMILIES), None)
+
+    @property
+    def primary_mono(self) -> str | None:
+        """First concrete (non-generic) mono face, or None."""
+        return next((f for f in self.mono if f.lower() not in _GENERIC_FAMILIES), None)
+
+
+def _css_stack(families: tuple[str, ...], generic: str) -> str:
+    """CSS font-family stack: concrete faces (multi-word quoted) + one generic."""
+    names = [f"'{f}'" if " " in f else f
+             for f in families if f.lower() not in _GENERIC_FAMILIES]
+    return ", ".join([*names, generic])
+
+
+def _font_family_values(tokens: dict, key: str) -> tuple[str, ...]:
+    """Extract the font-family list for *key* (e.g. 'body', 'mono') from raw tokens."""
+    raw = (tokens.get("font-family") or {}).get(key)
+    if isinstance(raw, dict):
+        raw = raw.get("$value")
+    if isinstance(raw, (list, tuple)):
+        return tuple(str(f) for f in raw)
+    return ()
+
+
+def resolve_fonts(brand_dir: Path) -> BrandFonts:
+    """Resolve the brand's diagram typography from tokens ``font-family.body``
+    (fallback ``.display``) and ``.mono``. Missing keys/tokens degrade to the
+    bare generic family — a diagram never fails to render over fonts.
+
+    Returns a BrandFonts — svg_body/svg_mono for SVG stacks, primary_body/primary_mono
+    for the first concrete face (None when the brand has none).
+    """
+    try:
+        tokens = _load_tokens_with_extends(brand_dir)
+    except BrandBridgeError:
+        return BrandFonts(body=(), mono=())
+    body = _font_family_values(tokens, "body") or _font_family_values(tokens, "display")
+    mono = _font_family_values(tokens, "mono")
+    return BrandFonts(body=body, mono=mono)
+
+
 def relative_luminance(hex_color: str) -> float:
     """Perceived luminance 0..255 for picking readable label color."""
     h = hex_color.lstrip("#")
@@ -246,6 +318,36 @@ def label_color_for(fill_hex: str, brand_dir: Path) -> str:
     invisible labels — see fill:ink boxes in the dark-theme showcase).
     """
     return resolve("off-white", brand_dir) if relative_luminance(fill_hex) < 128 else resolve("chapter-slab", brand_dir)
+
+
+# ---------------------------------------------------------------------------
+# Shared font-fallback guard (F4)
+# ---------------------------------------------------------------------------
+
+# One WARN per (brand, face) per process — fallback never breaks a render.
+_warned_font_fallback: set[tuple[str, str]] = set()
+
+
+def font_fallback_resolvable(brand_dir: Path, face: str | None, *, detail: str) -> bool:
+    """True when *face* is fontconfig-resolvable. When it isn't, print ONE
+    ``diagram-font-fallback`` WARN per (brand, face) per process — *detail*
+    names the consumer's fallback behavior — and return False.
+    None face → True (nothing to resolve; generic stacks are always safe)."""
+    if face is None:
+        return True
+    from feinschmiede.text.measure import find_font_file
+    if find_font_file(face) is not None:
+        return True
+    # Unresolvable face — warn once per (brand, face).
+    key = (brand_dir.name, face)
+    if key not in _warned_font_fallback:
+        _warned_font_fallback.add(key)
+        print(
+            f"feinschmiede: WARN: diagram-font-fallback — brand face '{face}' "
+            f"not fontconfig-resolvable; {detail}",
+            file=sys.stderr,
+        )
+    return False
 
 
 def strip_brand_directive(dsl: str) -> tuple[str, str | None]:

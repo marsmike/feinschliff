@@ -56,6 +56,7 @@ from __future__ import annotations
 import math
 import re
 import shlex
+import sys
 from pathlib import Path
 
 from ._dsl_common import (
@@ -66,7 +67,14 @@ from ._dsl_common import (
     parse_xy as _parse_xy,
     scaled_int as _sz,
 )
-from .brand_bridge import label_color_for as _label_color_for, resolve, resolve_brand_dir, strip_brand_directive
+from .brand_bridge import (
+    font_fallback_resolvable as _font_fallback_resolvable,
+    label_color_for as _label_color_for,
+    resolve,
+    resolve_brand_dir,
+    resolve_fonts,
+    strip_brand_directive,
+)
 from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
 
 
@@ -78,6 +86,20 @@ from .text_metrics import SVG_TEXT_SIZES as _SVG_TEXT_SIZES
 _PATH_D_ALLOWED = re.compile(r"^[MmLlHhVvCcSsQqTtAaZz0-9eE\s,\.\+\-]*$")
 _MAX_POLY_POINTS = 64
 _POINT_RE = re.compile(r"^-?\d+(?:\.\d+)?,-?\d+(?:\.\d+)?$")
+
+
+def _font_stack(brand_dir: Path, *, mono: bool = False) -> str:
+    """Brand CSS font stack for SVG text. cairosvg resolves it via fontconfig
+    at render time; the trailing generic keeps unresolvable faces harmless
+    (F5: WARN once, never fail). Delegates font-availability check to the
+    shared brand_bridge.font_fallback_resolvable guard (F4)."""
+    fonts = resolve_fonts(brand_dir)
+    primary = fonts.primary_mono if mono else fonts.primary_body
+    _font_fallback_resolvable(
+        brand_dir, primary,
+        detail="diagrams render with the next family in the stack.",
+    )
+    return fonts.svg_mono if mono else fonts.svg_body
 
 
 def expand(dsl: str, brand_dir: Path, canvas_override: tuple[int, int] | None = None) -> str:
@@ -187,7 +209,7 @@ def _emit_rect(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{x + w/2}" y="{y + h/2 + 4}" font-size="{_sz(13, scale)}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
     return "".join(out)
 
@@ -207,9 +229,10 @@ def _emit_text(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
             anchor = {"left": "start", "center": "middle", "right": "end"}.get(v, v)
         elif p.startswith("color:"):
             fill = resolve(p.split(":", 1)[1], brand_dir)
+    stack = _font_stack(brand_dir, mono=(level == "mono"))
     return (
         f'<text x="{x}" y="{y}" font-size="{size}" fill="{fill}" '
-        f'text-anchor="{anchor}" font-family="sans-serif">{_escape(content)}</text>'
+        f'text-anchor="{anchor}" font-family="{stack}">{_escape(content)}</text>'
     )
 
 
@@ -227,7 +250,7 @@ def _emit_bar(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
             out.append(
                 f'<text x="{x + w//2}" y="{y - 6}" font-size="{_sz(12, scale)}" '
                 f'text-anchor="middle" fill="{ink}" '
-                f'font-family="sans-serif">{_escape(v)}</text>'
+                f'font-family="{_font_stack(brand_dir)}">{_escape(v)}</text>'
             )
     return "".join(out)
 
@@ -250,7 +273,7 @@ def _emit_axis(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
                 out.append(
                     f'<text x="{tx}" y="{y + offset}" font-size="{_sz(11, scale)}" '
                     f'text-anchor="middle" fill="{ink}" '
-                    f'font-family="sans-serif">{_escape(lab)}</text>'
+                    f'font-family="{_font_stack(brand_dir)}">{_escape(lab)}</text>'
                 )
         return "".join(out)
     out = [f'<line x1="{x}" y1="{y}" x2="{x}" y2="{y-L}" stroke="{stroke}" stroke-width="{_sz(1, scale)}"/>']
@@ -275,7 +298,7 @@ def _emit_legend(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(f'<rect x="{cx}" y="{y - label_y_offset}" width="{swatch}" height="{swatch}" fill="{fill}"/>')
         out.append(
             f'<text x="{cx + label_inset}" y="{y}" font-size="{_sz(11, scale)}" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
         cx += column_stride
     return "".join(out)
@@ -293,7 +316,7 @@ def _emit_circle(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{cx}" y="{cy + 4}" font-size="{_sz(13, scale)}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
     return "".join(out)
 
@@ -317,7 +340,7 @@ def _emit_ellipse(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{cx}" y="{cy + 4}" font-size="{_sz(13, scale)}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
     return "".join(out)
 
@@ -775,7 +798,7 @@ def _emit_brace(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{lx:.1f}" y="{ly:.1f}" font-size="{_sz(13, scale)}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
     return "".join(out)
 
@@ -849,7 +872,7 @@ def _emit_callout(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{bx + bw/2}" y="{by + bh/2 + 5}" font-size="{_sz(14, scale)}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(bubble_text)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(bubble_text)}</text>'
         )
     return "".join(out)
 
@@ -895,7 +918,7 @@ def _emit_swatch_grid(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         )
         out.append(
             f'<text x="{cx + label_inset}" y="{cy + label_y_offset}" font-size="{_sz(12, scale)}" fill="{label_color}" '
-            f'font-family="sans-serif">{_escape(label.strip())}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label.strip())}</text>'
         )
     return "".join(out)
 
@@ -936,7 +959,7 @@ def _emit_label_box(line: str, brand_dir: Path, *, scale: float = 1.0) -> str:
         out.append(
             f'<text x="{x + w/2}" y="{y + h/2 + size/3}" font-size="{size}" '
             f'text-anchor="middle" fill="{ink}" '
-            f'font-family="sans-serif">{_escape(label)}</text>'
+            f'font-family="{_font_stack(brand_dir)}">{_escape(label)}</text>'
         )
     return "".join(out)
 
@@ -970,7 +993,6 @@ def _wrap_svg(canvas: _Canvas, body: list[str]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(prog="python -m feinschmiede.diagrams.svg_expand")
     parser.add_argument("input", type=Path, help="Path to .svg.dsl source")

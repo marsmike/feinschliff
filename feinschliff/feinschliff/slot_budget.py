@@ -33,10 +33,13 @@ import sys
 from dataclasses import dataclass
 from collections.abc import Sequence
 
-from feinschliff.dsl.parser import DSLNode, CompoundDef
+from feinschliff.dsl.parser import DSLNode, CompoundDef, parse_xy
+from feinschliff.dsl.style_resolve import resolve_node_style, text_insets_emu
 from feinschmiede.dsl.tokens import Tokens
+from feinschmiede.geometry import units
 from feinschliff.textfit import (
     chars_per_line as _cpl,
+    has_real_metrics as _has_real_metrics,
     register_font_metrics as _register_font_metrics,
     supported_fonts as _supported_fonts,
 )
@@ -64,12 +67,6 @@ def register_tokens_font_metrics(tokens) -> None:
             continue
 
 
-# Design-px → EMU and pt legacy defaults (1920px / 13.33in baseline).
-# When tokens declare slide.width_emu, compute_slot_budgets derives per-budget
-# scale from that value instead — see SlotBudget.emu_per_px / px_to_pt fields.
-_EMU_PER_PX: float = 6350.0
-_PX_TO_PT: float = 0.5
-
 # Slot interpolation — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{([^{}]+)\}\}")
 # Normalise array indices: cells[0].heading → cells[].heading
@@ -91,13 +88,25 @@ class SlotBudget:
     height_px: float        # maxheight in design-px (0 = unconstrained)
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
-    emu_per_px: float = 6350.0  # design-px → EMU scale (derived from tokens slide.width_emu)
-    px_to_pt: float = 0.5       # design-px → pt scale (emu_per_px / 12700)
+    x_px: float = 0.0       # slot origin x in design-px (from DSL pos_args "X,Y")
+    y_px: float = 0.0       # slot origin y in design-px (from DSL pos_args "X,Y")
+    autoshrink: bool = False  # emitter will shrink to fit (10pt floor) when True
+    inset_w_emu: int = 0    # total horizontal text-frame inset the emitter subtracts from fit envelope (both sides summed), mirroring pptx_emit's padding rules
+    inset_h_emu: int = 0    # total vertical text-frame inset (both sides summed)
+    emu_per_px: float = units.EMU_PER_PX_BASELINE  # design-px → EMU scale (derived from tokens slide.width_emu)
+    px_to_pt: float = units.PX_TO_PT_BASELINE       # design-px → pt scale (emu_per_px / EMU_PER_PT)
 
     # ── derived geometry ──────────────────────────────────────────────────
     @property
-    def size_pt(self) -> float:
+    def font_size_pt(self) -> float:
+        """Rendered font size in pt — size_px at the build's px→pt scale,
+        identical to what pptx_emit's Pt() conversion produces."""
         return self.size_px * self.px_to_pt
+
+    @property
+    def size_pt(self) -> float:
+        """Deprecated alias for :attr:`font_size_pt` (one release)."""
+        return self.font_size_pt
 
     @property
     def width_emu(self) -> int:
@@ -110,7 +119,7 @@ class SlotBudget:
     @property
     def chars_per_line(self) -> int:
         """Estimated characters that fit on one wrapped line."""
-        return _cpl(self.font_family, self.size_pt, self.bold, self.width_emu)
+        return _cpl(self.font_family, self.font_size_pt, self.bold, self.width_emu)
 
     @property
     def max_lines(self) -> int:
@@ -174,6 +183,31 @@ def _best_font(font_family: list[str]) -> str:
             file=sys.stderr,
         )
     return "default"
+
+
+def _budget_face(font_family: list[str], weight: int) -> tuple[str, bool]:
+    """The (face, bold) textfit should model for this budget — the same face
+    the emitter's fit paths use, whenever textfit can actually model it.
+
+    Priority:
+    1. The emitter's face (family[0] + weight suffix via pptx_emit._resolve_face)
+       when it is registered/ratio-table-known or has real measured metrics —
+       keeps gate predictions on the same glyph widths the emitter fits with.
+    2. Otherwise today's fallback walk (_best_font + _bold_for_weight) so
+       fallback-list brands and metric-less environments are unchanged.
+
+    Named weight-variant faces (e.g. "Open Sans SemiBold" at weight 600) are
+    rarely in the table or measurable, so they fall through to path 2 until
+    registered.
+    """
+    if font_family:
+        # Lazy import: pptx_emit pulls python-pptx/PIL — only needed here.
+        from feinschliff.dsl.pptx_emit import _resolve_face
+        face, bold = _resolve_face(font_family[0], weight)
+        if face in _supported_fonts() or _has_real_metrics(face, bold):
+            return face, bold
+    return (_best_font(font_family) if font_family else "default",
+            _bold_for_weight(weight))
 
 
 def compute_slot_budgets(
@@ -243,8 +277,8 @@ def compute_slot_budgets(
         width_emu_token = tokens.slide("width_emu")
     except Exception:
         width_emu_token = 0
-    emu_per_px = (width_emu_token / canvas_w) if width_emu_token else _EMU_PER_PX
-    px_to_pt = emu_per_px / 12700.0
+    emu_per_px = units.emu_per_px(width_emu_token, canvas_w)
+    px_to_pt = emu_per_px / units.EMU_PER_PT
 
     for node in nodes:
         if node.kind != "text":
@@ -255,6 +289,13 @@ def compute_slot_budgets(
         slot = _extract_single_slot(label)
         if slot is None:
             continue
+
+        x_px = y_px = 0.0
+        if node.pos_args:
+            try:
+                x_px, y_px = parse_xy(node.pos_args[0])
+            except ValueError:
+                pass
 
         style_name = node.kw_args.get("style", "body")
         maxwidth_str = node.kw_args.get("maxwidth")
@@ -280,12 +321,15 @@ def compute_slot_budgets(
             )
             height_px = 0.0
 
+        # resolve_node_style raises on unknown style/color/weight/size tokens —
+        # such nodes are unbudgetable, skip them (the emitter will fail loudly on the same token).
         try:
-            resolved = tokens.resolve_style(style_name)
+            resolved = resolve_node_style(node, tokens, px_to_pt=px_to_pt)
         except (KeyError, ValueError):
             continue
 
-        font_name = _best_font(resolved.font_family) if resolved.font_family else "default"
+        font_name, bold = _budget_face(resolved.font_family, resolved.weight)
+        inset_w, inset_h = text_insets_emu(node, emu_per_px)
         budget = SlotBudget(
             slot=slot,
             style=style_name,
@@ -294,7 +338,12 @@ def compute_slot_budgets(
             width_px=width_px,
             height_px=height_px,
             font_family=font_name,
-            bold=_bold_for_weight(resolved.weight),
+            bold=bold,
+            x_px=x_px,
+            y_px=y_px,
+            autoshrink=str(node.kw_args.get("autoshrink", "")).lower() == "true",
+            inset_w_emu=inset_w,
+            inset_h_emu=inset_h,
             emu_per_px=emu_per_px,
             px_to_pt=px_to_pt,
         )

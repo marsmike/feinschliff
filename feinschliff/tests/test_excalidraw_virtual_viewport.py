@@ -25,7 +25,7 @@ def _stub_render(monkeypatch):
     """Bypass real rendering — these tests don't care about the PNG."""
     monkeypatch.setattr(
         "feinschmiede.diagrams.render.render",
-        lambda src, out: out.write_bytes(b"\x89PNG\r\n\x1a\n") or out,
+        lambda src, out, **_kw: out.write_bytes(b"\x89PNG\r\n\x1a\n") or out,
     )
 
 

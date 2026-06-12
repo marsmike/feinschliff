@@ -25,6 +25,8 @@ from feinschmiede.text import measure as _measure
 
 
 # Default scale for token sets without slide.width_emu: 12192000 EMU / 1920 px.
+# safe vs other tests' scale rebinding: these tokens lack slide.width_emu, so
+# build_presentation resets the module scale to this baseline on every call.
 _EMU_PER_PX = 6350
 # PowerPoint default text-frame insets (EMU): lIns/rIns and tIns/bIns.
 _DEFAULT_INSET_W = 91440 + 91440

@@ -19,13 +19,19 @@ import json
 from html import escape
 from itertools import pairwise
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import rough
 
-from .text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from .brand_bridge import font_fallback_resolvable, resolve_fonts
+from .text_metrics import char_width_em_for as _char_width_em_for
+
+if TYPE_CHECKING:
+    from .brand_bridge import BrandFonts
 
 
-def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
+def render_excalidraw(src: Path, out: Path, *, style: str = "clean",
+                      brand_dir: Path | None = None) -> Path:
     """Render `.excalidraw` JSON at `src` to PNG at `out` via rough + cairosvg.
 
     Style modes (one code path, one set of opt selectors):
@@ -35,7 +41,24 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
                   upstream plugin enforces as a hard rule.
       - "sketchy": roughness=1 with multi-stroke — whiteboard / hand-drawn
                   aesthetic.
+
+    When brand_dir is supplied, Normal (fontFamily=2) and Code (fontFamily=3)
+    text elements use the brand's typographic faces rather than Excalidraw's
+    built-in Helvetica/Cascadia defaults (F3). The .excalidraw JSON stays
+    upstream-valid — font enums are never mutated, substitution is render-only.
     """
+    fonts: BrandFonts | None = None
+    if brand_dir is not None:
+        fonts = resolve_fonts(brand_dir)
+        body_ok = font_fallback_resolvable(
+            brand_dir, fonts.primary_body,
+            detail="the rough render keeps Excalidraw's default faces.")
+        mono_ok = font_fallback_resolvable(
+            brand_dir, fonts.primary_mono,
+            detail="the rough render keeps Excalidraw's default code face.")
+        if not (body_ok and mono_ok):
+            fonts = None  # true fallback: render exactly as today
+
     data = json.loads(src.read_text(encoding="utf-8"))
     elements = [e for e in data.get("elements", []) if not e.get("isDeleted")]
     if not elements:
@@ -45,13 +68,13 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
     app_state = data.get("appState", {})
     bg = app_state.get("viewBackgroundColor") or "#ffffff"
     pad = 40
-    mn_x, mn_y, mx_x, mx_y = _bbox(elements)
+    mn_x, mn_y, mx_x, mx_y = _bbox(elements, fonts)
     canvas_w = int(mx_x - mn_x + pad * 2)
     canvas_h = int(mx_y - mn_y + pad * 2)
     # Shift everything into positive space.
     tx, ty = pad - mn_x, pad - mn_y
 
-    svg = _compose_svg(elements, elements_by_id, canvas_w, canvas_h, tx, ty, bg, style)
+    svg = _compose_svg(elements, elements_by_id, canvas_w, canvas_h, tx, ty, bg, style, fonts)
 
     import cairosvg
     cairosvg.svg2png(bytestring=svg.encode("utf-8"), write_to=str(out),
@@ -59,9 +82,12 @@ def render_excalidraw(src: Path, out: Path, *, style: str = "clean") -> Path:
     return out
 
 
-def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
+def _bbox(elements: list[dict], fonts: "BrandFonts | None" = None) -> tuple[float, float, float, float]:
     mn_x = mn_y = float("inf")
     mx_x = mx_y = float("-inf")
+    # Refined char-width ratio: use the brand face's measured ratio when
+    # available, else the 0.62em heuristic (F4).
+    char_em = _char_width_em_for(fonts.primary_body if fonts is not None else None)
     for e in elements:
         x, y = e.get("x", 0), e.get("y", 0)
         w, h = e.get("width", 0), e.get("height", 0)
@@ -79,9 +105,9 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
                 lh = float(e.get("lineHeight", 1.25))
                 lines = max(1, e.get("text", "").count("\n") + 1)
                 h = fs * lh * lines
-                # rough estimate of text width — 0.62em per char (shared with
-                # the overflow validator via text_metrics.CHAR_WIDTH_EM)
-                w = fs * _CHAR_WIDTH_EM * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
+                # char-width estimate: measured brand-face ratio (F4) or
+                # 0.62em heuristic (text_metrics.CHAR_WIDTH_EM fallback)
+                w = fs * char_em * max((len(line) for line in e.get("text", "").splitlines() or [""]), default=0)
             mn_x, mn_y = min(mn_x, x), min(mn_y, y)
             mx_x, mx_y = max(mx_x, x + abs(w)), max(mx_y, y + abs(h))
     if mn_x == float("inf"):
@@ -89,7 +115,8 @@ def _bbox(elements: list[dict]) -> tuple[float, float, float, float]:
     return mn_x, mn_y, mx_x, mx_y
 
 
-def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean") -> str:
+def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean",
+                 fonts: "BrandFonts | None" = None) -> str:
     g = rough.RoughGenerator()
     body = [f'<rect x="0" y="0" width="{w}" height="{h}" fill="{bg}"/>']
 
@@ -124,7 +151,7 @@ def _compose_svg(elements, by_id, w, h, tx, ty, bg, style: str = "clean") -> str
     # Second pass: text (top layer, after all shapes).
     for e in elements:
         if e.get("type") == "text":
-            body.append(_emit_text(e, by_id, tx, ty))
+            body.append(_emit_text(e, by_id, tx, ty, fonts))
 
     return (
         f'<?xml version="1.0" encoding="UTF-8"?>'
@@ -287,11 +314,12 @@ def _arrowhead(x1: float, y1: float, x2: float, y2: float,
     return f'<polygon points="{pts}" fill="{stroke}" stroke="{stroke}" stroke-linejoin="round"/>'
 
 
-def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
+def _emit_text(e: dict, by_id: dict, tx: float, ty: float,
+               fonts: "BrandFonts | None" = None) -> str:
     text = e.get("text") or ""
     fs = e.get("fontSize") or 16
     fill = e.get("strokeColor") or "#000000"
-    font = _font_family_name(e.get("fontFamily"))
+    font = _font_family_name(e.get("fontFamily"), fonts)
     lines = text.split("\n") if "\n" in text else [text]
     line_h = fs * 1.2
 
@@ -329,8 +357,15 @@ def _emit_text(e: dict, by_id: dict, tx: float, ty: float) -> str:
     )
 
 
-def _font_family_name(idx) -> str:
-    """Map Excalidraw fontFamily index to a CSS font stack."""
+def _font_family_name(idx, fonts: "BrandFonts | None" = None) -> str:
+    """Map an Excalidraw fontFamily index to a CSS stack. With brand fonts
+    resolved (F3), 'Normal' (2) and 'Code' (3) take the brand faces; the
+    hand-drawn face (1) stays Excalidraw's own."""
+    if fonts is not None:
+        if (idx or 2) == 2 and fonts.primary_body is not None:
+            return fonts.svg_body
+        if idx == 3 and fonts.primary_mono is not None:
+            return fonts.svg_mono
     return {
         1: "Virgil, Cascadia, sans-serif",       # Excalidraw "hand-drawn"
         2: "Helvetica, Arial, sans-serif",       # "Normal"

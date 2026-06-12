@@ -284,3 +284,28 @@ def auto_bind_slots(
             _bind(name, query)
 
     return out
+
+
+def warn_overbudget_slots(ctx: dict, *, layout_path, slide_index: int) -> None:
+    """Cheap pre-gate: compare bound slot lengths against the layout's
+    front-matter `chars` budgets and print an OVERBUDGET warning per breach.
+    Advisory only — the authoritative check is the textfit overflow gate."""
+    import sys
+    from pathlib import Path
+
+    from feinschliff.layout_profile import ProfileError, load_profile
+
+    try:
+        profile = load_profile(Path(layout_path))
+    except (ProfileError, OSError):
+        return
+    for name, meta in (profile.get("slots") or {}).items():
+        chars = meta.get("chars") if isinstance(meta, dict) else None
+        value = ctx.get(name)
+        if (isinstance(chars, int) and chars > 0
+                and isinstance(value, str) and len(value) > chars):
+            print(
+                f"deck build: WARN: OVERBUDGET slot={name} bound={len(value)} "
+                f"chars budget={chars} (slide {slide_index})",
+                file=sys.stderr,
+            )

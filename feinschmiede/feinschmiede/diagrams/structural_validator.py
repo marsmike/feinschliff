@@ -53,7 +53,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from feinschmiede.diagnostics import Defect, DefectKind, Severity
-from feinschmiede.diagrams.text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM
+from feinschmiede.diagrams.text_metrics import CHAR_WIDTH_EM as _CHAR_WIDTH_EM  # 0.62 heuristic: no brand context reaches _measure_text today; see text_metrics.char_width_em_for (F4)
 
 
 # Font metrics approximate what Excalidraw renders at runtime. The DSL uses
