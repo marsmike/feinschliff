@@ -100,8 +100,18 @@ def _native_sidecar_ref(payload: bytes, ext: str, native_dir: Path | None,
     # Unconditional write: the slotify pass REWRITES sidecars in place
     # (planting {{ text_N }} templates), so an exists-skip would freeze a
     # previous run's slotified state under the fresh payload's hash name —
-    # re-derives could never refresh it.
-    target.write_bytes(payload)
+    # re-derives could never refresh it. Write-to-temp + atomic rename:
+    # parallel decompile workers deriving sibling slides can hit the same
+    # content-hash name simultaneously (shared template chrome) — a direct
+    # write would interleave the two byte streams.
+    import os
+    import tempfile
+    fd, tmp = tempfile.mkstemp(dir=native_dir, prefix=f".{name}.")
+    try:
+        os.write(fd, payload)
+    finally:
+        os.close(fd)
+    os.replace(tmp, target)
     return f"{(native_rel or 'native').rstrip('/')}/{name}"
 
 
