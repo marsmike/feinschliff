@@ -4,6 +4,7 @@ import {
   interpolate, staticFile, useCurrentFrame, useVideoConfig,
 } from 'remotion';
 import {Beat, EditedVideoProps, Theme, ZoomWindow} from './theme';
+import {Captions} from './templates/Captions';
 import {HookTitle} from './templates/HookTitle';
 import {ImageCard} from './templates/ImageCard';
 import {InlineChart} from './templates/InlineChart';
@@ -80,7 +81,7 @@ const takeoverRuns = (beats: Beat[]): Array<{start: number; end: number}> => {
   return runs;
 };
 
-export const EditedVideo: React.FC<EditedVideoProps> = ({source, beats, zoom, theme}) => {
+export const EditedVideo: React.FC<EditedVideoProps> = ({source, beats, zoom, theme, captions}) => {
   const {fps, width, height} = useVideoConfig();
   const scale = useSpeakerScale(zoom);
   // source is a FILENAME relative to edit-engine/public/ (the Python orchestrator
@@ -136,6 +137,10 @@ export const EditedVideo: React.FC<EditedVideoProps> = ({source, beats, zoom, th
           </Sequence>
         );
       })}
+      {/* Captions — FINAL layer, above takeovers AND overlays. Suppression
+          already happened in Python (captions.py); this layer renders
+          whatever it receives. */}
+      <Captions chunks={captions ?? []} theme={theme} />
     </AbsoluteFill>
   );
 };
