@@ -1,7 +1,8 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import {measureText} from '@remotion/layout-utils';
 import {Beat, Theme} from '../theme';
+import {useFontsReady} from '../use-fonts-ready';
 
 // Heavy multi-layer shadow so the lockup stays legible over arbitrary video.
 const SHADOW = '0 4px 24px rgba(0,0,0,0.65), 0 1px 4px rgba(0,0,0,0.8)';
@@ -23,6 +24,7 @@ const titleScale = (longestLine: number): number => {
 export const HookTitle: React.FC<{beat: Beat; theme: Theme}> = ({beat, theme}) => {
   const frame = useCurrentFrame();
   const {width, height} = useVideoConfig();
+  const fontsLoaded = useFontsReady();
 
   // Plans come from an LLM — coerce instead of trusting the string type.
   const kicker = String(beat.kicker ?? '').trim();
@@ -38,16 +40,22 @@ export const HookTitle: React.FC<{beat: Beat; theme: Theme}> = ({beat, theme}) =
   const stepped = width * 0.13 * titleScale(longestLine);
   // MEASURE the longest line at the stepped size and clamp continuously to
   // ~88% of frame width — a 26-char German compound noun must still fit
-  // (invariant 1). measureText must see the exact rendered fontFamily.
-  const maxLineWidth = Math.max(
-    1,
-    ...lines.map(
-      (line) =>
-        measureText({text: line, fontFamily: titleFamily, fontWeight: '900', fontSize: stepped})
-          .width,
-    ),
-  );
-  const fontSize = stepped * Math.min(1, (width * 0.88) / maxLineWidth);
+  // (invariant 1). measureText must see the exact rendered fontFamily. Guard
+  // behind fontsLoaded so we never cache a fallback-font measurement (would
+  // cause inter-chunk size jumps).
+  const fontSize = useMemo(() => {
+    if (!fontsLoaded) return stepped; // delayRender holds the frame; this is never captured
+    const maxLineWidth = Math.max(
+      1,
+      ...lines.map(
+        (line) =>
+          measureText({text: line, fontFamily: titleFamily, fontWeight: '900', fontSize: stepped})
+            .width,
+      ),
+    );
+    return stepped * Math.min(1, (width * 0.88) / maxLineWidth);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fontsLoaded, title, titleFamily, stepped, width]);
 
   // Entrance frame counts assume fps=30 (props.py pins it).
   const kickerOpacity = interpolate(frame, [0, 8], [0, 1], CLAMP);

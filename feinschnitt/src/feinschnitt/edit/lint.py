@@ -36,6 +36,8 @@ REQUIRED_FIELDS: dict[str, tuple[str, ...]] = {
 
 # Overlays ride on the speaker; takeovers replace the frame.
 # Note: takeover-overlap is handled by the engine's coverage underlay (M2 Task 4).
+# Mirror: KNOWN_KINDS − OVERLAY_KINDS must equal TAKEOVER_KINDS in
+# feinschnitt/edit-engine/src/EditedVideo.tsx — update both when adding a kind.
 OVERLAY_KINDS = {"hook_title", "word_pop", "image_card", "ratio_dots", "inline_chart"}
 # Multi-item kinds where end_sec spans an enumeration (alignment never caps these).
 SEQUENCE_KINDS = {"word_pop", "vertical_timeline"}

@@ -5,6 +5,8 @@ import {
 } from 'remotion';
 import {Beat, EditedVideoProps, Theme, ZoomWindow} from './theme';
 import {HookTitle} from './templates/HookTitle';
+import {QuotePull} from './templates/QuotePull';
+import {StaticTakeover} from './templates/StaticTakeover';
 import {StatPunch} from './templates/StatPunch';
 import {WordPop} from './templates/WordPop';
 
@@ -14,7 +16,21 @@ const TEMPLATES: Record<string, React.FC<{beat: Beat; theme: Theme}>> = {
   hook_title: HookTitle,
   word_pop: WordPop,
   stat_punch: StatPunch,
+  quote_pull: QuotePull,
+  static: StaticTakeover,
 };
+
+// Takeovers replace the frame. Every new takeover kind MUST be added here
+// or the speaker will flicker through transition frames between beats.
+// Must equal KNOWN_KINDS − OVERLAY_KINDS in feinschnitt/src/feinschnitt/edit/lint.py.
+const TAKEOVER_KINDS = new Set(['stat_punch', 'quote_pull', 'static', 'vertical_timeline']);
+
+// Adjacent takeover beats whose gap is at most this many seconds are covered
+// by ONE underlay run (closes the boundary between back-to-back takeovers).
+const TAKEOVER_CHAIN_GAP_SEC = 0.6;
+// The underlay starts this much before the first beat of a run and ends this
+// much after the last one, hiding entrance/exit transition frames.
+const TAKEOVER_PAD_SEC = 0.1;
 
 const HOOK_SETTLE_SEC = 1.6; // open punched-in, ease out — never a static cold frame
 const EASE = Easing.bezier(0.4, 0, 0.2, 1);
@@ -38,6 +54,24 @@ const useSpeakerScale = (zoom: ZoomWindow[]): number => {
   return scale;
 };
 
+// Runs of consecutive takeover beats: sort by start, chain beats whose gap is
+// ≤ TAKEOVER_CHAIN_GAP_SEC, so one bg slab spans each back-to-back cluster.
+const takeoverRuns = (beats: Beat[]): Array<{start: number; end: number}> => {
+  const runs: Array<{start: number; end: number}> = [];
+  const takeovers = beats
+    .filter((b) => TAKEOVER_KINDS.has(b.kind))
+    .sort((a, b) => a.start_sec - b.start_sec);
+  for (const b of takeovers) {
+    const last = runs[runs.length - 1];
+    if (last && b.start_sec - last.end <= TAKEOVER_CHAIN_GAP_SEC) {
+      last.end = Math.max(last.end, b.end_sec);
+    } else {
+      runs.push({start: b.start_sec, end: b.end_sec});
+    }
+  }
+  return runs;
+};
+
 export const EditedVideo: React.FC<EditedVideoProps> = ({source, beats, zoom, theme}) => {
   const {fps, width, height} = useVideoConfig();
   const scale = useSpeakerScale(zoom);
@@ -59,9 +93,31 @@ export const EditedVideo: React.FC<EditedVideoProps> = ({source, beats, zoom, th
           />
         ) : null}
       </AbsoluteFill>
+      {/* Coverage underlay — one static theme.bg slab under each run of
+          takeover beats, padded by TAKEOVER_PAD_SEC on both sides. Invariant:
+          per-template backdrops never animate (full opacity from frame 0); the
+          underlay closes the entrance/exit gaps around and between adjacent
+          takeover Sequences so the speaker can never flash through. */}
+      {takeoverRuns(beats).map((run, i) => {
+        const from = Math.max(0, Math.round((run.start - TAKEOVER_PAD_SEC) * fps));
+        const to = Math.round((run.end + TAKEOVER_PAD_SEC) * fps);
+        return (
+          <Sequence key={`underlay-${i}`} from={from} durationInFrames={Math.max(1, to - from)}>
+            <AbsoluteFill style={{backgroundColor: theme.bg}} />
+          </Sequence>
+        );
+      })}
       {/* Beats render ABOVE the zoom wrapper so overlays are never cropped
-          by a punch-in. Do not move them inside the scaled fill. */}
-      {beats.map((beat, i) => {
+          by a punch-in. Do not move them inside the scaled fill.
+          Overlays always paint above takeovers; without this, plan array
+          order silently decided visibility. Partition beats: takeovers first,
+          then overlays (non-takeovers). Each group preserves array order.
+          key is the ORIGINAL index so React can reconcile stably across
+          re-renders regardless of partition index. */}
+      {[
+        ...beats.map((beat, i) => ({beat, i})).filter(({beat}) => TAKEOVER_KINDS.has(beat.kind)),
+        ...beats.map((beat, i) => ({beat, i})).filter(({beat}) => !TAKEOVER_KINDS.has(beat.kind)),
+      ].map(({beat, i}) => {
         const Template = TEMPLATES[beat.kind];
         if (!Template) return null;
         const from = Math.round(beat.start_sec * fps);
