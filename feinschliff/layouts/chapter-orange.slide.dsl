@@ -5,6 +5,12 @@ data_band: none
 comparison: false
 variety_exempt: true
 description: Full-bleed gold/accent background, large chapter number and title bottom-left, ghost progress counter bottom-right
+follows_not:
+  - role=chapter-opener
+follows_well:
+  - role=agenda
+  - role=closer
+  - role=content-columns
 ---
 # chapter-orange — section divider on the gold ground. Section number +
 # one-word chapter name in display, ghosted bignum counter bottom-right.

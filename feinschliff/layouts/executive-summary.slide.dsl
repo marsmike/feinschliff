@@ -3,6 +3,7 @@ role: content-columns
 ideal_count: [3, 5]
 data_band: kpi
 comparison: false
+narrative_act: situation
 description: Headline + body paragraph top; two bullet columns (insights left, next steps right) below; three KPI cells across
   bottom strip
 ---

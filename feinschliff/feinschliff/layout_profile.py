@@ -31,7 +31,8 @@ layout can never exist on disk yet be unpickable.
 The internal profile dict mirrors the keys the picker's scoring loop reads:
 ``role``, ``ideal_count`` (tuple), ``data``, ``comp``, plus the optional
 ``narrative_role`` / ``narrative_act`` / ``time_axis_role`` /
-``diagram_complexity`` / ``when_not_to_use`` / ``variety_exempt`` fields.
+``diagram_complexity`` / ``when_not_to_use`` / ``follows_not`` /
+``follows_well`` / ``variety_exempt`` fields.
 Decompiled brand-pack layouts may additionally carry content metadata —
 ``fixed_chrome`` (bool), ``chrome_text`` (bool — native chrome draws its
 own baked labels), ``description`` (str), ``chrome_subject`` (str),
@@ -146,6 +147,18 @@ def parse_profile(frontmatter_text: str, *, source: str) -> dict:
         if not isinstance(wntu, list) or not all(isinstance(r, str) for r in wntu):
             raise ProfileError(f"{source}: 'when_not_to_use' must be a list of strings")
         profile["when_not_to_use"] = wntu
+
+    follows_not = raw.get("follows_not")
+    if follows_not is not None:
+        if not isinstance(follows_not, list) or not all(isinstance(r, str) for r in follows_not):
+            raise ProfileError(f"{source}: 'follows_not' must be a list of strings")
+        profile["follows_not"] = follows_not
+
+    follows_well = raw.get("follows_well")
+    if follows_well is not None:
+        if not isinstance(follows_well, list) or not all(isinstance(r, str) for r in follows_well):
+            raise ProfileError(f"{source}: 'follows_well' must be a list of strings")
+        profile["follows_well"] = follows_well
 
     if "variety_exempt" in raw:
         ve = raw["variety_exempt"]
