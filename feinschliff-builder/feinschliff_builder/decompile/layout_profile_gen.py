@@ -159,6 +159,20 @@ _FAMILIES = frozenset({
 # Heuristic trigger patterns (see module docstring).
 _AGENDA_RE = re.compile(r"agenda|inhalt|contents", re.I)
 _CLOSER_RE = re.compile(r"thank|danke|contact|q&a$", re.I)
+# Use-case layout names (master-derived packs name layouts after their
+# slide-master use case): the NAME is authoritative over slide position.
+_TITLE_NAME_RE = re.compile(r"^(title|cover)([-_ ]|$)", re.I)
+_CHAPTER_NAME_RE = re.compile(r"^(chapter|section|divider)([-_ ]|$)", re.I)
+_CLOSER_NAME_RE = re.compile(r"^(end|closer|thank)([-_ ]|$)", re.I)
+# Template reference sheets (howto pages, design-element samples) — never
+# content or position-derived roles.
+_REFERENCE_NAME_RE = re.compile(
+    r"howto|how-to|instruction|sample|element|legend", re.I)
+
+# Native pictures at or under this canvas-area share are brand marks
+# (logos, stamps) — not illustration chrome; they must not trip the
+# decorative-divider rule, the area gate, or the chrome_subject slot.
+_MARK_AREA_SHARE = 0.03
 _QUOTE_DEFAULTS = {"“", "”", '"', "„"}
 _NUMERIC_RE = re.compile(r"^[\d.,%€$+−-]+")
 _PAGE_NUMBER_RE = re.compile(r"^\d{1,3}$")
@@ -282,6 +296,26 @@ def _parse_natives(body: str, asset_root: Path | None) -> list[tuple[str, str | 
     return natives
 
 
+def _demote_marks(
+    natives: list[tuple[str, str | None]], canvas_w: float, canvas_h: float,
+) -> list[tuple[str, str | None]]:
+    """Re-kind tiny illustration natives (≤ _MARK_AREA_SHARE of the canvas)
+    as 'mark' — flattened logo chrome on every slide must not classify as
+    decorative illustration."""
+    scale = canvas_w / _EMU_SLIDE_W
+    out = []
+    for kind, xml in natives:
+        if kind == "illustration" and xml is not None:
+            xfrm = _root_xfrm_emu(xml)
+            if xfrm is not None:
+                _x, _y, cx, cy = xfrm
+                share = (cx * scale) * (cy * scale) / (canvas_w * canvas_h)
+                if share <= _MARK_AREA_SHARE:
+                    kind = "mark"
+        out.append((kind, xml))
+    return out
+
+
 def _root_xfrm_emu(xml: str) -> tuple[float, float, float, float] | None:
     """(x, y, cx, cy) of the payload's root `<a:xfrm>` in EMU, or None when
     the root shape/group carries no usable geometry."""
@@ -354,7 +388,8 @@ def _element_tree(
             ex, ey, ew, eh = (v * scale for v in xfrm)
             line += f" @{_n(ex)},{_n(ey)} {_n(ew)}x{_n(eh)}"
             x, y = ex, ey
-        if xml is not None and kind == "illustration" and _has_baked_text(xml):
+        if (xml is not None and kind in ("illustration", "mark")
+                and _has_baked_text(xml)):
             line += " baked-text"
         entries.append((y, x, line))
     for i in images:
@@ -473,7 +508,7 @@ def classify_layout(
     sx, sy = canvas_w / 1920.0, canvas_h / 1080.0
     texts = _parse_text_slots(body)
     images = _parse_image_slots(body)
-    natives = _parse_natives(body, asset_root)
+    natives = _demote_marks(_parse_natives(body, asset_root), canvas_w, canvas_h)
     native_kinds = [k for k, _xml in natives]
     slot_roles = _assign_slot_roles(texts, canvas_h)
 
@@ -500,14 +535,20 @@ def classify_layout(
                   if len(t["default"]) <= _SHORT_DEFAULT_LEN]
     numeric_short = [t for t in short_body if _NUMERIC_RE.match(t["default"].strip())]
 
-    if slide_index == 1:
+    if slide_index == 1 or _TITLE_NAME_RE.search(layout_name):
         role, family, variety_exempt = "title-primary", "framing", True
+    elif _CHAPTER_NAME_RE.search(layout_name):
+        role, family, variety_exempt = "chapter-opener", "framing", True
     elif _AGENDA_RE.search(title_default) or _AGENDA_RE.search(layout_name):
         role, family, variety_exempt = "agenda", "framing", True
+    elif _REFERENCE_NAME_RE.search(layout_name):
+        role, family = "reference", "organizational"
     elif (any(t["default"].strip() in _QUOTE_DEFAULTS for t in texts)
           or "style:quote" in body):
         role, family = "quote", "voice"
-    elif slide_index == total_slides or _CLOSER_RE.search(title_default.strip()):
+    elif (slide_index == total_slides
+          or _CLOSER_RE.search(title_default.strip())
+          or _CLOSER_NAME_RE.search(layout_name)):
         role, family, variety_exempt = "closer", "closing", True
     elif "chart" in kinds:
         role, family, data_band, comparison = (
@@ -518,10 +559,7 @@ def classify_layout(
         role, family = "concept-diagram", "process"
     elif "illustration" in kinds and n_visible <= 2:
         # Decorative divider chrome — don't put dense facts on it.
-        role, family, fixed_chrome = "chapter-opener", "framing", True
-        when_not_to_use = [
-            "role=content-columns", "role=data-quantity", "role=data-comparison",
-        ]
+        role, family = "chapter-opener", "framing"
     elif full_bleed and n_visible <= 2:
         role, family = "title-with-visual", "image-driven"
     elif (len(short_body) >= 4
@@ -529,6 +567,16 @@ def classify_layout(
         role, family, data_band = "data-quantity", "data", "kpi"
     elif n_body >= 3:
         role, family = "content-columns", "organizational"
+
+    # Decorative-divider gate: any chapter-opener carrying illustration
+    # chrome with ≤2 visible slots is fixed chrome — regardless of whether
+    # the role came from rule 8 or a use-case layout name.
+    if (role == "chapter-opener" and "illustration" in kinds
+            and n_visible <= 2):
+        fixed_chrome = True
+        when_not_to_use = [
+            "role=content-columns", "role=data-quantity", "role=data-comparison",
+        ]
 
     # Area-based fixed-chrome gate (additive to rule 8 — role stays as
     # classified). None = some illustration geometry was undecodable; the
@@ -540,12 +588,14 @@ def classify_layout(
         when_not_to_use = base + [r for r in _CHROME_GATE_AVOID
                                   if r not in base]
 
-    # Baked-text gate: illustration chrome whose XML carries its own visible
-    # `<a:t>` labels. Independent of area/slot count — even a small chevron
-    # strip with baked STEP texts makes the overlapping text slots
-    # un-rebindable (new copy renders over the baked labels).
+    # Baked-text gate: decorative chrome whose XML carries its own visible
+    # `<a:t>` labels. Independent of area/slot count — even a mark-sized
+    # chevron with baked STEP texts makes the overlapping text slots
+    # un-rebindable (new copy renders over the baked labels). Marks count
+    # too: small ≠ text-free.
     chrome_text = any(
-        kind == "illustration" and xml is not None and _has_baked_text(xml)
+        kind in ("illustration", "mark") and xml is not None
+        and _has_baked_text(xml)
         for kind, xml in natives
     )
 

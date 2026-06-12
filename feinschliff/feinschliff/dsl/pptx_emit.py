@@ -330,7 +330,23 @@ def _duotone_endpoints_for_brand(tokens) -> tuple[tuple[int, int, int], tuple[in
 
     Returns None if ink/paper tokens are missing — caller falls back to the
     image's untreated form.
+
+    A brand may bypass the heuristic entirely by declaring explicit
+    endpoints in tokens (colour-token names, resolved via the brand map)::
+
+        "picture_duotone": { "dark": "ink", "light": "accent" }
+
+    Malformed/unresolvable declarations fall through to the heuristic.
     """
+    declared = getattr(tokens, "raw", {}).get("picture_duotone")
+    if isinstance(declared, dict):
+        try:
+            return (
+                _hex_to_rgb_tuple(tokens.color(declared["dark"])),
+                _hex_to_rgb_tuple(tokens.color(declared["light"])),
+            )
+        except (KeyError, TypeError, ValueError):
+            pass  # fall through to the ink/paper heuristic
     try:
         a = _hex_to_rgb_tuple(tokens.color("ink"))
         b = _hex_to_rgb_tuple(tokens.color("paper"))
@@ -1055,18 +1071,46 @@ _PLACEHOLDER_ILLUSTRATION = (
 
 
 def _placeholder_image_path(ctx: EmitContext) -> "Path | None":
-    """Locate the shared gem placeholder illustration, if available.
+    """Locate the placeholder illustration, if available.
 
-    Prefers the plugin asset-fallback root (so an installed wheel resolves it
-    from packaged assets); falls back to the source-tree project assets.
+    Prefers a brand-local override (``brands/<x>/assets/illustrations/
+    placeholder.jpg``), then the plugin asset-fallback root (so an installed
+    wheel resolves it from packaged assets), then the source-tree assets.
     """
-    if ctx.asset_root_fallback is not None:
-        cand = ctx.asset_root_fallback / "illustrations" / "placeholder.jpg"
-        if cand.is_file():
-            return cand
+    for root in (ctx.asset_root, ctx.asset_root_fallback):
+        if root is not None:
+            cand = root / "illustrations" / "placeholder.jpg"
+            if cand.is_file():
+                return cand
     if _PLACEHOLDER_ILLUSTRATION.is_file():
         return _PLACEHOLDER_ILLUSTRATION
     return None
+
+
+def _placeholder_treatment(tokens) -> tuple[
+    str, tuple[int, int, int] | None, tuple[int, int, int] | None
+]:
+    """(treatment, duotone_dark, duotone_light) for the placeholder path.
+
+    A brand that configures ``picture_treatment`` keeps it — unless it
+    explicitly declares ``picture_duotone`` endpoints, which is the
+    stronger signal for placeholders (packs extending a parent inherit the
+    parent's treatment, e.g. desat, without ever choosing it). With no
+    treatment configured ("none"), the shared placeholder auto-duotones to
+    the brand endpoints — same policy `_emit_picture` applies to
+    plugin-fallback images — so a missing image reads as brand chrome, not
+    as the same warm stock photo on every brand.
+    """
+    treatment = tokens.picture_treatment
+    declared = isinstance(
+        getattr(tokens, "raw", {}).get("picture_duotone"), dict)
+    if treatment != "none" and not declared:
+        return treatment, None, None
+    endpoints = _duotone_endpoints_for_brand(tokens)
+    if endpoints is None:
+        return treatment, None, None
+    dark, light = endpoints
+    return "duotone", dark, light
 
 
 def _emit_picture_placeholder(
@@ -1092,9 +1136,11 @@ def _emit_picture_placeholder(
         try:
             x, y = parse_xy(pos_xy)
             w, h = parse_wh(pos_wh)
+            treatment, duo_dark, duo_light = _placeholder_treatment(ctx.tokens)
             bytes_io = _prepare_picture_bytes(
                 placeholder, target_aspect=(w / h),
-                treatment=ctx.tokens.picture_treatment,
+                treatment=treatment,
+                duotone_dark=duo_dark, duotone_light=duo_light,
             )
             slide.shapes.add_picture(
                 bytes_io, _px(x), _px(y), width=_px(w), height=_px(h)
