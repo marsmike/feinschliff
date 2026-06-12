@@ -161,8 +161,10 @@ def _cache_inputs_mtime(job: LayoutJob, brand_dir: Path) -> float:
         compounds_dir = ancestor / "compounds"
         if compounds_dir.is_dir():
             candidates.extend(compounds_dir.glob("*.dsl"))
-    from feinschmiede import compounds_dir as _shared_compounds_dir
-    candidates.extend(Path(_shared_compounds_dir()).glob("*.dsl"))
+    # NOTE: shared feinschmiede compounds are deliberately NOT cache
+    # inputs — their checkout/install mtimes would force a full re-render
+    # on every fresh clone (and break hermetic cache tests). Use --force
+    # after compound changes.
     return max(p.stat().st_mtime for p in candidates if p.exists())
 
 
