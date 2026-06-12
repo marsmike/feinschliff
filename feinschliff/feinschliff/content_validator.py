@@ -31,10 +31,11 @@ _NUMERIC_ANCHOR_RE = re.compile(
 
 @dataclass
 class ContentDefect:
-    kind: str           # "title-length" | "action-verb-leading" | "vague-so-what"
+    kind: str           # "title-length" | "action-verb-leading" | "vague-so-what" | "slot-collision"
     slide_index: int    # 1-based
     slot: str           # e.g. "title", "actions[0].verb"
     message: str
+    severity: str = "fatal"  # "fatal" (aborts build) | "warn" (logged, build continues)
 
     def __str__(self) -> str:
         return f"slide {self.slide_index} [{self.kind}] {self.slot}: {self.message}"
@@ -440,6 +441,81 @@ def check_slot_overflow(
     )]
 
 
+def _rects_intersect(
+    a: tuple[float, float, float, float],
+    b: tuple[float, float, float, float],
+    *,
+    epsilon: float = 1.0,
+) -> bool:
+    """Return True when rectangles *a* and *b* overlap by more than *epsilon* px.
+
+    Each rect is (x, y, width, height) in design-px. The epsilon guard
+    prevents spurious hits from numerical adjacency (e.g. two boxes sharing
+    exactly one edge pixel).
+    """
+    ax, ay, aw, ah = a
+    bx, by, bw, bh = b
+    return (ax + epsilon < bx + bw and bx + epsilon < ax + aw
+            and ay + epsilon < by + bh and by + epsilon < ay + ah)
+
+
+def check_slot_collisions(
+    ctx: dict,
+    *,
+    slot_budgets: "dict[str, SlotBudget]",
+    chrome_bboxes: list[list[float]] | None,
+    slide_index: int,
+) -> list[ContentDefect]:
+    """Predict each bound slot's wrapped height, grow its rect, and flag
+    pairwise slot/slot and slot/chrome intersections. Severity 'warn' in
+    release 1 — promotion to fatal is a one-line change once the
+    false-positive rate over the repo brands is known.
+
+    Only bound slots (those with a value in *ctx*) are grown and checked.
+    Unbound slots are skipped — the pack-build lint owns declared-box
+    overlap analysis without content. However, declared-box overlaps
+    (pack-lint territory) also fire here once both slots are bound — bound
+    content makes the overlap real.
+    """
+    from feinschliff.textfit import measure_height_emu as _measure
+
+    rects: list[tuple[str, tuple[float, float, float, float]]] = []
+    for norm_path, raw_path, value in iter_slot_values(ctx):
+        budget = slot_budgets.get(norm_path)
+        if budget is None or not value.strip():
+            continue
+        h_emu = _measure(
+            value, font=budget.font_family, size_pt=budget.font_size_pt,
+            bold=budget.bold, width_emu=budget.width_emu,
+            line_height=budget.line_height,
+        )
+        h_px = max(budget.height_px, h_emu / budget.emu_per_px)
+        rects.append((raw_path, (budget.x_px, budget.y_px, budget.width_px, h_px)))
+
+    defects: list[ContentDefect] = []
+    for i, (slot_a, rect_a) in enumerate(rects):
+        for slot_b, rect_b in rects[i + 1:]:
+            if _rects_intersect(rect_a, rect_b):
+                defects.append(ContentDefect(
+                    kind="slot-collision", slide_index=slide_index, slot=slot_a,
+                    message=(f"predicted text rect of '{slot_a}' intersects "
+                             f"'{slot_b}' ({rect_a[2]:.0f}x{rect_a[3]:.0f}px at "
+                             f"{rect_a[0]:.0f},{rect_a[1]:.0f})"),
+                    severity="warn",
+                ))
+    for slot_name, rect in rects:
+        for bbox in chrome_bboxes or []:
+            if len(bbox) == 4 and _rects_intersect(rect, tuple(map(float, bbox))):
+                defects.append(ContentDefect(
+                    kind="slot-collision", slide_index=slide_index, slot=slot_name,
+                    message=(f"predicted text rect of '{slot_name}' overlaps baked "
+                             f"chrome at {bbox[0]:.0f},{bbox[1]:.0f} "
+                             f"{bbox[2]:.0f}x{bbox[3]:.0f}px"),
+                    severity="warn",
+                ))
+    return defects
+
+
 def _check_filler_words(
     so_what: str,
     *,
@@ -503,6 +579,7 @@ def validate_content(
     slide_index: int = 1,
     layout: str | None = None,
     slot_budgets: dict[str, SlotBudget] | None = None,
+    chrome_bboxes: list | None = None,
 ) -> list[ContentDefect]:
     """Walk the content dict; return all defects.
 
@@ -517,6 +594,11 @@ def validate_content(
     slot value in `ctx` is checked against its budget via
     ``check_slot_overflow``; this fires the ``slot-overflow`` defect class
     before any render budget is spent.
+
+    `chrome_bboxes` is an optional list of ``[x, y, w, h]`` rectangles
+    (design-px ints) read from the layout front-matter's ``chrome_bboxes``
+    key. When supplied together with *slot_budgets*, ``check_slot_collisions``
+    predicts whether any grown slot rect intersects baked chrome.
     """
     defects: list[ContentDefect] = []
 
@@ -565,6 +647,10 @@ def validate_content(
                 defects.extend(check_slot_overflow(
                     value, slot=raw_path, budget=budget, slide_index=slide_index,
                 ))
+        defects.extend(check_slot_collisions(
+            ctx, slot_budgets=slot_budgets, chrome_bboxes=chrome_bboxes,
+            slide_index=slide_index,
+        ))
 
     return defects
 

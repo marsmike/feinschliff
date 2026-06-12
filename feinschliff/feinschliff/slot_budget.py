@@ -33,7 +33,7 @@ import sys
 from dataclasses import dataclass
 from collections.abc import Sequence
 
-from feinschliff.dsl.parser import DSLNode, CompoundDef
+from feinschliff.dsl.parser import DSLNode, CompoundDef, parse_xy
 from feinschliff.dsl.style_resolve import resolve_node_style, text_insets_emu
 from feinschmiede.dsl.tokens import Tokens
 from feinschmiede.geometry import units
@@ -94,6 +94,8 @@ class SlotBudget:
     height_px: float        # maxheight in design-px (0 = unconstrained)
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
+    x_px: float = 0.0       # slot origin x in design-px (from DSL pos_args "X,Y")
+    y_px: float = 0.0       # slot origin y in design-px (from DSL pos_args "X,Y")
     autoshrink: bool = False  # emitter will shrink to fit (10pt floor) when True
     inset_w_emu: int = 0    # total horizontal text-frame inset the emitter subtracts from fit envelope (both sides summed), mirroring pptx_emit's padding rules
     inset_h_emu: int = 0    # total vertical text-frame inset (both sides summed)
@@ -294,6 +296,13 @@ def compute_slot_budgets(
         if slot is None:
             continue
 
+        x_px = y_px = 0.0
+        if node.pos_args:
+            try:
+                x_px, y_px = parse_xy(node.pos_args[0])
+            except ValueError:
+                pass
+
         style_name = node.kw_args.get("style", "body")
         maxwidth_str = node.kw_args.get("maxwidth")
         if not maxwidth_str:
@@ -336,6 +345,8 @@ def compute_slot_budgets(
             height_px=height_px,
             font_family=font_name,
             bold=bold,
+            x_px=x_px,
+            y_px=y_px,
             autoshrink=str(node.kw_args.get("autoshrink", "")).lower() == "true",
             inset_w_emu=inset_w,
             inset_h_emu=inset_h,

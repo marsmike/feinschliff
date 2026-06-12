@@ -53,7 +53,7 @@ from feinschliff.deck.orchestrate import (
     build_refurbished_deck as _build_refurbished_deck_fn,
 )
 
-from feinschliff.dsl.parser import parse_file
+from feinschliff.dsl.parser import parse_file, split_frontmatter
 from feinschmiede.dsl.tokens import load_tokens
 from feinschliff.dsl.expander import (
     interpolate_nodes,
@@ -757,9 +757,16 @@ def cmd_build(args) -> int:
                 if layout_name.endswith(".slide.dsl"):
                     layout_name = layout_name[: -len(".slide.dsl")]
                 slot_budgets = compute_slot_budgets(layout_nodes, tokens, compounds=compounds)
+                chrome_bboxes: list = []
+                try:
+                    fm_text, _ = split_frontmatter(layout_path.read_text(encoding="utf-8"))
+                    if fm_text:
+                        chrome_bboxes = (yaml.safe_load(fm_text) or {}).get("chrome_bboxes") or []
+                except Exception:
+                    chrome_bboxes = []
                 slide_defects = validate_content(
                     ctx, slide_index=slide_index, layout=layout_name,
-                    slot_budgets=slot_budgets,
+                    slot_budgets=slot_budgets, chrome_bboxes=chrome_bboxes,
                 )
                 if validate_notes is not None:
                     slide_defects.extend(validate_notes(
@@ -768,8 +775,14 @@ def cmd_build(args) -> int:
                         is_hook=(i == 0),
                         verbosity=plan_verbosity,
                     ))
-                if slide_defects:
-                    content_defects_by_slide[slide_index] = slide_defects
+                warn_defects = [d for d in slide_defects
+                                if getattr(d, "severity", "fatal") == "warn"]
+                fatal_defects = [d for d in slide_defects
+                                 if getattr(d, "severity", "fatal") != "warn"]
+                for d in warn_defects:
+                    print(f"deck build: WARN: {d}", file=sys.stderr)
+                if fatal_defects:
+                    content_defects_by_slide[slide_index] = fatal_defects
 
             _slide_t0 = _time.perf_counter()
             log_event(plan_dir, "build:slide", "start", slide=i + 1,
