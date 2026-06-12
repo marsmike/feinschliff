@@ -1845,6 +1845,38 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         fill = _resolve_fill(spPr, theme, palette={})
     else:
         fill = _resolve_fill(spPr, theme, palette)
+    if fill is None and spPr is not None and spPr.find("a:noFill", NS) is None:
+        # Master-styled shape: `<p:style><a:fillRef idx="N"><a:schemeClr
+        # val="accent1"/>` carries the fill when spPr declares none — the
+        # theme fill style at idx substitutes the ref's color for its
+        # `phClr` placeholder. Solid approximation: resolve the ref color
+        # itself (fillStyleLst[0] IS a plain phClr solid; gradient styles
+        # approximate to their base color). Without this, styled shapes
+        # silently lost their fill (spec-audit phClr gap).
+        _style = ch.find("p:style", NS)
+        _fref = _style.find("a:fillRef", NS) if _style is not None else None
+        if _fref is not None:
+            try:
+                _fidx = int(_fref.get("idx") or 0)
+            except ValueError:
+                _fidx = 0
+            if 1 <= _fidx <= 999:
+                _pal = {} if kind == "shape" else palette
+                _srgb = _fref.find("a:srgbClr", NS)
+                _scheme = _fref.find("a:schemeClr", NS)
+                if _srgb is not None and _srgb.get("val"):
+                    hx = _srgb.get("val")
+                    rgb = (int(hx[0:2], 16), int(hx[2:4], 16), int(hx[4:6], 16))
+                    rgb = _apply_color_mods(rgb, _srgb)
+                    rgb = _blend_on_white(rgb, _alpha_for_color(_srgb))
+                    fill = nearest_token(rgb, _pal)
+                elif _scheme is not None and theme.get(_scheme.get("val")):
+                    hex_str = theme[_scheme.get("val")]
+                    rgb = (int(hex_str[1:3], 16), int(hex_str[3:5], 16),
+                           int(hex_str[5:7], 16))
+                    rgb = _apply_color_mods(rgb, _scheme)
+                    rgb = _blend_on_white(rgb, _alpha_for_color(_scheme))
+                    fill = nearest_token(rgb, _pal)
     gradient = _resolve_gradient(spPr, theme, palette)
     # Vertical anchor — `<a:bodyPr anchor="ctr">` / `b` / `t`. Without
     # this the rendered text lands at frame-top even when source centers
@@ -3949,11 +3981,17 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # area-descending sort wrongly buried a large CONTENT panel beneath a smaller
     # decorative panel drawn ON TOP of it (MS Geometric: the cream content card
     # sank under the accent strip, so the whole slide read as the accent colour).
-    # Only a near-full-bleed background rect is still forced to the bottom; a
-    # STABLE sort keeps every other rect in the order PowerPoint draws it.
+    # Only a near-full-bleed background rect is still forced to the bottom.
+    # Rects interleave with shapes / pics / natives via the shared `_layers`
+    # stream below — emitting ALL rects before the pic section painted
+    # native-carried background art (Bosch slide 34's banner wave, spTree
+    # position BEFORE the tiles) on top of the content rects it underlies
+    # in the source.
     # Stroke / dash / radius are captured so framed cards + dividers round-trip.
     _canvas_area = max(1, cmap.cw * cmap.ch)
-    for r in sorted(rects, key=lambda s: 0 if (s.w * s.h) >= 0.9 * _canvas_area else 1):
+    _src_pos = {id(_s): _i for _i, _s in enumerate(shapes)}
+    _layers: list[tuple[int, list[str]]] = []
+    for r in rects:
         line = f"rect {r.x},{r.y} {r.w}x{r.h} fill:{r.fill}"
         if r.gradient is not None:
             stops, angle = r.gradient
@@ -3971,7 +4009,10 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
             blur, dist, angle, color, alpha = r.shadow
             line += (f" shadow:blur:{blur:g},dist:{dist:g},"
                      f"angle:{angle:g},color:{color},alpha:{alpha:.2f}")
-        out.append(line)
+        if (r.w * r.h) >= 0.9 * _canvas_area:
+            out.append(line)    # full-bleed background stays at the bottom
+        else:
+            _layers.append((_src_pos.get(id(r), 0), [line]))
 
     # Custom shapes (puzzle pieces, parallelograms, border paths, ring
     # sectors, etc.). When we recovered an SVG `d` string from the source
@@ -3987,9 +4028,8 @@ def emit_dsl(shapes: list[Shape], cmap: CanvasMap, layout_name: str,
     # e.g. the BSH parallelogram OUTLINE (a custGeom drawn ON TOP of the
     # photo) underneath the picture slot. Each shape's lines collect into a
     # chunk tagged with its position in `shapes` (already spTree order);
-    # the chunks emit sorted at the end.
-    _src_pos = {id(_s): _i for _i, _s in enumerate(shapes)}
-    _layers: list[tuple[int, list[str]]] = []
+    # the chunks emit sorted at the end. (`_src_pos` / `_layers` are
+    # initialised above the rect loop, which feeds the same stream.)
     for i, s in enumerate(custs, 1):
         chunk: list[str] = []
         if s.native_xml:

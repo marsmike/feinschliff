@@ -94,3 +94,47 @@ def test_roundrect_default_adj_is_16667(tmp_path):
     # spec default radius ≈ 236 * 0.16667 ≈ 39px (old bug: ≈ 24px).
     radius = float(m.group(1))
     assert 35 <= radius <= 44, f"radius {radius} not at the 16667 spec default"
+
+
+def test_style_fillref_provides_fill_when_sppr_has_none(tmp_path):
+    """A shape styled purely via <p:style><a:fillRef> (no spPr fill) must
+    not lose its fill — the phClr resolution gap from the spec audit."""
+    from pptx import Presentation
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.oxml.ns import qn
+    from pptx.util import Emu
+    from lxml import etree as _etree
+    from feinschliff_builder.decompile.pptx_svg_decompile import derive
+
+    prs = Presentation()
+    prs.slide_width = Emu(12192000)
+    prs.slide_height = Emu(6858000)
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE,
+                                 Emu(1_000_000), Emu(1_000_000),
+                                 Emu(3_000_000), Emu(1_500_000))
+    sp = shp._element
+    # python-pptx leaves spPr fill-less by default; ensure that and attach
+    # a style block referencing accent1.
+    spPr = sp.find(qn("p:spPr"))
+    for tag in ("a:solidFill", "a:noFill"):
+        el = spPr.find(qn(tag))
+        if el is not None:
+            spPr.remove(el)
+    a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    p = "http://schemas.openxmlformats.org/presentationml/2006/main"
+    style = _etree.SubElement(sp, f"{{{p}}}style")
+    for ref, idx in (("lnRef", "2"), ("fillRef", "1"),
+                     ("effectRef", "0"), ("fontRef", "minor")):
+        el = _etree.SubElement(style, f"{{{a}}}{ref}")
+        el.set("idx" if ref != "fontRef" else "idx", idx)
+        clr = _etree.SubElement(el, f"{{{a}}}schemeClr")
+        clr.set("val", "accent1")
+
+    path = tmp_path / "t.pptx"
+    prs.save(str(path))
+    dsl = derive(path, slide_idx=1, tokens_path=None,
+                 layout_name="slide-01", theme_name="t")
+    rect_lines = [ln for ln in dsl.splitlines() if ln.startswith("rect ")]
+    assert any("fill:" in ln for ln in rect_lines), \
+        f"style-fillRef shape lost its fill:\n{dsl}"
