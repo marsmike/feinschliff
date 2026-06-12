@@ -35,6 +35,7 @@ from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, CompoundDef
 from feinschmiede.dsl.tokens import Tokens
+from feinschmiede.geometry import units
 from feinschliff.textfit import (
     chars_per_line as _cpl,
     register_font_metrics as _register_font_metrics,
@@ -64,11 +65,11 @@ def register_tokens_font_metrics(tokens) -> None:
             continue
 
 
-# Design-px → EMU and pt legacy defaults (1920px / 13.33in baseline).
-# When tokens declare slide.width_emu, compute_slot_budgets derives per-budget
-# scale from that value instead — see SlotBudget.emu_per_px / px_to_pt fields.
-_EMU_PER_PX: float = 6350.0
-_PX_TO_PT: float = 0.5
+# Design-px → EMU and pt legacy defaults; values come from the shared units
+# module so there is no per-file drift.  compute_slot_budgets derives per-budget
+# scale from tokens slide.width_emu instead — see SlotBudget.emu_per_px / px_to_pt fields.
+_EMU_PER_PX: float = units.EMU_PER_PX_BASELINE
+_PX_TO_PT: float = units.PX_TO_PT_BASELINE
 
 # Slot interpolation — matches {{ slot_name }}, {{ cells[0].heading }}, etc.
 _SLOT_RE = re.compile(r"\{\{([^{}]+)\}\}")
@@ -91,8 +92,8 @@ class SlotBudget:
     height_px: float        # maxheight in design-px (0 = unconstrained)
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
-    emu_per_px: float = 6350.0  # design-px → EMU scale (derived from tokens slide.width_emu)
-    px_to_pt: float = 0.5       # design-px → pt scale (emu_per_px / 12700)
+    emu_per_px: float = units.EMU_PER_PX_BASELINE  # design-px → EMU scale (derived from tokens slide.width_emu)
+    px_to_pt: float = units.PX_TO_PT_BASELINE       # design-px → pt scale (emu_per_px / EMU_PER_PT)
 
     # ── derived geometry ──────────────────────────────────────────────────
     @property
@@ -243,8 +244,8 @@ def compute_slot_budgets(
         width_emu_token = tokens.slide("width_emu")
     except Exception:
         width_emu_token = 0
-    emu_per_px = (width_emu_token / canvas_w) if width_emu_token else _EMU_PER_PX
-    px_to_pt = emu_per_px / 12700.0
+    emu_per_px = units.emu_per_px(width_emu_token, canvas_w)
+    px_to_pt = emu_per_px / units.EMU_PER_PT
 
     for node in nodes:
         if node.kind != "text":

@@ -40,6 +40,7 @@ from pptx.util import Emu, Pt
 
 from .. import textfit
 from feinschmiede.dsl.tokens import Tokens
+from feinschmiede.geometry import units
 
 # Provider search + asset-lock pinning + HTTP materialise live in
 # feinschliff.io.image_materialise. Accessed via module attributes
@@ -66,13 +67,12 @@ class DSLError(Exception):
     """
 
 
-# Single source of truth for the legacy 13.33"×7.5" widescreen baseline used
-# by brand packs that don't declare an explicit physical slide size. Source-
-# decompiled brand packs (brand_decompile_all.py writes `slide.width_emu` /
-# `slide.height_emu` to tokens.json) override this via `_configure_slide_scale`.
-# 13.333" × 914400 EMU/in = 12192000 EMU wide.
-_LEGACY_SLIDE_WIDTH_EMU = 12_192_000
-_LEGACY_CANVAS_W = 1920
+# Legacy 13.33"×7.5" widescreen baseline for brand packs that don't declare an
+# explicit physical slide size. Values sourced from feinschmiede.geometry.units
+# (LEGACY_SLIDE_WIDTH_EMU = 12 192 000 EMU, LEGACY_CANVAS_W = 1920 px).
+# Source-decompiled brand packs override these via `_configure_slide_scale`.
+_LEGACY_SLIDE_WIDTH_EMU = units.LEGACY_SLIDE_WIDTH_EMU
+_LEGACY_CANVAS_W = units.LEGACY_CANVAS_W
 
 
 @functools.lru_cache(maxsize=1)
@@ -176,9 +176,9 @@ def _assert_font_available(family: str, brand_name: str) -> None:
         raise DSLError(msg)
     print(f"WARN: {msg}", file=sys.stderr)
 
-EMU_PER_PT = 12700           # PowerPoint standard: 1pt = 12700 EMU (914400 / 72).
-_EMU_PER_PX = _LEGACY_SLIDE_WIDTH_EMU / _LEGACY_CANVAS_W   # 6350 — default fallback
-_PX_TO_PT = _EMU_PER_PX / EMU_PER_PT                       # 0.5  — default fallback
+EMU_PER_PT = units.EMU_PER_PT
+_EMU_PER_PX = units.EMU_PER_PX_BASELINE   # default fallback; rebound per build
+_PX_TO_PT = units.PX_TO_PT_BASELINE       # default fallback; rebound per build
 _STROKE_PX_TO_PT = 0.75      # CSS px → pt for stroke widths (96/72 inverse rounded)
 
 
@@ -195,8 +195,7 @@ def _configure_slide_scale(tokens: "Tokens", canvas_w: int) -> None:
         width_emu = tokens.slide("width_emu") or _LEGACY_SLIDE_WIDTH_EMU
     except Exception:
         width_emu = _LEGACY_SLIDE_WIDTH_EMU
-    cw = canvas_w or _LEGACY_CANVAS_W
-    _EMU_PER_PX = width_emu / cw
+    _EMU_PER_PX = units.emu_per_px(width_emu, canvas_w or _LEGACY_CANVAS_W)
     _PX_TO_PT = _EMU_PER_PX / EMU_PER_PT
 _DEFAULT_PADDING_X = 100     # fallback right/left margin if brand has no slide.padding-x token
 
