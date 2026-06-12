@@ -233,13 +233,37 @@ def flatten_slide(slide, placeholder_img: Path | None) -> int:
             copied.append(clone)
 
     # 3: layout placeholders the slide doesn't instantiate (rare).
+    # Matching is two-stage: exact (type, idx) first, then remaining layout
+    # placeholders pair up with remaining same-type slide placeholders —
+    # slides authored from the master often drop the idx (PowerPoint writes
+    # `<p:ph type="body"/>`), and an exact-only match would inject duplicate
+    # prompt boxes over real content.
+    unmatched_slide = dict.fromkeys(slide_ph_keys)
+    layout_keys = []
+    for sh in layout_shapes:
+        ph = _ph(sh)
+        if ph is not None:
+            layout_keys.append((ph.get("type", "body"), ph.get("idx", "0")))
+    for key in layout_keys:
+        if key in unmatched_slide:
+            del unmatched_slide[key]
+
+    def _instantiated(ph_type, key):
+        if key in slide_ph_keys:
+            return True
+        for skey in list(unmatched_slide):
+            if skey[0] == ph_type:
+                del unmatched_slide[skey]   # consume: one slide ph per layout ph
+                return True
+        return False
+
     for sh in layout_shapes:
         ph = _ph(sh)
         if ph is None:
             continue
         ph_type = ph.get("type", "body")
         key = (ph_type, ph.get("idx", "0"))
-        if key in slide_ph_keys or ph_type in _PH_FIELD_TYPES:
+        if ph_type in _PH_FIELD_TYPES or _instantiated(ph_type, key):
             continue
         if _MACHINE_FIELD_RE.match(_all_text(sh) or ""):
             continue
@@ -249,8 +273,13 @@ def flatten_slide(slide, placeholder_img: Path | None) -> int:
             _graft_xfrm(clone, ph_lookup(master_shapes, ph_type, key[1]))
         if _is_empty_text(clone):
             _inject_prompt(clone, _prompt_for(_shape_name(clone), ph_type))
-        nvPr = ph.getparent()
-        nvPr.remove(ph)
+        # Strip the <p:ph> from the CLONE — `ph` belongs to the layout's own
+        # shape, and removing it there mutates the shared layout part: every
+        # LATER slide on this layout then sees its placeholders as plain
+        # chrome and inherits "Add Text" sample boxes over real content.
+        clone_ph = _ph(clone)
+        if clone_ph is not None:
+            clone_ph.getparent().remove(clone_ph)
         copied.append(clone)
 
     # Insert inherited shapes BELOW slide-owned shapes (start of spTree,
@@ -274,10 +303,20 @@ def flatten_slide(slide, placeholder_img: Path | None) -> int:
         if ph_type in _PH_FIELD_TYPES:
             continue
         if not _has_xfrm(sh):
-            src = (ph_lookup(layout_shapes, ph_type, idx)
-                   or ph_lookup(master_shapes, ph_type, idx))
+            # The layout's matching placeholder may itself inherit geometry
+            # from the master — graft from the first candidate that actually
+            # carries an <a:xfrm>, not merely the first same-type match.
+            candidates = [ph_lookup(layout_shapes, ph_type, idx),
+                          ph_lookup(master_shapes, ph_type, idx)]
+            src = next((c for c in candidates
+                        if c is not None and _has_xfrm(c)), None)
             _graft_xfrm(sh, src)
-        if ph_type == "pic" and placeholder_img is not None:
+        if (ph_type == "pic" and placeholder_img is not None
+                and sh.tag == qn("p:sp")
+                and sh.find(".//" + qn("a:blip")) is None):
+            # Only a genuinely EMPTY picture placeholder gets the bundled
+            # image. A <p:pic> (or any shape with a blip) IS the content —
+            # replacing it destroyed author-placed photos/illustrations.
             from pptx.util import Emu
             spPr = sh.find(qn("p:spPr"))
             xfrm = spPr.find(qn("a:xfrm")) if spPr is not None else None
