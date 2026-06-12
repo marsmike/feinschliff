@@ -166,6 +166,15 @@ def register(parser: argparse.ArgumentParser) -> None:
              "For emergency overrides only.",
     )
     p_build.add_argument(
+        "--no-image-provider",
+        action="store_true",
+        help="Ignore the brand's $image_provider: unbound image slots render "
+             "their carried default path (or the placeholder) instead of a "
+             "provider search. For showcase/fidelity builds, where a stale "
+             "asset_lock.json or image cache must never override the pack's "
+             "own assets.",
+    )
+    p_build.add_argument(
         "--slot-debug-color",
         metavar="#RRGGBB",
         help="Slot-coverage debugging: render every slot-sourced text "
@@ -543,7 +552,8 @@ def cmd_build(args) -> int:
     except ValueError as e:
         print(f"deck: {e}", file=sys.stderr)
         return 2
-    if default_brand_obj.image_provider_config:
+    if (default_brand_obj.image_provider_config
+            and not getattr(args, "no_image_provider", False)):
         cfg = default_brand_obj.image_provider_config
         provider = get_provider(cfg["kind"], cfg.get("config"))
 

@@ -207,7 +207,8 @@ def build_deck(plan_path: Path, out_pptx: Path, extra_args: list[str]) -> None:
     from feinschliff.cli.main import main as feinschliff_main
     rc = feinschliff_main(["deck", "build", str(plan_path), "-o", str(out_pptx),
                            "--skip-content-lint", "--allow-missing-assets",
-                           "--allow-diagram-warnings", *extra_args])
+                           "--allow-diagram-warnings", "--no-image-provider",
+                           *extra_args])
     if rc not in (0, None):
         sys.exit(f"deck build failed (rc={rc}) for {plan_path}")
 
