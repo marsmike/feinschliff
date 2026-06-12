@@ -10,7 +10,7 @@ from feinschnitt.edit import plan as planmod
 from feinschnitt.edit import render as rendermod
 from feinschnitt.edit import transcribe as transcribemod
 from feinschnitt.edit import verify as verifymod
-from feinschnitt.edit.lint import lint_beats
+from feinschnitt.edit.lint import lint_beats, lint_captions_config
 from feinschnitt.edit.workdir import workdir_for
 
 __all__ = ["add_parser"]
@@ -33,6 +33,8 @@ def _cmd_lint(args) -> int:
     plan = planmod.load_plan(args.plan)
     duration = rendermod.ffprobe_meta(args.video)["duration"]
     errors, warnings = lint_beats(plan["beats"], duration, base_dir=args.plan.parent)
+    if "captions" in plan:
+        errors.extend(lint_captions_config(plan["captions"]))
     for w in warnings:
         print(f"warning: {w}")
     if errors:
