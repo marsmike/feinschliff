@@ -36,6 +36,9 @@ PHRASE_CORRECTIONS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     (("feinschmieder",), ("feinschmiede",)),
     (("fineklang",), ("feinklang",)),
     (("finebild",), ("feinbild",)),
+    # 2026-06-12: M5 cold-start fixture run — Whisper (small) split the brand
+    # as "fine" + "-schnitted" (hyphenated suffix token, past-tense guess).
+    (("fine", "-schnitted"), ("feinschnitt",)),
 ]
 
 def fingerprint() -> str:
