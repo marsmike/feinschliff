@@ -393,12 +393,17 @@ def apply_slot_debug_color(nodes: list[DSLNode], color: str) -> list[DSLNode]:
 
     Slot-coverage debugging: build once with defaults, once with every slot
     bound + a debug color — text that stays brand-colored in the second
-    render is NOT slot-covered (baked chrome). MUST run BEFORE
-    `interpolate_nodes`: detection is by the node's label still carrying a
-    `{{ … }}` slot marker, which interpolation resolves away."""
+    render is NOT slot-covered (baked chrome). Replaceable pictures (path
+    carries an image slot) get a debug-coloured border via the
+    `_debug_border` kwarg the picture emitter honours. MUST run BEFORE
+    `interpolate_nodes`: detection is by the node's label / path kwarg
+    still carrying a `{{ … }}` slot marker, which interpolation resolves
+    away."""
     for n in nodes:
         if n.kind == "text" and "{{" in (n.label or ""):
             n.kw_args["color"] = color
+        elif n.kind == "picture" and "{{" in (n.kw_args.get("path") or ""):
+            n.kw_args["_debug_border"] = color
     return nodes
 
 
@@ -506,6 +511,59 @@ def _tint_slot_runs(template_xml: str, resolved_xml: str, color: str) -> str:
         rpr.remove(fill)
         rpr.insert(0, fill)
     return etree.tostring(out, encoding="unicode")
+
+
+_NATIVE_REPLACEABLE_MARKERS = ("<c:chart", "<dgm:", "relIds")
+_XFRM_RE = re.compile(
+    r'<a:off x="(-?\d+)" y="(-?\d+)"/><a:ext cx="(\d+)" cy="(\d+)"/>')
+
+
+def mark_native_replaceables(
+    nodes: list[DSLNode], color: str, *, asset_root: Path | None = None,
+    emu_to_px: float = 0.0,
+) -> list[DSLNode]:
+    """Slot-coverage debugging: outline chart / SmartArt natives.
+
+    Their data is replaceable post-export (PowerPoint edits the carried
+    part graph) but not slot-bindable — in the coverage render they get a
+    debug-coloured outline rect at the native's frame geometry so they read
+    as "replaceable here" alongside magenta slot text and bordered picture
+    slots. Requires the EMU→canvas-px scale; 0.0 disables (no geometry, no
+    mark)."""
+    import base64
+
+    if not emu_to_px:
+        return nodes
+    out: list[DSLNode] = []
+    for n in nodes:
+        out.append(n)
+        if n.kind != "native":
+            continue
+        xml: str | None = None
+        if n.kw_args.get("b64"):
+            try:
+                xml = base64.b64decode(n.kw_args["b64"]).decode("utf-8", "replace")
+            except ValueError:
+                continue
+        elif n.kw_args.get("xml_file") and asset_root is not None:
+            sidecar = asset_root / n.kw_args["xml_file"]
+            if sidecar.is_file():
+                xml = sidecar.read_text(encoding="utf-8", errors="replace")
+        if xml is None or not any(m in xml for m in _NATIVE_REPLACEABLE_MARKERS):
+            continue
+        g = _XFRM_RE.search(xml.replace("\n", ""))
+        if g is None:
+            continue
+        x, y, w, h = (float(v) * emu_to_px for v in g.groups())
+        if w < 4 or h < 4:
+            continue
+        out.append(DSLNode(
+            kind="rect",
+            pos_args=[f"{x:.0f},{y:.0f}", f"{w:.0f}x{h:.0f}"],
+            kw_args={"stroke": color, "stroke-width": "3"},
+            label=None, line_no=n.line_no, source=n.source,
+        ))
+    return out
 
 
 # ---------------------------------------------------------------------------

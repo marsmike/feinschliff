@@ -1018,6 +1018,20 @@ def _placeholder_treatment(tokens) -> tuple[
     return "duotone", dark, light
 
 
+def _apply_debug_border(node: DSLNode, shape) -> None:
+    """Slot-coverage debugging: outline a slot-bound picture in the debug
+    colour (set by apply_slot_debug_color as `_debug_border`)."""
+    color = node.kw_args.get("_debug_border")
+    if not color:
+        return
+    try:
+        from pptx.util import Pt as _Pt
+        shape.line.color.rgb = _hex_to_rgb(color)
+        shape.line.width = _Pt(4)
+    except Exception:
+        pass  # debug aid only — never block a build
+
+
 def _emit_picture_placeholder(
     slide,
     *,
@@ -1036,26 +1050,35 @@ def _emit_picture_placeholder(
 
     Used exclusively by ``_emit_picture`` for all four fallback branches.
     """
+    debug = bool(node.kw_args.get("_debug_border"))
     placeholder = _placeholder_image_path(ctx)
     if placeholder is not None:
         try:
             x, y = parse_xy(pos_xy)
             w, h = parse_wh(pos_wh)
-            treatment, duo_dark, duo_light = _placeholder_treatment(ctx.tokens)
+            if debug:
+                # Coverage render: the gem fully desaturated — the SAME boring
+                # grey image in every replaceable slot, so nothing distracts
+                # from the magenta coverage marks.
+                treatment, duo_dark, duo_light = "desat(1.0)", None, None
+            else:
+                treatment, duo_dark, duo_light = _placeholder_treatment(ctx.tokens)
             bytes_io = _prepare_picture_bytes(
                 placeholder, target_aspect=(w / h),
                 treatment=treatment,
                 duotone_dark=duo_dark, duotone_light=duo_light,
             )
-            slide.shapes.add_picture(
+            _pic = slide.shapes.add_picture(
                 bytes_io, _px(x), _px(y), width=_px(w), height=_px(h)
             )
+            _apply_debug_border(node, _pic)
             return
         except Exception:
             pass  # any load/crop failure -> brand-tonal rect below
     _emit_rect(slide, DSLNode(
         kind="rect", pos_args=[pos_xy, pos_wh],
-        kw_args={"fill": "paper-2", "stroke": "fog"},
+        kw_args={"fill": "paper-2",
+                 "stroke": node.kw_args.get("_debug_border", "fog")},
         label=None, line_no=node.line_no, source=node.source,
     ), ctx)
 
@@ -1182,6 +1205,14 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
         _pos_xy = node.pos_args[0]
         _pos_wh = node.pos_args[1]
 
+    # Slot-coverage render: every replaceable picture shows the SAME plain
+    # grey gem placeholder (uniform, non-distracting) with the debug border
+    # marking it replaceable — never the carried showcase photo.
+    if node.kw_args.get("_debug_border"):
+        _emit_picture_placeholder(slide, pos_xy=_pos_xy, pos_wh=_pos_wh,
+                                  node=node, ctx=ctx)
+        return
+
     # `query:` alongside `path:` is a layered fallback: the file wins when
     # `path` resolves; the explicit `query:` is consulted only when the
     # path misses (see the provider branch below), taking precedence over
@@ -1285,7 +1316,8 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                                           treatment=treatment,
                                           duotone_dark=duotone_dark,
                                           duotone_light=duotone_light)
-        slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
+        _pic = slide.shapes.add_picture(bytes_io, _px(x), _px(y), width=_px(w), height=_px(h))
+        _apply_debug_border(node, _pic)
     else:
         # Contain: scale to fit the box preserving aspect ratio, center in the slot.
         try:
@@ -1301,10 +1333,12 @@ def _emit_picture(slide, node: DSLNode, ctx: EmitContext) -> None:
                                               treatment=treatment,
                                               duotone_dark=duotone_dark,
                                               duotone_light=duotone_light)
-            slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _pic = slide.shapes.add_picture(bytes_io, _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _apply_debug_border(node, _pic)
         else:
             # Fast path: no treatment — let python-pptx read the file directly.
-            slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _pic = slide.shapes.add_picture(str(p), _px(cx), _px(cy), width=_px(cw), height=_px(ch))
+            _apply_debug_border(node, _pic)
 
 
 def _prepare_picture_bytes(

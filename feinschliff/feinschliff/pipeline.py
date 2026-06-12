@@ -33,6 +33,7 @@ from feinschliff.dsl.expander import (
     expand_compounds,
     expand_diagram_blocks,
     apply_slot_debug_color,
+    mark_native_replaceables,
     interpolate_nodes,
     interpolate_native_text,
     load_compounds_for_brand,
@@ -100,6 +101,17 @@ def compile_slide(
     # sidecar XML and are invisible to interpolate_nodes above.
     interp = interpolate_native_text(interp, ctx, asset_root=brand_dir / "assets",
                                      debug_color=debug_color)
+    if debug_color:
+        # Charts / SmartArt: data-replaceable post-export but not bindable —
+        # outline them so the coverage render marks every replaceable region.
+        try:
+            _w_emu = float(tokens.slide("width_emu") or 0)
+        except Exception:
+            _w_emu = 0.0
+        _cw, _ch = _slide_canvas(interp)
+        interp = mark_native_replaceables(
+            interp, debug_color, asset_root=brand_dir / "assets",
+            emu_to_px=(_cw / _w_emu) if _w_emu else 0.0)
     interp = expand_diagram_blocks(
         interp,
         brand_dir=brand_dir,
