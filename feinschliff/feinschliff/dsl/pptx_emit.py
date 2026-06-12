@@ -1027,7 +1027,7 @@ def _apply_debug_border(node: DSLNode, shape) -> None:
     try:
         from pptx.util import Pt as _Pt
         shape.line.color.rgb = _hex_to_rgb(color)
-        shape.line.width = _Pt(4)
+        shape.line.width = _Pt(10)
     except Exception:
         pass  # debug aid only — never block a build
 

@@ -560,7 +560,7 @@ def mark_native_replaceables(
         out.append(DSLNode(
             kind="rect",
             pos_args=[f"{x:.0f},{y:.0f}", f"{w:.0f}x{h:.0f}"],
-            kw_args={"stroke": color, "stroke-width": "3"},
+            kw_args={"stroke": color, "stroke-width": "8"},
             label=None, line_no=n.line_no, source=n.source,
         ))
     return out

@@ -53,6 +53,10 @@ SLOT_LINE_RE = re.compile(
     r'^(text|picture)\s+(\d+),(\d+)(?:\s+(\d+)x(\d+))?\b(.*\{\{\s*(\w+)[\s|].*)$')
 MW_RE = re.compile(r"maxwidth:(\d+)")
 MH_RE = re.compile(r"maxheight:(\d+)")
+NATIVE_KW_RE = re.compile(r'(\w+):"([^"]*)"')
+NATIVE_XFRM_RE = re.compile(
+    r'<a:off x="(-?\d+)" y="(-?\d+)"/><a:ext cx="(\d+)" cy="(\d+)"/>')
+NATIVE_SLOT_RE = re.compile(r"\{\{\s*(text_\d+)\s*\|")
 
 BADGE_FIELDS = ["role", "family", "ideal_count", "data_band", "comparison",
                 "family_curated", "variety_exempt", "fixed_chrome", "slide_index"]
@@ -101,6 +105,54 @@ def slots_from_body(body: str) -> list[tuple]:
                         int(mw.group(1)) if mw else 400,
                         int(mh.group(1)) if mh else 60))
     return out
+
+
+def native_slot_frames(body: str, asset_root: Path | None,
+                       emu_to_canvas: float) -> list[tuple[list[str], tuple]]:
+    """Native frames that carry `{{ text_N }}` slot templates inside their
+    payload (agenda-row tables, KPI tiles, …) → ``([slot names], rect)`` in
+    canvas px. These slots have no own element_tree geometry — the overlay
+    marks the carrying frame instead."""
+    frames = []
+    if not emu_to_canvas:
+        return frames
+    for ln in body.splitlines():
+        ln = ln.strip()
+        if not ln.startswith("native "):
+            continue
+        kwargs = dict(NATIVE_KW_RE.findall(ln))
+        xml = None
+        if kwargs.get("b64"):
+            try:
+                xml = base64.b64decode(kwargs["b64"]).decode("utf-8", "replace")
+            except ValueError:
+                continue
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sc = asset_root / kwargs["xml_file"]
+            if sc.is_file():
+                xml = sc.read_text(encoding="utf-8", errors="replace")
+        if not xml:
+            continue
+        slots = NATIVE_SLOT_RE.findall(xml)
+        if not slots:
+            continue
+        g = NATIVE_XFRM_RE.search(xml)
+        if g is None:
+            continue
+        x, y, w, h = (float(v) * emu_to_canvas for v in g.groups())
+        frames.append((slots, (x, y, w, h)))
+    return frames
+
+
+def pack_width_emu(layout_path: Path) -> float:
+    """slide.width_emu from the pack's tokens.json (0.0 when absent)."""
+    import json
+    tk = layout_path.parent.parent / "tokens.json"
+    try:
+        raw = json.loads(tk.read_text(encoding="utf-8"))
+        return float(raw["slide"]["width_emu"]["$value"])
+    except Exception:
+        return 0.0
 
 
 def default_bindings(fm: dict) -> dict:
@@ -264,6 +316,17 @@ def main() -> int:
                 for xx in range(int(x), int(x + w), 10):
                     draw.line([xx, y, min(xx + 5, x + w), y], fill=GRAY, width=1)
                     draw.line([xx, y + h, min(xx + 5, x + w), y + h], fill=GRAY, width=1)
+        # native frames whose payload carries slots: orange box + slot range
+        w_emu = pack_width_emu(lp)
+        for slot_names, (x, y, w, h) in native_slot_frames(
+                body, lp.parent.parent / "assets",
+                (1920.0 / w_emu) if w_emu else 0.0):
+            x, y, w, h = x * scale, y * scale, w * scale, h * scale
+            draw.rectangle([x, y, x + w, y + h], outline=ORANGE, width=3)
+            label = (f"{slot_names[0]}–{slot_names[-1]} · native-text"
+                     if len(slot_names) > 1 else f"{slot_names[0]} · native-text")
+            tag(draw, x, y + h + 19, label, ORANGE)
+
         ann_png = pages_dir / f"ann-{i:0{digits}d}.png"
         img.save(ann_png)
 
