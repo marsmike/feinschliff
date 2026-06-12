@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pptx import Presentation
 from pptx.oxml.ns import qn
-from pptx.util import Emu, Inches
+from pptx.util import Inches
 
 _SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "pptx_flatten_inherited.py"
 spec = importlib.util.spec_from_file_location("flatten_inherited", _SCRIPT)
