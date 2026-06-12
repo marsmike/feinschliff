@@ -993,7 +993,6 @@ def _wrap_svg(canvas: _Canvas, body: list[str]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     import argparse
-    import sys
 
     parser = argparse.ArgumentParser(prog="python -m feinschmiede.diagrams.svg_expand")
     parser.add_argument("input", type=Path, help="Path to .svg.dsl source")

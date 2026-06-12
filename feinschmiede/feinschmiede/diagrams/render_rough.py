@@ -16,7 +16,6 @@ Known fidelity gaps vs the Playwright (real-Excalidraw) backend:
 from __future__ import annotations
 
 import json
-import sys
 from html import escape
 from itertools import pairwise
 from pathlib import Path
