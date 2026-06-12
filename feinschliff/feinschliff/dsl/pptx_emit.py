@@ -353,6 +353,12 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     `autoshrink:true` — shrink font from style size down to a 10pt floor until
         the label fits the `maxwidth × maxheight` box. Off by default; preserves
         byte-identical output for layouts that don't opt in.
+    `linespacing:N` / `linespacing:native` — paragraph line spacing. A float
+        multiplier writes `<a:lnSpc><a:spcPct>`; `native` writes NO lnSpc so
+        the renderer applies the font's single spacing (PowerPoint's default
+        for paragraphs without explicit spacing — what decompiled
+        source-default text must round-trip to). Omitted → the style
+        bundle's line_height (the toolkit default for authored layouts).
     `lang:LOCALE` — pyphen locale (e.g. `de_DE`). Inserts U+00AD soft hyphens
         into the label before emission so python-pptx can break long compound
         words at syllable boundaries. Applied BEFORE autoshrink so the shrink
@@ -418,6 +424,29 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             pad_left = pad_top = pad_right = pad_bottom = 0.0
 
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
+    # linespacing: explicit multiplier → <a:lnSpc spcPct>; `native` → write
+    # NO lnSpc so the renderer applies the font's single spacing (what
+    # PowerPoint does for paragraphs with no explicit spacing — decompiled
+    # source-default text must round-trip this way, or every headline drops
+    # by the 1.2x default's extra leading); absent → the style bundle's
+    # line_height, the long-standing toolkit default for authored layouts.
+    ls_raw = node.kw_args.get("linespacing")
+    if ls_raw is None:
+        line_spacing: float | None = style.line_height
+    elif str(ls_raw).lower() == "native":
+        line_spacing = None
+    else:
+        try:
+            line_spacing = float(ls_raw)
+        except ValueError:
+            raise DSLError(
+                f"text at line {node.line_no}: linespacing: must be a "
+                f"multiplier or 'native', got {ls_raw!r}"
+            )
+    # Fit predictions use the explicit multiplier when given; for `native`
+    # keep the style's line_height — a slight over-estimate vs the font's
+    # single spacing, which is the safe direction for overflow checks.
+    fit_line_height = line_spacing if line_spacing is not None else style.line_height
     # Resolve font face once for all fit/shrink paths (autoshrink, orphan
     # control, autofit gating). style.weight and style.font_family are
     # frozen at this point; only size_px changes below, which does not
@@ -436,7 +465,7 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             bold=fit_bold,
             width_emu=max(1, int(maxw * _EMU_PER_PX) - inset_w_emu),
             height_emu=max(1, int(h * _EMU_PER_PX) - inset_h_emu),
-            line_height=style.line_height,
+            line_height=fit_line_height,
         )
         if fitted_pt < max_pt:
             # Convert pt back to design-px at the build's px→pt scale.
@@ -531,12 +560,14 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     lines = label_text.split("\n")
     p0 = tf.paragraphs[0]
     p0.alignment = align
-    p0.line_spacing = style.line_height
+    if line_spacing is not None:
+        p0.line_spacing = line_spacing
     _style_run(p0.add_run(), lines[0], style, tokens=ctx.tokens)
     for extra in lines[1:]:
         p = tf.add_paragraph()
         p.alignment = align
-        p.line_spacing = style.line_height
+        if line_spacing is not None:
+            p.line_spacing = line_spacing
         # Inter-paragraph gap defaults to a fraction of font-size; zero it so
         # the visual gap matches CSS line-height applied across all lines.
         p.space_before = Pt(0)
