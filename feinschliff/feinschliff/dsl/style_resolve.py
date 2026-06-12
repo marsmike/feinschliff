@@ -121,3 +121,51 @@ def resolve_node_style(
     if str(node.kw_args.get("italic", "")).lower() == "true":
         style = _replace(style, italic=True)
     return style
+
+
+# ---------------------------------------------------------------------------
+# Text-frame inset helper — shared between pptx_emit and slot_budget
+# ---------------------------------------------------------------------------
+
+# PowerPoint OOXML default text-frame insets (EMU, both sides summed):
+#   lIns/rIns = 91 440 EMU each side → total horizontal = 182 880
+#   tIns/bIns = 45 720 EMU each side → total vertical   =  91 440
+_DEFAULT_INSET_W_EMU: int = 91440 + 91440   # 182 880
+_DEFAULT_INSET_H_EMU: int = 45720 + 45720   #  91 440
+
+
+def text_insets_emu(
+    node: "DSLNode",
+    emu_per_px: float,
+) -> tuple[int, int]:
+    """Return ``(inset_w_emu, inset_h_emu)`` for a ``text`` node's frame insets.
+
+    Mirrors *exactly* the computation in ``pptx_emit._emit_text``:
+
+    * No ``padding:`` kwarg → PowerPoint OOXML defaults (lIns/rIns 91 440 EMU
+      each side → 182 880 total; tIns/bIns 45 720 each side → 91 440 total).
+    * ``padding:N`` (uniform px) → both sides × *emu_per_px*, summed.
+    * ``padding:L,T,R,B`` (four px values) → horizontal = int(L×e) + int(R×e),
+      vertical = int(T×e) + int(B×e).
+    * Any other token count → 0, 0 (mirrors the emitter's fallback).
+
+    ``emu_per_px`` must be the *build-specific* design-px → EMU scale factor so
+    the result agrees with what the emitter computes when it runs at the same
+    scale.  Use ``budget.emu_per_px`` on the consumer side.
+    """
+    padding = node.kw_args.get("padding")
+    if padding is None:
+        return _DEFAULT_INSET_W_EMU, _DEFAULT_INSET_H_EMU
+
+    parts = [p.strip() for p in str(padding).split(",")]
+    if len(parts) == 1:
+        pad = float(parts[0])
+        pad_l = pad_t = pad_r = pad_b = pad
+    elif len(parts) == 4:
+        pad_l, pad_t, pad_r, pad_b = (float(p) for p in parts)
+    else:
+        return 0, 0
+
+    inset_w = int(pad_l * emu_per_px) + int(pad_r * emu_per_px)
+    inset_h = int(pad_t * emu_per_px) + int(pad_b * emu_per_px)
+    return inset_w, inset_h

@@ -34,7 +34,7 @@ from dataclasses import dataclass
 from collections.abc import Sequence
 
 from feinschliff.dsl.parser import DSLNode, CompoundDef
-from feinschliff.dsl.style_resolve import resolve_node_style
+from feinschliff.dsl.style_resolve import resolve_node_style, text_insets_emu
 from feinschmiede.dsl.tokens import Tokens
 from feinschmiede.geometry import units
 from feinschliff.textfit import (
@@ -95,6 +95,8 @@ class SlotBudget:
     font_family: str        # primary font family name
     bold: bool              # whether the style uses bold weight
     autoshrink: bool = False  # emitter will shrink to fit (10pt floor) when True
+    inset_w_emu: int = 0    # total horizontal text-frame inset the emitter subtracts from fit envelope (both sides summed), mirroring pptx_emit's padding rules
+    inset_h_emu: int = 0    # total vertical text-frame inset (both sides summed)
     emu_per_px: float = units.EMU_PER_PX_BASELINE  # design-px → EMU scale (derived from tokens slide.width_emu)
     px_to_pt: float = units.PX_TO_PT_BASELINE       # design-px → pt scale (emu_per_px / EMU_PER_PT)
 
@@ -324,6 +326,7 @@ def compute_slot_budgets(
             continue
 
         font_name, bold = _budget_face(resolved.font_family, resolved.weight)
+        inset_w, inset_h = text_insets_emu(node, emu_per_px)
         budget = SlotBudget(
             slot=slot,
             style=style_name,
@@ -334,6 +337,8 @@ def compute_slot_budgets(
             font_family=font_name,
             bold=bold,
             autoshrink=str(node.kw_args.get("autoshrink", "")).lower() == "true",
+            inset_w_emu=inset_w,
+            inset_h_emu=inset_h,
             emu_per_px=emu_per_px,
             px_to_pt=px_to_pt,
         )

@@ -22,6 +22,7 @@ Slot numbering is per-file, in line order: text_1, text_2, …
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -80,6 +81,24 @@ def slotify_layout_file(path: Path) -> list[str]:
     if slots:
         path.write_text(new_text, encoding="utf-8")
     return slots
+
+
+def autoshrink_enabled(brand_pack: Path) -> bool:
+    """Return True when the brand pack opts into autoshrink (the default).
+
+    Pack-level opt-out: ``tokens.json`` ``"text-fit": {"autoshrink": false}``
+    (or ``{"autoshrink": {"$value": false}}``).  Any parse error or missing
+    file → True (safe default — autoshrink is a graceful degradation, never a
+    build-breaker).
+    """
+    try:
+        raw = json.loads((brand_pack / "tokens.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    val = (raw.get("text-fit") or {}).get("autoshrink", True)
+    if isinstance(val, dict):
+        val = val.get("$value", True)
+    return val if isinstance(val, bool) else str(val).lower() != "false"
 
 
 _SLOT_NAME_RE = re.compile(r"\{\{\s*(text_\d+)\b")

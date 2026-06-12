@@ -48,7 +48,7 @@ from feinschmiede.geometry import units
 # patch `feinschliff.io.image_materialise.X` once and affect the emitter.
 from ..io import image_materialise as _img_mat
 from .parser import DSLNode, parse_xy, parse_wh
-from .style_resolve import resolve_node_style
+from .style_resolve import resolve_node_style, text_insets_emu
 from .polish import normalize_text
 
 if TYPE_CHECKING:
@@ -403,10 +403,12 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
     # the wrap width/height — the fit predictor must see the same usable
     # area the renderer sees. Without explicit padding, PowerPoint's
     # defaults apply: lIns/rIns 91440 EMU, tIns/bIns 45720 EMU.
+    # Inset *totals* (for fit math) come from the shared helper; individual
+    # pad_* px values are kept locally for tf.margin_* assignment below.
+    inset_w_emu, inset_h_emu = text_insets_emu(node, _EMU_PER_PX)
     padding = node.kw_args.get("padding")
     pad_left = pad_top = pad_right = pad_bottom = None
     if padding is not None:
-        # Accept `padding:L,T,R,B` (px) or `padding:N` (uniform px).
         parts = [p.strip() for p in str(padding).split(",")]
         if len(parts) == 1:
             pad_left = pad_top = pad_right = pad_bottom = float(parts[0])
@@ -414,13 +416,6 @@ def _emit_text(slide, node: DSLNode, ctx: EmitContext) -> None:
             pad_left, pad_top, pad_right, pad_bottom = (float(p) for p in parts)
         else:
             pad_left = pad_top = pad_right = pad_bottom = 0.0
-    if pad_left is not None:
-        inset_w_emu = int(pad_left * _EMU_PER_PX) + int(pad_right * _EMU_PER_PX)
-        inset_h_emu = int(pad_top * _EMU_PER_PX) + int(pad_bottom * _EMU_PER_PX)
-    else:
-        # PowerPoint OOXML defaults, already in EMU — no scale conversion
-        inset_w_emu = 91440 + 91440
-        inset_h_emu = 45720 + 45720
 
     autoshrink = str(node.kw_args.get("autoshrink", "")).lower() == "true"
     # Resolve font face once for all fit/shrink paths (autoshrink, orphan

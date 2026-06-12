@@ -354,6 +354,11 @@ def check_slot_overflow(
     - KPI values with 3 digits overflowing a narrow maxwidth.
 
     Only fires when ``budget.height_px > 0`` (unconstrained slots are skipped).
+
+    Note: the primary fit check uses the raw box (the tuned-corpus envelope);
+    only the autoshrink rescue is inset-aware, mirroring the emitter's actual
+    shrink budget — predictions err pessimistic there, which converts silent
+    under-shrink into a visible defect.
     """
     if not value or not value.strip():
         return []
@@ -374,19 +379,24 @@ def check_slot_overflow(
     if ok:
         return []
 
-    # Autoshrink rescue: the emitter will shrink to fit (10pt floor) — only
-    # fire when even the floor overflows (work item E).
+    # Autoshrink rescue: the emitter will shrink to fit (10pt floor) using the
+    # INSET-REDUCED envelope (pptx_emit subtracts inset_w/h_emu from the fit
+    # budget). Use the same reduced box here so a slot that overflows the raw
+    # box at 10pt but only barely passes the raw rescue cannot slip through
+    # silently — a "raw-pass, inset-fail" case is a real defect.
     floor_note = ""
     if budget.autoshrink:
         from feinschliff.textfit import autoshrink_size as _autoshrink
+        inset_w = max(1, budget.width_emu - budget.inset_w_emu)
+        inset_h = max(1, budget.height_emu - budget.inset_h_emu)
         fitted = _autoshrink(
             value, font=budget.font_family, max_size_pt=budget.font_size_pt,
-            min_size_pt=10, bold=budget.bold, width_emu=budget.width_emu,
-            height_emu=budget.height_emu, line_height=budget.line_height,
+            min_size_pt=10, bold=budget.bold, width_emu=inset_w,
+            height_emu=inset_h, line_height=budget.line_height,
         )
         if _fits(value, font=budget.font_family, size_pt=fitted,
-                 bold=budget.bold, width_emu=budget.width_emu,
-                 height_emu=budget.height_emu, line_height=budget.line_height):
+                 bold=budget.bold, width_emu=inset_w,
+                 height_emu=inset_h, line_height=budget.line_height):
             return []
         floor_note = " Overflows even at the 10pt autoshrink floor."
 
@@ -425,7 +435,7 @@ def check_slot_overflow(
             f"at {budget.style} {budget.size_px:.0f}px "
             f"({budget.width_px:.0f}×{budget.height_px:.0f}px, "
             f"~{budget.chars_per_line} chars/line). "
-            f"Shorten to ≤{budget.max_chars} chars.{hyphen_hint}{floor_note}"
+            f"Shorten to ≤{budget.max_chars} chars.{floor_note}{hyphen_hint}"
         ),
     )]
 
