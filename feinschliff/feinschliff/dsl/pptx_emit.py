@@ -1092,14 +1092,19 @@ def _placeholder_treatment(tokens) -> tuple[
 ]:
     """(treatment, duotone_dark, duotone_light) for the placeholder path.
 
-    A brand that configures ``picture_treatment`` keeps it. With no
+    A brand that configures ``picture_treatment`` keeps it — unless it
+    explicitly declares ``picture_duotone`` endpoints, which is the
+    stronger signal for placeholders (packs extending a parent inherit the
+    parent's treatment, e.g. desat, without ever choosing it). With no
     treatment configured ("none"), the shared placeholder auto-duotones to
     the brand endpoints — same policy `_emit_picture` applies to
     plugin-fallback images — so a missing image reads as brand chrome, not
     as the same warm stock photo on every brand.
     """
     treatment = tokens.picture_treatment
-    if treatment != "none":
+    declared = isinstance(
+        getattr(tokens, "raw", {}).get("picture_duotone"), dict)
+    if treatment != "none" and not declared:
         return treatment, None, None
     endpoints = _duotone_endpoints_for_brand(tokens)
     if endpoints is None:

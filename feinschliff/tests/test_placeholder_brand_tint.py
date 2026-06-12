@@ -79,3 +79,14 @@ def test_brand_asset_root_overrides_shared_placeholder(tmp_path):
                        asset_root_fallback=fallback_assets)
     assert _placeholder_image_path(ctx2) == (
         fallback_assets / "illustrations" / "placeholder.jpg")
+
+
+def test_explicit_declaration_beats_inherited_treatment():
+    """Packs extending a parent inherit its picture_treatment (e.g.
+    desat(0.3) from the toolkit brand). An explicit picture_duotone
+    declaration is the stronger signal for placeholders."""
+    tokens = _FakeTokens(_BRAND, treatment="desat(0.3)",
+                         raw={"picture_duotone": {"dark": "ink", "light": "accent"}})
+    treatment, dark, light = _placeholder_treatment(tokens)
+    assert treatment == "duotone"
+    assert (dark, light) == ((0, 0, 0), (216, 90, 32))
