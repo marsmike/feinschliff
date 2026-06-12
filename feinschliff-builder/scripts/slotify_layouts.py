@@ -113,12 +113,24 @@ def main() -> int:
                 slide_index=indices[name],
                 total_slides=total,
                 asset_root=brand_pack / "assets",
+                brand_dir=brand_pack,
             )
             profiles[name] = profile
             if not args.dry_run:
                 path = layouts_dir / f"{name}.slide.dsl"
                 path.write_text(apply_profile(slotified[name], profile),
                                 encoding="utf-8")
+        flagged = {n: p["slot_warnings"] for n, p in profiles.items()
+                   if p.get("slot_warnings")}
+        if flagged:
+            total_warnings = sum(
+                len(msgs) for w in flagged.values() for msgs in w.values()
+            )
+            print(f"slot-warnings: {total_warnings} across {len(flagged)} layout(s):")
+            for name in sorted(flagged):
+                for slot, msgs in sorted(flagged[name].items()):
+                    for msg in msgs:
+                        print(f"  {name}.{slot}: {msg}")
         deck_map = derive_deck_map(profiles)
         if not args.dry_run:
             (brand_pack / "deck-map.yaml").write_text(
