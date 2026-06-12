@@ -242,6 +242,9 @@ def lint_beats(
             image_path = b.get("image_path")
             if not (isinstance(image_path, str) and image_path):
                 errors.append(f"{tag}: 'image_path' must be a non-empty string")
+            elif not Path(image_path).suffix:
+                errors.append(f"{tag}: image_path has no file extension — "
+                              "the engine cannot infer a MIME type")
             elif base_dir is not None:
                 p = Path(image_path)
                 resolved = p if p.is_absolute() else base_dir / p

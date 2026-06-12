@@ -383,3 +383,10 @@ def test_lint_authored_low_vertical_on_new_overlay_is_error():
               "reason": "broll", "image_path": "x.png", "vertical": 0.2}]
     errors, _ = lintmod.lint_beats(beats, duration=20.0)
     assert any("vertical" in e for e in errors)
+
+
+def test_lint_image_path_without_extension_is_error():
+    beats = [{"kind": "static", "start_sec": 2.0, "end_sec": 5.0,
+              "reason": "screenshot", "image_path": "shot"}]
+    errors, _ = lintmod.lint_beats(beats, duration=20.0)
+    assert any("extension" in e for e in errors)
