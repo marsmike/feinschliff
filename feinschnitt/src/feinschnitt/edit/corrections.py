@@ -39,6 +39,10 @@ PHRASE_CORRECTIONS: list[tuple[tuple[str, ...], tuple[str, ...]]] = [
     # 2026-06-12: M5 cold-start fixture run — Whisper (small) split the brand
     # as "fine" + "-schnitted" (hyphenated suffix token, past-tense guess).
     (("fine", "-schnitted"), ("feinschnitt",)),
+    # 2026-06-12: M5 longform fixture — Whisper (small) hears the pipeline
+    # step "author" as "offer" ("Step two, offer"). Context-bound to the
+    # "two offer" run so legitimate uses of "offer" are never rewritten.
+    (("two", "offer"), ("two", "author")),
 ]
 
 def fingerprint() -> str:
