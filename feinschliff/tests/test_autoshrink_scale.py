@@ -55,8 +55,8 @@ def test_autoshrink_emits_the_fitted_pt_on_12in_deck():
     # Recompute the expected fit exactly like the emitter does.
     # _EMU_PER_PX = width_emu / canvas_w; _PX_TO_PT = _EMU_PER_PX / EMU_PER_PT
     from feinschmiede.geometry import units as _units
-    px_to_pt = _units.emu_per_px(10969625, 1920) / 12700
     emu_per_px = _units.emu_per_px(10969625, 1920)
+    px_to_pt = emu_per_px / 12700
     face, bold = _resolve_face("DejaVu Sans", 400)
     # No `padding:` kwarg → emitter uses PowerPoint OOXML defaults (in EMU)
     inset_w_emu = 91440 + 91440
@@ -68,6 +68,8 @@ def test_autoshrink_emits_the_fitted_pt_on_12in_deck():
     )
     # _style_run calls Pt(_px_to_pt(style.size_px)) — Pt() stores exact EMU so
     # there is no rounding; tolerate only float-arithmetic epsilon.
+    # The 0.01pt ceiling covers int() truncation on the EMU geometry passed to
+    # autoshrink_size (int(460 * emu_per_px) sheds sub-EMU remainder).
     assert abs(run.font.size.pt - expected) < 0.01, (
         f"expected the fitted {expected}pt, got {run.font.size.pt}pt"
     )

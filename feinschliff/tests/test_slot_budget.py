@@ -39,7 +39,7 @@ def _text_node(label: str, style: str = "body", maxwidth: str = "760",
 # ---------------------------------------------------------------------------
 
 def test_slot_budget_size_pt():
-    """size_pt is half of size_px (design-px → pt)."""
+    """font_size_pt (legacy alias size_pt) is half of size_px at the legacy scale."""
     b = SlotBudget(slot="x", style="body", size_px=26.0, line_height=1.4,
                    width_px=760.0, height_px=0.0, font_family="default", bold=False)
     assert b.size_pt == pytest.approx(13.0)
