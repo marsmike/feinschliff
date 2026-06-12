@@ -114,6 +114,20 @@ def test_agenda_by_title_default():
     assert p["variety_exempt"] is True
 
 
+def test_use_case_layout_names_classify_roles():
+    """Master-derived packs name layouts by use case (title-2, chapter-1,
+    end) — the name is authoritative even when slide position isn't
+    (title-2 sits at index 2, end may not be the last slide)."""
+    body = HEADER + slot(1, "Title", pt=30)
+    assert classify(body, name="title-2", index=2, total=17)["role"] == "title-primary"
+    assert classify(body, name="chapter-1", index=4, total=17)["role"] == "chapter-opener"
+    assert classify(body, name="chapter-1", index=4, total=17)["family"] == "framing"
+    assert classify(body, name="end", index=16, total=17)["role"] == "closer"
+    # No false positives: 'subtitle-band' / 'legend' must not match title/end.
+    assert classify(body, name="subtitle-band", index=5, total=17)["role"] != "title-primary"
+    assert classify(body, name="legend", index=5, total=17)["role"] != "closer"
+
+
 def test_agenda_by_layout_name():
     dsl = HEADER + slot(1, "Was uns erwartet", pt=40)
     assert classify(dsl, name="inhalt", index=2)["role"] == "agenda"

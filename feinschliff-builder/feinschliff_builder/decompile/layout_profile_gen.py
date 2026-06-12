@@ -159,6 +159,11 @@ _FAMILIES = frozenset({
 # Heuristic trigger patterns (see module docstring).
 _AGENDA_RE = re.compile(r"agenda|inhalt|contents", re.I)
 _CLOSER_RE = re.compile(r"thank|danke|contact|q&a$", re.I)
+# Use-case layout names (master-derived packs name layouts after their
+# slide-master use case): the NAME is authoritative over slide position.
+_TITLE_NAME_RE = re.compile(r"^(title|cover)([-_ ]|$)", re.I)
+_CHAPTER_NAME_RE = re.compile(r"^(chapter|section|divider)([-_ ]|$)", re.I)
+_CLOSER_NAME_RE = re.compile(r"^(end|closer|thank)([-_ ]|$)", re.I)
 _QUOTE_DEFAULTS = {"“", "”", '"', "„"}
 _NUMERIC_RE = re.compile(r"^[\d.,%€$+−-]+")
 _PAGE_NUMBER_RE = re.compile(r"^\d{1,3}$")
@@ -500,14 +505,18 @@ def classify_layout(
                   if len(t["default"]) <= _SHORT_DEFAULT_LEN]
     numeric_short = [t for t in short_body if _NUMERIC_RE.match(t["default"].strip())]
 
-    if slide_index == 1:
+    if slide_index == 1 or _TITLE_NAME_RE.search(layout_name):
         role, family, variety_exempt = "title-primary", "framing", True
+    elif _CHAPTER_NAME_RE.search(layout_name):
+        role, family, variety_exempt = "chapter-opener", "framing", True
     elif _AGENDA_RE.search(title_default) or _AGENDA_RE.search(layout_name):
         role, family, variety_exempt = "agenda", "framing", True
     elif (any(t["default"].strip() in _QUOTE_DEFAULTS for t in texts)
           or "style:quote" in body):
         role, family = "quote", "voice"
-    elif slide_index == total_slides or _CLOSER_RE.search(title_default.strip()):
+    elif (slide_index == total_slides
+          or _CLOSER_RE.search(title_default.strip())
+          or _CLOSER_NAME_RE.search(layout_name)):
         role, family, variety_exempt = "closer", "closing", True
     elif "chart" in kinds:
         role, family, data_band, comparison = (
@@ -518,10 +527,7 @@ def classify_layout(
         role, family = "concept-diagram", "process"
     elif "illustration" in kinds and n_visible <= 2:
         # Decorative divider chrome — don't put dense facts on it.
-        role, family, fixed_chrome = "chapter-opener", "framing", True
-        when_not_to_use = [
-            "role=content-columns", "role=data-quantity", "role=data-comparison",
-        ]
+        role, family = "chapter-opener", "framing"
     elif full_bleed and n_visible <= 2:
         role, family = "title-with-visual", "image-driven"
     elif (len(short_body) >= 4
@@ -529,6 +535,16 @@ def classify_layout(
         role, family, data_band = "data-quantity", "data", "kpi"
     elif n_body >= 3:
         role, family = "content-columns", "organizational"
+
+    # Decorative-divider gate: any chapter-opener carrying illustration
+    # chrome with ≤2 visible slots is fixed chrome — regardless of whether
+    # the role came from rule 8 or a use-case layout name.
+    if (role == "chapter-opener" and "illustration" in kinds
+            and n_visible <= 2):
+        fixed_chrome = True
+        when_not_to_use = [
+            "role=content-columns", "role=data-quantity", "role=data-comparison",
+        ]
 
     # Area-based fixed-chrome gate (additive to rule 8 — role stays as
     # classified). None = some illustration geometry was undecodable; the
