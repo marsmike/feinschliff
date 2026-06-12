@@ -17,6 +17,14 @@
       },
       "additionalProperties": false
     },
+    "score": {
+      "type": "object",
+      "properties": {
+        "enabled": {"type": "boolean"},
+        "music": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
     "beats": {
       "type": "array",
       "items": {

@@ -105,8 +105,30 @@ plan may only configure them — **never author chunk text**:
   don't token-match, so a brief "NINE OF MY" chunk renders under the dots —
   near-duplication, not overlap ("12"/"failed" chunks ARE echo-dropped).
 
+## Audio score
+
+Finals get scored; previews never do — the iteration loop stays fast and
+voice-pure. Opt out with `--no-score` or `"score": {"enabled": false}`.
+
+- **Bring your own audio** — nothing ships. Royalty-free files go in
+  `~/.local/share/feinschnitt/music/` and `.../sfx/` (env overrides
+  `FEINSCHNITT_MUSIC_DIR` / `FEINSCHNITT_SFX_DIR`). Missing assets skip
+  their layer with a stderr warning; the render never fails over audio.
+- **Signature track:** one track per channel — pick it once, name it
+  `00-<track>.mp3` so the alphabetical default finds it. Per-plan override:
+  `"score": {"music": "other.mp3"}`.
+- **The plan is the cue sheet** — never hand-author cues. `whoosh.*` on the
+  hook, `pop.*` at every takeover entrance, `stroke.*` per caption-emphasis
+  chunk — except the LAST emphasis, which stays silent (closers want silence).
+- **Levels:** bed at −26 LUFS, sidechain-ducked under the untouched voice;
+  swell to ×1.6 ending at the climax (first `quote_pull`, else the last
+  takeover), 2s hold, 3s fall. Verify holds the scored mix within −2/+6 dB
+  of the source voice — the voice is the reference, never the casualty.
+
 ## Output contract
 
-- Preview: `<video stem>.preview.mp4` next to the source.
-- Final: `<video stem>.enhanced.mp4` next to the source — voice track is
+- Preview: `<video stem>.preview.mp4` next to the source — voice track is
   bit-identical to the input (verify enforces this).
+- Final: `<video stem>.enhanced.mp4` next to the source — scored by default;
+  with `--no-score` the voice track stays bit-identical and verify enforces
+  that instead.
