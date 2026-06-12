@@ -1737,6 +1737,16 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
     )
     runs = _text_runs(ch, theme, palette, inherited_default_sz=inherited_sz,
                       inherited_caps=inherited_caps, inherited_bold=inherited_bold)
+    # Scaled group: PowerPoint scales text with the group resize, but runs
+    # keep their NOMINAL sz in the XML — apply the group's vertical scale so
+    # tile text doesn't render at pre-scale size (slide-48/49 class: 12pt
+    # nominal inside a 0.6x group renders ~7pt in the source).
+    if len(offset) == 8:
+        _gsy = offset[7]
+        if abs(_gsy - 1.0) > 0.01:
+            for _r in runs:
+                if _r.pt:
+                    _r.pt = round(_r.pt * _gsy, 1)
     # G3 — capture text colour the slide run INHERITS rather than states. When a
     # run carries no explicit `<a:rPr><a:solidFill>`, fall back to (a) the shape's
     # `<p:style><a:fontRef>` (decorative styled shapes) then (b) the layout/master
