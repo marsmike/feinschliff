@@ -12,6 +12,17 @@ from feinschliff.dsl.pptx_emit import _resolve_face, build_presentation
 from feinschmiede.dsl.tokens import Tokens
 from feinschmiede.text import measure as _measure
 
+
+@pytest.fixture(autouse=True)
+def _restore_emit_scale():
+    """build_presentation reconfigures pptx_emit's module-global scale from
+    tokens slide.width_emu — restore it so test order can't leak the 12in
+    scale into tests that call _emit_text directly."""
+    from feinschliff.dsl import pptx_emit as _emit_mod
+    saved = (_emit_mod._EMU_PER_PX, _emit_mod._PX_TO_PT)
+    yield
+    _emit_mod._EMU_PER_PX, _emit_mod._PX_TO_PT = saved
+
 _LONG_TEXT = " ".join(["Measured metrics make the predictor honest"] * 3)
 
 RAW_12IN = {

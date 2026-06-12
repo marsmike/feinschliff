@@ -15,7 +15,9 @@ from pptx.util import Pt
 
 from feinschliff import textfit
 from feinschliff.dsl.parser import DSLNode
-from feinschliff.dsl.pptx_emit import EmitContext, _emit_text, _px_to_pt, _px
+from feinschliff.dsl.pptx_emit import (
+    EmitContext, _emit_text, _px_to_pt, _px, _configure_slide_scale,
+)
 from feinschmiede.dsl.tokens import load_tokens
 from feinschmiede.text import measure as _measure
 
@@ -40,6 +42,8 @@ def heuristic_metrics(monkeypatch):
 def _fresh_slide(canvas_w: float = 1920.0, canvas_h: float = 1080.0):
     """Build a fresh single-slide Presentation and return (slide, ctx)."""
     tokens = load_tokens(BRANDS_DIR / "feinschliff", brands_dir=BRANDS_DIR)
+    # pin the legacy scale — module global may have been rebound by other tests
+    _configure_slide_scale(tokens, int(canvas_w))
     prs = Presentation()
     prs.slide_width = _px(canvas_w)
     prs.slide_height = _px(canvas_h)
