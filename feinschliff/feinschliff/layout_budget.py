@@ -162,6 +162,7 @@ def plan_deck_layouts(
             "audience_mode":   signals.get("audience_mode"),
             "diagram_kind":       signals.get("diagram_kind"),
             "diagram_complexity": signals.get("diagram_complexity"),
+            "slot_lengths":       signals.get("slot_lengths") or None,
         }
         candidates = pick_layout(
             **kwargs,

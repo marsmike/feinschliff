@@ -40,6 +40,15 @@ layout_history  list  optional list of recently-used layout IDs (most
                      layout used loses 0.5 points, the second-to-last
                      loses 0.25. Structural layouts (title slides, chapter
                      openers, agenda, end) are exempt — they don't rotate.
+slot_lengths    dict  optional mapping of slot name → int character count
+                     for the content being placed. Layouts whose declared
+                     per-slot `chars` budget (from frontmatter) would be
+                     exceeded receive a soft penalty proportional to the
+                     overage. Never a hard rejection — the downstream
+                     textfit gate and autoshrink remain authoritative.
+                     Absent budgets (no `chars` key in the profile slot)
+                     and absent slot_lengths entries are both treated as
+                     unknown and skipped — only the intersection is scored.
 """
 from __future__ import annotations
 
@@ -56,6 +65,12 @@ _VALID_AUDIENCE_MODES = frozenset({"presentation", "discussion"})
 # / `svg-infographic`) and full-slide (`*-full`) diagram layouts. `deep`
 # prefers the full layouts; `simple|medium` prefer the narrow ones.
 _VALID_DIAGRAM_COMPLEXITY = frozenset({"simple", "medium", "deep"})
+
+# Scale factor for the per-slot character-budget penalty. The maximum
+# possible penalty (all budgeted slots 100 %+ over, averaged) is
+# −_BUDGET_PENALTY_SCALE. Calibrated to sit below the role-match weight
+# (+3) so structural fitness always wins; budgets break ties.
+_BUDGET_PENALTY_SCALE = 2.0
 
 # Structural layouts that anchor every deck — they don't rotate by content
 # and should never be penalised for consecutive use.
@@ -101,6 +116,10 @@ _FIXED_CHROME_GUARD_ROLES = frozenset({
 #   audience_mode bonus   +0.5 (sparser fit when presentation, denser
 #                                when discussion; any layout, scaled
 #                                against its ideal_count range)
+#   slot budget penalty   −0..−2.0 (averaged per-slot overage fraction,
+#                                scaled by _BUDGET_PENALTY_SCALE; only
+#                                the intersection of declared chars budgets
+#                                and provided slot_lengths is evaluated)
 #   fixed-chrome guard    -6   (profile `fixed_chrome: true` vs a
 #                                content/data caller role — see
 #                                _FIXED_CHROME_GUARD_ROLES)
@@ -177,6 +196,7 @@ def pick_layout(
     diagram_kind: Literal["concept", "chart"] | None = None,
     diagram_complexity: Literal["simple", "medium", "deep"] | None = None,
     layout_history: list | None = None,
+    slot_lengths: dict[str, int] | None = None,
     top_k: int = 3,
     profiles: dict[str, dict] | None = None,
 ) -> list[dict]:
@@ -206,6 +226,15 @@ def pick_layout(
     layouts (title slides, chapter openers, agenda, end) are exempt
     from this penalty since they never rotate. The penalty never
     eliminates a layout — it only breaks ties in favour of variety.
+
+    `slot_lengths` is an optional ``{slot_name: char_count}`` dict
+    carrying the measured length of the content going into each slot.
+    Layouts whose frontmatter declares an integer ``chars`` budget for a
+    slot receive a soft score penalty proportional to how far the content
+    exceeds that budget (averaged across the intersection of declared
+    budgets and provided lengths, capped at 100 % per slot, scaled by
+    ``_BUDGET_PENALTY_SCALE``). Layouts with no declared budgets are
+    unaffected. The penalty is never a hard rejection.
 
     `profiles` is the ``{name: affinity-profile}`` table to score against.
     When ``None`` (the default), the cached toolkit-only table built from
@@ -332,6 +361,39 @@ def pick_layout(
                 neg_hits.append(rule)
         if neg_hits:
             rationale_parts.append(f"negative-guidance:{','.join(neg_hits)}")
+
+        # Slot budget penalty: steers toward layouts whose declared per-slot
+        # char budgets fit the content being placed. Only the intersection of
+        # slots with an int `chars` budget in the profile AND a length in
+        # slot_lengths is evaluated — absence means unknown constraints, not
+        # a violation. Max penalty (−_BUDGET_PENALTY_SCALE) sits below the
+        # role-match weight (+3): structural fitness wins, budgets break ties.
+        if slot_lengths:
+            budgeted_slots = {
+                name: meta["chars"]
+                for name, meta in (profile.get("slots") or {}).items()
+                if isinstance(meta, dict)
+                and isinstance(meta.get("chars"), int)
+                and meta["chars"] > 0
+                and isinstance(slot_lengths.get(name), int)
+            }
+            if budgeted_slots:
+                overage_parts: list[str] = []
+                total_overage = 0.0
+                for sname, chars in budgeted_slots.items():
+                    length = slot_lengths[sname]
+                    raw = max(0, length - chars) / chars
+                    capped = min(raw, 1.0)
+                    total_overage += capped
+                    if capped > 0:
+                        pct = int(round(capped * 100))
+                        overage_parts.append(f"{sname}+{pct}%")
+                penalty = (total_overage / len(budgeted_slots)) * _BUDGET_PENALTY_SCALE
+                if penalty > 0:
+                    score -= penalty
+                    rationale_parts.append(
+                        f"over-budget({', '.join(overage_parts)})"
+                    )
 
         # Fixed-chrome guard: a decompiled brand layout that carries its
         # source decoration verbatim (`fixed_chrome: true`) cannot host
