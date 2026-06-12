@@ -1379,6 +1379,15 @@ def _prepare_picture_bytes(
 ) -> io.BytesIO:
     """Load → optional center-crop → optional treatment → JPEG/PNG bytes."""
     with Image.open(image_path) as im:
+        # Pass-through fast path: no crop, no treatment → embed the file
+        # bytes verbatim. Re-encoding every untouched picture (PNG
+        # optimize=True ≈ 150 ms each) dominated multi-slide deck builds —
+        # 114 carried showcase images cost ~17 s of pure PIL encode.
+        if (not treatment or treatment == "none") and (
+            target_aspect is None
+            or abs((im.size[0] / im.size[1]) - target_aspect) < 1e-3
+        ) and (im.format or "").upper() in ("PNG", "JPEG", "GIF"):
+            return io.BytesIO(image_path.read_bytes())
         im.load()
         if target_aspect is not None:
             sw, sh = im.size
@@ -1405,7 +1414,12 @@ def _prepare_picture_bytes(
         if fmt in ("JPG", "JPEG"):
             im.save(out, format="JPEG", quality=92, optimize=True)
         else:
-            im.save(out, format="PNG", optimize=True)
+            # No optimize=True for PNG: it re-encodes with every filter
+            # strategy (~7× slower, 685 ms vs 91 ms on 1920px showcase
+            # illustrations) for single-digit-% size savings. The default
+            # zlib level keeps multi-slide builds fast; deck size is
+            # dominated by carried media anyway.
+            im.save(out, format="PNG")
         return io.BytesIO(out.getvalue())
 
 
