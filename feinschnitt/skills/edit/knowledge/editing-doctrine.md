@@ -95,7 +95,12 @@ Totals include the hook. Heroes = takeovers (`stat_punch`, `quote_pull`,
   directions around `max(3.5s, chars/12 + 1.5s)` (`READ_FLOOR`/`READ_CPS`/
   `READ_DWELL`); `vertical_timeline` is exempt (per-step pacing governs it
   instead). Trust the warning over your gut: too short and the viewer can't
-  finish reading; too long and the frame goes dead.
+  finish reading; too long and the frame goes dead. One expected false
+  alarm: a `quote_pull` authored to its honest spoken span can warn "too
+  short" BEFORE alignment — the aligned re-lint judges with the stamped
+  typewriter speed and the extended dwell and goes quiet. Keep the honest
+  window; only if the warning survives the aligned re-lint, shorten the
+  quote.
 
 ## 5. Endings
 
