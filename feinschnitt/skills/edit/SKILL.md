@@ -12,11 +12,12 @@ React code — the shared engine in `edit-engine/` renders it.
 ## Workflow
 
 1. **Probe** — `ffprobe` aspect + duration (portrait <30s = short; landscape = intro/longform).
-2. **Transcribe** — `feinschnitt edit transcribe <video>` → `words.json` in the workdir
-   (`feinschnitt edit workdir <video>` prints the path). Read it; it is the timing
-   source of truth.
+2. **Transcribe** — `feinschnitt edit transcribe <video>` → `words.json` in the
+   workdir (path: `feinschnitt edit workdir <video>`). It is the timing source of truth.
 3. **Author the plan** — write `edit_plan.json` next to the video. Schema:
-   `skills/edit/schema/edit-plan.schema.json`. The template library:
+   `skills/edit/schema/edit-plan.schema.json`. For every explanation-heavy
+   stretch run the concept pass first (`knowledge/concept-visualization.md`),
+   then fill connectives via the picker (`knowledge/template-picker.md`).
 
    | kind | class | required fields | use for / NOT for |
    |---|---|---|---|
@@ -34,6 +35,28 @@ React code — the shared engine in `edit-engine/` renders it.
    quality). Report the output path to the user and STOP.
 6. **Final** — ONLY after the user approves the preview:
    `feinschnitt edit render <video> <plan> --quality final --brand <brand-dir>`.
+
+## Knowledge
+
+| Doc | When to read it |
+|---|---|
+| `knowledge/editing-doctrine.md` | Before authoring ANY plan — density budget, meaning gate, hook/endings |
+| `knowledge/template-picker.md` | During step 3, per candidate moment |
+| `knowledge/concept-visualization.md` | Every explanation-heavy stretch — teach-gate pass FIRST, then the picker |
+| `knowledge/corrections.md` | Whenever a transcript mishearing or taste rejection surfaces |
+
+## Mode recipes
+
+**Short (portrait, ≤60s):** hook at 0.0; density per doctrine table (§2);
+concept pass first, then fill connectives via the picker; one `quote_pull`
+max; captions on, 1–2 emphasis phrases verbatim from `words.json`.
+
+**Longform (landscape or >60s):** skim `words.json` for topic shifts (pauses
+≥1.5s, markers "OK so" / "next up"); author chapter-by-chapter into ONE
+`edit_plan.json`; ≥1 beat per 60s; concept quota per chapter
+(`concept-visualization.md` §5); ~1 emphasis phrase/minute;
+`vertical_timeline` ≤6 steps (lint warns); rolling density cap crosses
+chapter boundaries.
 
 ## Hard rules
 
@@ -101,22 +124,22 @@ plan may only configure them — **never author chunk text**:
   (`image_card`, `ratio_dots`, `inline_chart`) keep them unless the chunk
   shares a meaningful word with the beat's text. A ±0.8s echo pad around every
   beat drops chunks sharing meaningful words with it.
-- **Known gap (digit vs word):** "Nine" spoken vs a `9 OF 12 FAILED` caption
-  don't token-match, so a brief "NINE OF MY" chunk renders under the dots —
-  near-duplication, not overlap ("12"/"failed" chunks ARE echo-dropped).
+- **Known gap (digit vs word):** "Nine" vs `9 OF 12 FAILED` don't token-match —
+  a brief "NINE OF MY" chunk renders under the dots (near-duplication, not
+  overlap; "12"/"failed" ARE echo-dropped).
 
 ## Audio score
 
-Finals get scored; previews never do — the iteration loop stays fast and
-voice-pure. Opt out with `--no-score` or `"score": {"enabled": false}`.
+Finals get scored; previews never do. Opt out: `--no-score` or
+`"score": {"enabled": false}`.
 
-- **Bring your own audio** — nothing ships. Royalty-free files go in
-  `~/.local/share/feinschnitt/music/` and `.../sfx/` (env overrides
-  `FEINSCHNITT_MUSIC_DIR` / `FEINSCHNITT_SFX_DIR`). Missing assets skip
-  their layer with a stderr warning; the render never fails over audio.
-- **Signature track:** one track per channel — pick it once, name it
-  `00-<track>.mp3` so the alphabetical default finds it. Per-plan override:
-  `"score": {"music": "other.mp3"}`.
+- **Bring your own audio** — nothing ships. Royalty-free ONLY (a
+  Content-ID match geo-blocks the upload and kills reach). Place files in
+  `~/.local/share/feinschnitt/music/` and `.../sfx/` (env:
+  `FEINSCHNITT_MUSIC_DIR` / `FEINSCHNITT_SFX_DIR`); missing assets skip,
+  never fail.
+- **Signature track:** `00-<track>.mp3` (alphabetical default); per-plan
+  override: `"score": {"music": "other.mp3"}`.
 - **The plan is the cue sheet** — never hand-author cues. `whoosh.*` on the
   hook, `pop.*` at every takeover entrance, `stroke.*` per caption-emphasis
   chunk — except the LAST emphasis, which stays silent (closers want silence).
