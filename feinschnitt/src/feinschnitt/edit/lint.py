@@ -50,6 +50,9 @@ READING_TIME_KINDS = {"stat_punch", "quote_pull"}
 FIRST_TAKEOVER_FLOOR = 1.5   # the viewer needs speaker face-time first
 TEXT_VERTICAL_FLOOR = 0.58   # overlay never over the face
 TEXT_VERTICAL_CEILING = 0.9  # overlay never off the bottom edge
+# inline_chart's card is 26% of frame height (InlineChart.tsx cardH), so its
+# top edge has a tighter ceiling: 0.74 + 0.26 = the bottom edge exactly.
+INLINE_CHART_VERTICAL_CEILING = 0.74
 DENSITY_WINDOW, DENSITY_CAP = 12.0, 4   # max beats per rolling window
 HOOK_DEADLINE = 0.6          # hook visible inside the scroll-decision window
 
@@ -297,14 +300,32 @@ def lint_beats(
             if vertical is not None and vertical < TEXT_VERTICAL_FLOOR:
                 errors.append(f"{tag}: vertical {vertical} < {TEXT_VERTICAL_FLOOR} "
                               "— overlay content must never cover the speaker's face")
-            if vertical is not None and vertical > TEXT_VERTICAL_CEILING:
+            if kind == "inline_chart":
+                # `vertical` is the card's TOP edge and the card itself is 26%
+                # tall — the generic 0.9 ceiling would let the card render
+                # mostly off-frame.
+                if vertical is not None and vertical > INLINE_CHART_VERTICAL_CEILING:
+                    errors.append(
+                        f"{tag}: vertical {vertical} > "
+                        f"{INLINE_CHART_VERTICAL_CEILING} — the 26%-tall card "
+                        "would clip off the bottom")
+            elif vertical is not None and vertical > TEXT_VERTICAL_CEILING:
                 errors.append(f"{tag}: vertical {vertical} > {TEXT_VERTICAL_CEILING} "
                               "— text would run off the bottom edge")
 
         if kind in READING_TIME_KINDS:
             text = _text_of(b)
             beat_duration = end - start
-            ideal = max(READ_FLOOR, len(text) / READ_CPS + READ_DWELL)
+            # quote_pull: the alignment stage stamps chars_per_second from the
+            # spoken anchor span — the aligned re-lint must judge reading time
+            # against the speed the typewriter actually runs at. Authored
+            # plans without the stamp keep the READ_CPS default.
+            cps = READ_CPS
+            if kind == "quote_pull":
+                stamped = _num(b, "chars_per_second")
+                if stamped is not None and stamped > 0:
+                    cps = stamped
+            ideal = max(READ_FLOOR, len(text) / cps + READ_DWELL)
             if beat_duration < 0.7 * ideal:
                 warnings.append(
                     f"{tag}: beat is {beat_duration:.1f}s but the viewer can't finish "

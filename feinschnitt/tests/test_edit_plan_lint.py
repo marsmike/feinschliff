@@ -338,6 +338,31 @@ def test_lint_reading_time_too_short_warns():
     assert any("can't finish reading" in w for w in warnings)
 
 
+def test_lint_quote_reading_time_honors_stamped_cps():
+    # 60-char quote in a 4s window: under READ_CPS=12 the ideal is 6.5s
+    # (would warn), but the aligned plan carries the stamped
+    # chars_per_second=25 from the spoken anchor span — ideal drops to 3.9s
+    # and the beat is comfortably inside both bands.
+    quote = "A" * 60
+    beat = {"kind": "quote_pull", "start_sec": 2.0, "end_sec": 6.0,
+            "quote_text": quote, "chars_per_second": 25,
+            "reason": "takeaway line"}
+    errors, warnings = lintmod.lint_beats([beat], duration=20.0)
+    assert errors == []
+    assert not any("can't finish reading" in w or "lingers" in w
+                   for w in warnings)
+
+
+def test_lint_quote_reading_time_without_cps_uses_default():
+    # Same beat WITHOUT the stamped cps (an authored plan) judges against
+    # READ_CPS and warns — the refinement must not change authored behavior.
+    quote = "A" * 60
+    beat = {"kind": "quote_pull", "start_sec": 2.0, "end_sec": 6.0,
+            "quote_text": quote, "reason": "takeaway line"}
+    _, warnings = lintmod.lint_beats([beat], duration=20.0)
+    assert any("can't finish reading" in w for w in warnings)
+
+
 def test_lint_reading_time_too_long_warns():
     # Very short text, 20s window → text lingers
     beat = {"kind": "stat_punch", "start_sec": 2.0, "end_sec": 22.0,
@@ -418,6 +443,16 @@ def test_lint_image_path_without_extension_is_error():
               "reason": "screenshot", "image_path": "shot"}]
     errors, _ = lintmod.lint_beats(beats, duration=20.0)
     assert any("extension" in e for e in errors)
+
+
+def test_lint_inline_chart_vertical_above_074_is_error():
+    # The card is 26% of frame height; vertical 0.8 passes the generic 0.9
+    # ceiling but the card bottom would land at 1.06 — off-frame.
+    beat = {"kind": "inline_chart", "start_sec": 2.0, "end_sec": 6.0,
+            "title": "Growth", "data": [10, 20, 30], "vertical": 0.8,
+            "reason": "trend"}
+    errors, _ = lintmod.lint_beats([beat], duration=20.0)
+    assert any("clip" in e for e in errors)
 
 
 def test_lint_inline_chart_draw_duration_exceeds_beat_warns():
