@@ -168,6 +168,32 @@ def test_extra_kwargs_preserved():
 
 
 # ---------------------------------------------------------------------------
+# Compound-axis clip (review finding: second clip was silently dropped)
+# ---------------------------------------------------------------------------
+
+def test_clip_on_both_axes_applies_both():
+    """A box crossing one picture on the right AND another below gets BOTH
+    clips written to the output (review finding: the second clip was logged
+    but dropped).
+
+    Geometry:
+      text at 75,100 maxwidth:1800 maxheight:800
+      picture A at 1006,0  914x1080  → can_clip_w only  → maxwidth  = 1006-75-16 = 915
+      picture B at    0,700 1920x380 → can_clip_h only  → maxheight =  700-100-16 = 584
+    """
+    dsl = (
+        "canvas 1920x1080\n"
+        + _pic_line(1006, 0, 914, 1080, name="imageA")
+        + _pic_line(0, 700, 1920, 380, name="imageB")
+        + _text_line(75, 100, 1800, 800)
+    )
+    new_dsl, logs = clip_text_to_images(dsl)
+    assert "maxwidth:915" in new_dsl, f"maxwidth not clipped:\n{new_dsl}"
+    assert "maxheight:584" in new_dsl, f"maxheight not clipped:\n{new_dsl}"
+    assert len(logs) == 2, f"expected 2 log lines, got {len(logs)}: {logs}"
+
+
+# ---------------------------------------------------------------------------
 # clip_to_images_enabled
 # ---------------------------------------------------------------------------
 

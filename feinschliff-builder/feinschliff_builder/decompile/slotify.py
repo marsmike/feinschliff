@@ -226,7 +226,7 @@ def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
                 )
                 current["maxh"] = new_val
 
-            replacements[current_line] = new_line
+            replacements[t["_line"]] = new_line
             current_line = new_line  # for subsequent picture iterations
 
     if not replacements:
