@@ -4,9 +4,7 @@ Judgment layer for authoring `edit_plan.json`. This doc decides *whether a
 moment gets a beat, how many beats a video gets, and how they breathe*.
 Which kind a beat gets is [template-picker.md](template-picker.md); for
 explanation-heavy stretches run
-[concept-visualization.md](concept-visualization.md) first (lands with the
-concept-visualization doc; until present, classify explanation stretches with
-the picker's shape rows directly). Mechanics and
+[concept-visualization.md](concept-visualization.md) first. Mechanics and
 hard rules live in [SKILL.md](../SKILL.md). Where a number below is
 enforced, the lint constant is named — retune in
 `src/feinschnitt/edit/lint.py`, never by editing this doc alone.
@@ -45,7 +43,7 @@ Totals include the hook. Heroes = takeovers (`stat_punch`, `quote_pull`,
 - Rolling cap at every duration: ≤4 beats in any 12s window (lint warns;
   enforced as `DENSITY_WINDOW`/`DENSITY_CAP`). Above that threshold each
   beat competes with the one before it — none land cleanly.
-- ≥3 distinct hero kinds in any 7+ beat plan — a run of the same takeover
+- Any plan of 7+ beats keeps ≥3 distinct hero kinds — a run of the same takeover
   reads as one trick repeated, not an edit.
 - **Placement test, per candidate beat:** *who owns this moment — the face
   or the frame?* A visual earns its place only when the line is one of:
@@ -61,7 +59,7 @@ Totals include the hook. Heroes = takeovers (`stat_punch`, `quote_pull`,
 
 - Every edit opens on a composed `hook_title`, visible within ~0.5s — the
   scroll decision is made before the first sentence ends. `start_sec: 0.0`,
-  never a `speech_anchor` (alignment would push it off frame zero). Lint
+  never a `speech_anchor` (an anchor would snap it off frame zero). Lint
   warns when it is missing or late (`HOOK_DEADLINE`; constant value: 0.6s).
 - **Kicker carries the setup, title carries the punchline.** Stats, context,
   and framing go in `kicker`; `title` is the short blow — ≤16 characters as
@@ -76,8 +74,8 @@ Totals include the hook. Heroes = takeovers (`stat_punch`, `quote_pull`,
   speaker already spoiled it); open-loop applies when the payoff lands
   LATER than the hook.
 - On-screen hook text uses the speaker's ACTUAL words (SKILL.md hard
-  rule 4). The hook and the audio must never show two different words for
-  the same idea — the viewer hears one and reads the other.
+  rule 4). The hook and the audio must never disagree on wording — a viewer
+  who hears one phrasing while reading another trusts neither.
 
 ## 4. Dwell + rhythm
 

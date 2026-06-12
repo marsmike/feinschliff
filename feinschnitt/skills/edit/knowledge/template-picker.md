@@ -1,14 +1,12 @@
 # Template picker — what the speaker is doing → which kind
 
 Operational lookup for step 3 of [SKILL.md](../SKILL.md). Walk `words.json`
-top to bottom; at each candidate moment classify what the speaker is DOING
-and take the matching row. Whether the moment deserves a beat at all is the
+top to bottom; at each candidate moment, ask what the speaker is DOING;
+the matching row gives the kind. Whether the moment deserves a beat at all is the
 placement test in [editing-doctrine.md](editing-doctrine.md) §2; for
 explanation-heavy stretches run
-[concept-visualization.md](concept-visualization.md) BEFORE this table (lands
-with the concept-visualization doc; until present, classify explanation
-stretches with the shape rows in this table directly) — it catches teaching
-moments this table would under-serve with a text card.
+[concept-visualization.md](concept-visualization.md) BEFORE this table — it
+catches teaching moments this table would under-serve with a text card.
 
 ## The table
 
@@ -27,8 +25,8 @@ moments this table would under-serve with a text card.
 
 Tie-breakers when two rows fit:
 
-- A number inside an X-of-Y → `ratio_dots` beats `stat_punch`; inside a
-  trend → `inline_chart` beats `stat_punch`. The hero number stands alone.
+- A number inside an X-of-Y → `ratio_dots` outranks `stat_punch`; inside a
+  trend → `inline_chart` outranks it. The hero number stands alone.
 - Ordered steps narrated with substance → `vertical_timeline`; rapid-fire
   labels with no substance per item → `word_pop`.
 - An image while the speaker keeps talking → `image_card`; an image that IS
@@ -58,12 +56,12 @@ Picking the kind also picks its class, and the class has rules:
 
 ## Worked classification — one transcript stretch
 
-"So I ran this on twelve videos. Nine of them failed. The three that worked
-all did one thing: they cut the intro. First you trim the silence, then you
-drop the filler, then you tighten the gaps. I think that's huge."
+"So I ran this on fourteen videos. Eleven of them failed. The three that
+worked all did one thing: they cut the intro. First you trim the silence,
+then you drop the filler, then you tighten the gaps. I think that's huge."
 
-1. "twelve videos… nine failed" → spoken X-of-Y → `ratio_dots`
-   (total 12, marked 9, `polarity: "negative"`, `mark_at` on "failed").
+1. "fourteen videos… eleven failed" → spoken X-of-Y → `ratio_dots`
+   (total 14, marked 11, `polarity: "negative"`, `mark_at` on "failed").
 2. "the three that worked all did one thing" → setup, the face carries the
    reveal → no beat; captions cover it.
 3. "first… then… then…" → 3 ordered steps narrated one by one →
