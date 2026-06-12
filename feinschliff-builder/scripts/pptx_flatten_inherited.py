@@ -67,6 +67,32 @@ def _graft_xfrm(target, source):
     t_spPr.insert(0, xfrm)
 
 
+def _xfrm_rect(el):
+    """(x, y, w, h) EMU of el's own <a:xfrm>, or None."""
+    spPr = el.find(qn("p:spPr"))
+    if spPr is None:
+        return None
+    xfrm = spPr.find(qn("a:xfrm"))
+    if xfrm is None:
+        return None
+    off, ext = xfrm.find(qn("a:off")), xfrm.find(qn("a:ext"))
+    if off is None or ext is None:
+        return None
+    try:
+        return (int(off.get("x")), int(off.get("y")),
+                int(ext.get("cx")), int(ext.get("cy")))
+    except (TypeError, ValueError):
+        return None
+
+
+def _rect_overlap_frac(a, b):
+    """Intersection area as a fraction of the SMALLER rect (containment-ish)."""
+    ix = max(0, min(a[0] + a[2], b[0] + b[2]) - max(a[0], b[0]))
+    iy = max(0, min(a[1] + a[3], b[1] + b[3]) - max(a[1], b[1]))
+    smaller = min(a[2] * a[3], b[2] * b[3])
+    return (ix * iy) / smaller if smaller else 0.0
+
+
 def _is_empty_text(el):
     return not any(t.text and t.text.strip() for t in el.iter(qn("a:t")))
 
@@ -257,6 +283,14 @@ def flatten_slide(slide, placeholder_img: Path | None) -> int:
                 return True
         return False
 
+    # Rects of the slide's own shapes — a layout placeholder whose box is
+    # substantially covered by existing slide content was DETACHED by the
+    # author (title/body re-created as a plain shape, a picture placed over
+    # the picture placeholder). Cloning it would lay "Add Text"-style sample
+    # copy over real content.
+    slide_rects = [r for r in (_xfrm_rect(sh) for sh in _shapes(s_tree))
+                   if r is not None]
+
     for sh in layout_shapes:
         ph = _ph(sh)
         if ph is None:
@@ -267,6 +301,10 @@ def flatten_slide(slide, placeholder_img: Path | None) -> int:
             continue
         if _MACHINE_FIELD_RE.match(_all_text(sh) or ""):
             continue
+        ph_rect = _xfrm_rect(sh)
+        if ph_rect is not None and any(
+                _rect_overlap_frac(ph_rect, r) > 0.5 for r in slide_rects):
+            continue  # detached placeholder — slide content already covers it
         clone = copy.deepcopy(sh)
         _port_rels(clone, layout.part, slide.part)
         if not _has_xfrm(clone):

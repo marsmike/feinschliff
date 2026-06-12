@@ -33,7 +33,7 @@ from feinschliff_builder.decompile.layout_profile_gen import (
     classify_layout,
     derive_deck_map,
 )
-from feinschliff_builder.decompile.cleanup import strip_native_text_doubles
+from feinschliff_builder.decompile.cleanup import native_pic_rects, strip_native_text_doubles
 from feinschliff_builder.decompile.slotify import (
     add_autoshrink,
     autoshrink_enabled,
@@ -117,7 +117,11 @@ def main() -> int:
                 print(f"  {path.name}: {line}")
             slots = slots + [ns["name"] for ns in native_slots]
         if clip_enabled:
-            new_text, clips = clip_text_to_images(new_text)
+            new_text, clips = clip_text_to_images(
+                new_text,
+                extra_images=native_pic_rects(
+                    new_text, brand_pack / "assets",
+                    width_emu=_pack_width_emu(brand_pack)))
             if clips:
                 clip_log[path.name[: -len(".slide.dsl")]] = clips
         leftovers = [ln for ln in new_text.splitlines()

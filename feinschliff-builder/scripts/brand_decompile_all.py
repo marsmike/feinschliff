@@ -36,9 +36,9 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO))
 
-from feinschliff_builder.decompile.cleanup import cleanup_dsl, unslotified_text_report
+from feinschliff_builder.decompile.cleanup import cleanup_dsl, native_pic_rects, unslotified_text_report
 from feinschliff_builder.decompile.pptx_svg_decompile import derive
-from feinschliff_builder.decompile.slotify import slotify_dsl, slotify_native_text
+from feinschliff_builder.decompile.slotify import clip_text_to_images, slotify_dsl, slotify_native_text
 from feinschliff_builder.verify.verify_map import load_verify_map
 
 
@@ -62,6 +62,11 @@ def _cleanup_and_slotify_loop(dsl: str, *, asset_root, layout_name: str,
     prev = None
     for _ in range(max_rounds):
         dsl, _slots = slotify_dsl(dsl)
+        dsl, clips = clip_text_to_images(
+            dsl, extra_images=native_pic_rects(
+                dsl, asset_root, width_emu=width_emu, canvas_w=canvas_w))
+        for line in clips:
+            print(f"    clip {layout_name}: {line}")
         dsl, native_slots, logs = slotify_native_text(dsl, asset_root)
         for line in logs:
             print(f"    native-slotify {layout_name}: {line}")

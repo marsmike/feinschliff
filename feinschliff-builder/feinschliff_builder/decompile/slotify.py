@@ -134,7 +134,9 @@ def _fmt_num(v: float) -> str:
     return str(int(v)) if float(v).is_integer() else f"{v:g}"
 
 
-def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
+def clip_text_to_images(dsl_text: str,
+                        extra_images: list[dict] | None = None
+                        ) -> tuple[str, list[str]]:
     """Shrink slot-bearing text boxes that cross a picture slot's edge so the
     box ends at the image boundary (with a small gutter).
 
@@ -150,6 +152,10 @@ def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
     Idempotent: a clipped box no longer crosses the edge -> second run is a no-op.
     """
     pics = _parse_pictures_for_clip(dsl_text)
+    if extra_images:
+        # native content photos (tile thumbnails etc.) clip exactly like
+        # picture slots — see cleanup.native_pic_rects
+        pics = pics + [dict(r, _line="") for r in extra_images]
     if not pics:
         return dsl_text, []
 
@@ -198,7 +204,29 @@ def clip_text_to_images(dsl_text: str) -> tuple[str, list[str]]:
                 new_val = iy0 - ty0 - _CLIP_GUTTER
                 old_val = current["maxh"]
             else:
-                # Origin inside picture on both candidate axes -> warn-only.
+                # Origin inside the picture. Tile layouts (thumbnail left,
+                # text spanning the whole tile) are fixable by SHIFTING the
+                # box to the photo's right edge when that leaves a usable
+                # column; everything else stays warn-only.
+                ix1 = pic["x"] + pic["w"]
+                tx1 = tx0 + current["maxw"]
+                new_x = ix1 + _CLIP_GUTTER
+                new_w = tx1 - new_x
+                if (ix1 < tx1 and new_w >= max(_CLIP_MIN_W, 0.25 * current["maxw"])):
+                    new_line = re.sub(
+                        r"^(text\s+)(-?\d+(?:\.\d+)?),",
+                        lambda m: f"{m.group(1)}{_fmt_num(new_x)},",
+                        current_line, count=1)
+                    new_line = _GEO_MAXW_RE.sub(
+                        f"maxwidth:{_fmt_num(new_w)}", new_line, count=1)
+                    logs.append(
+                        f"{current['name']}: x {_fmt_num(tx0)} -> {_fmt_num(new_x)}, "
+                        f"maxwidth {_fmt_num(current['maxw'])} -> {_fmt_num(new_w)}"
+                        f" (shifted right of picture '{pic['name']}')")
+                    current["x"] = new_x
+                    current["maxw"] = new_w
+                    replacements[t["_line"]] = new_line
+                    current_line = new_line
                 continue
 
             # Usability guards.

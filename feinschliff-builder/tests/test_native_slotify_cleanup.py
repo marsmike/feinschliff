@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import re
 
 from feinschliff_builder.decompile.cleanup import (
     cleanup_dsl,
@@ -167,3 +168,29 @@ def test_native_text_without_matching_text_line_kept():
            'text 78,538 maxwidth:294 maxheight:100 "Other"\n')
     out, n = strip_native_text_doubles(dsl, None)
     assert n == 0 and out == dsl
+
+
+def test_native_pic_rects_filters_marks():
+    from feinschliff_builder.decompile.cleanup import native_pic_rects
+    tile = _pic_xml(445500, 1074000, 1263000, 1263000)   # ~221px tile
+    logo = _pic_xml(9849600, 5760000, 684000, 207973)    # ~120x36 mark
+    dsl = (f'native pic1 b64:"{_b64(tile)}"\n'
+           f'native pic2 b64:"{_b64(logo)}"\n')
+    rects = native_pic_rects(dsl, None, width_emu=10969625)
+    assert len(rects) == 1
+    r = rects[0]
+    assert abs(r["x"] - 78) < 2 and abs(r["w"] - 221) < 2
+
+
+def test_clip_text_at_native_pic():
+    from feinschliff_builder.decompile.cleanup import native_pic_rects
+    from feinschliff_builder.decompile.slotify import clip_text_to_images
+    tile = _pic_xml(428000, 1074000, 1263000, 1263000)
+    dsl = (f'native pic1 b64:"{_b64(tile)}"\n'
+           'text 75,188 style:body maxwidth:593 maxheight:238 '
+           '"{{ text_2 | default(\\"Headline\\") }}"\n')
+    rects = native_pic_rects(dsl, None, width_emu=10969625)
+    out, logs = clip_text_to_images(dsl, extra_images=rects)
+    assert logs and "shifted right of picture" in logs[0]
+    # shifted box starts right of the 221px photo with the gutter
+    assert re.search(r"text 31[12](?:\.\d+)?,", out)

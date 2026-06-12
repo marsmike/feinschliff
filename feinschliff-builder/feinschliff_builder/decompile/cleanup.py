@@ -312,3 +312,47 @@ def strip_native_text_doubles(
                 body.replace(kwargs["b64"], new_b64, 1)
                 + ("\n" if line.endswith("\n") else ""))
     return "".join(out_lines), blanked
+
+
+def native_pic_rects(dsl_text: str, asset_root=None, *, width_emu: float,
+                     canvas_w: float = 1920.0, min_px: float = 150.0) -> list[dict]:
+    """Canvas-px rects of native PICTURES big enough to be content photos.
+
+    Used as extra clip obstacles for `clip_text_to_images` — tile layouts
+    carry their thumbnails as native pics, and text boxes that span the
+    whole tile must clip at the photo edge exactly like at picture slots.
+    Marks/logos (small) and non-pic natives are excluded; ``min_px`` is the
+    minimum width AND height. Requires ``width_emu`` for the EMU→px scale.
+    """
+    rects: list[dict] = []
+    if not width_emu:
+        return rects
+    scale = canvas_w / width_emu
+    for line in dsl_text.splitlines():
+        body = line.strip()
+        if not body.startswith("native "):
+            continue
+        kwargs = dict(_NATIVE_LINE_KW_RE.findall(body))
+        xml = None
+        if kwargs.get("b64"):
+            try:
+                xml = base64.b64decode(kwargs["b64"]).decode("utf-8", "replace")
+            except ValueError:
+                continue
+        elif kwargs.get("xml_file") and asset_root is not None:
+            sc = asset_root / kwargs["xml_file"]
+            if sc.is_file():
+                xml = sc.read_text(encoding="utf-8", errors="replace")
+        if not xml or "<p:pic" not in xml.split(">", 1)[0] + ">":
+            continue
+        off, ext = _XFRM_OFF_RE.search(xml), _XFRM_EXT_RE.search(xml)
+        if not (off and ext):
+            continue
+        x, y = float(off.group(1)) * scale, float(off.group(2)) * scale
+        w, h = float(ext.group(1)) * scale, float(ext.group(2)) * scale
+        if w < min_px or h < min_px:
+            continue
+        m = re.match(r"^native\s+(\w+)", body)
+        rects.append({"name": m.group(1) if m else "native", "x": x, "y": y,
+                      "w": w, "h": h})
+    return rects
