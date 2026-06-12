@@ -244,7 +244,23 @@ def test_measure_height_real_wrap_counts_lines():
                                     width_emu=int(one_line_pt * 12700) + 200)
     h2 = textfit.measure_height_emu("hello world", font=face, size_pt=18,
                                     width_emu=int(one_line_pt * 12700 * 0.6))
-    assert h2 == 2 * h1
+    # wrapping to a second line adds exactly one inter-line leading slot
+    line_h = int(18 * 1.2 * 12700)
+    assert h2 == h1 + line_h
+
+
+def test_single_line_in_snug_source_box_keeps_size():
+    """A box exactly as tall as its single line's em box (plus a hair, but
+    SHORTER than em * line_height) must not trigger autoshrink — PowerPoint
+    renders it at full size and lets the descent bleed past the shape edge.
+    Regression for decompiled source-sized title boxes shrinking 28pt
+    headlines to 24pt via the phantom trailing leading."""
+    em = int(28 * 12700)
+    snug = em + 2 * 12700          # em + 2pt — less than the 1.2x leading slot
+    fitted = textfit.autoshrink_size(
+        "Headline", font="Open Sans", max_size_pt=28,
+        width_emu=int(1848 * 5713), height_emu=snug)
+    assert fitted == 28
 
 
 def test_real_wrap_counts_overwide_word_as_multiple_lines():
@@ -283,3 +299,49 @@ def test_kill_switch_forces_heuristics(monkeypatch):
     # falls back to the builtin/default table ratio
     table = textfit._FONT_WIDTH_RATIO.get(face, textfit._FONT_WIDTH_RATIO["default"])
     assert abs(w - table["normal"] * 18 * 12700) < 1.0
+
+# ---------------------------------------------------------------------------
+# 6. linespacing: kwarg — native / explicit multiplier / toolkit default
+# ---------------------------------------------------------------------------
+
+def _lnspc_pcts(box):
+    """spcPct val (as float multiplier) per paragraph, None where absent."""
+    from pptx.oxml.ns import qn
+    out = []
+    for p in box.text_frame.paragraphs:
+        pPr = p._p.find(qn("a:pPr"))
+        spc = pPr.find(qn("a:lnSpc")) if pPr is not None else None
+        pct = spc.find(qn("a:spcPct")) if spc is not None else None
+        out.append(int(pct.get("val")) / 100000.0 if pct is not None else None)
+    return out
+
+
+def _emit_with_linespacing(value):
+    slide, ctx = _fresh_slide()
+    kw = {"style": "body", "maxwidth": "900", "maxheight": "80"}
+    if value is not None:
+        kw["linespacing"] = value
+    node = DSLNode(kind="text", pos_args=["100,100"], kw_args=kw,
+                   label="line one\nline two", line_no=1)
+    _emit_text(slide, node, ctx)
+    return _only_textbox(slide), ctx
+
+
+def test_linespacing_absent_uses_style_line_height(heuristic_metrics):
+    box, ctx = _emit_with_linespacing(None)
+    lh = ctx.tokens.resolve_style("body").line_height
+    assert _lnspc_pcts(box) == [lh, lh]
+
+
+def test_linespacing_native_writes_no_lnspc(heuristic_metrics):
+    """`linespacing:native` must leave the paragraphs WITHOUT lnSpc — the
+    renderer then applies the font's single spacing, matching source
+    paragraphs that carry no explicit spacing. Writing the 1.2 toolkit
+    default instead pushed every decompiled headline a quarter-line down."""
+    box, _ = _emit_with_linespacing("native")
+    assert _lnspc_pcts(box) == [None, None]
+
+
+def test_linespacing_explicit_multiplier(heuristic_metrics):
+    box, _ = _emit_with_linespacing("0.9")
+    assert _lnspc_pcts(box) == [0.9, 0.9]

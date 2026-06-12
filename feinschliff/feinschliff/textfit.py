@@ -139,6 +139,15 @@ def measure_height_emu(
     word-wrap when real font metrics resolve, character count vs. column
     width otherwise. Soft hyphens (U+00AD) are ignored in the count since
     they are invisible unless a wrap actually breaks at one.
+
+    Height is `(n-1) * line_height + 1em`: inter-line leading applies only
+    BETWEEN lines, and the trailing line contributes its em box, not a full
+    leading slot. PowerPoint never clips a text box without explicit
+    autofit — the last line's ascent/descent overshoot beyond the em box
+    bleeds outside the shape invisibly. Counting `n * line_height` instead
+    made every decompiled single-line title in a snug source-sized box
+    "overflow" by the phantom trailing leading, which autoshrink then
+    "fixed" by shrinking text the source renders at full size.
     """
     if not text:
         return 0
@@ -169,7 +178,10 @@ def measure_height_emu(
                 cols = chars_per_line(font, size_pt, bold, width_emu)
             # ceil(len / cols)
             total_lines += max(1, (len(visible) + cols - 1) // cols)
-    return total_lines * line_h
+    if total_lines == 0:
+        return 0
+    em_h = int(size_pt * _EMU_PER_PT)
+    return (total_lines - 1) * line_h + min(line_h, em_h)
 
 
 def fits(

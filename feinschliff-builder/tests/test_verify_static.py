@@ -91,18 +91,19 @@ def test_clean_plan_returns_no_defects():
 def test_overflow_plan_returns_slot_overflow_defect():
     """A title that overflows its pixel budget produces a SLOT_OVERFLOW defect.
 
-    Uses executive-summary where action_title has max_lines=1, max_chars=84.
-    A 150-char title must produce a SLOT_OVERFLOW defect.
+    Uses executive-summary where action_title has max_lines=2, max_chars≈156-168.
+    A 220+-char title wrapping to 3 lines must produce a SLOT_OVERFLOW defect.
     """
     from feinschliff.defects import DefectKind
 
-    # action_title budget: max_lines=1, chars_per_line=84.
-    # A 150-char title will wrap to 2 lines → overflow.
+    # action_title budget: max_lines=2, chars_per_line≈78-84.
+    # A 220+-char title will wrap to 3 lines → overflow.
     long_title = (
-        "We must urgently restructure our go-to-market approach because "
-        "enterprise revenue has declined for three consecutive quarters"
+        "We must urgently restructure our entire go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters while churn "
+        "accelerated faster than new logo acquisition and expansion bookings could offset"
     )
-    assert len(long_title) > 84, "test precondition: title must exceed char budget"
+    assert len(long_title) > 168, "test precondition: title must exceed char budget"
 
     plan = _make_plan(
         "executive-summary.slide.dsl",
@@ -179,16 +180,17 @@ def test_combined_overflow_and_empty_placeholder():
     """Hand-crafted plan with one overflow AND one empty slot → both defect kinds.
 
     Uses executive-summary (real layout):
-    - action_title with 150 chars overflows the max_chars=84 budget.
+    - action_title with 220+ chars (3 wrapped lines) overflows the 2-line budget.
     - summary="" triggers EMPTY_PLACEHOLDER.
     """
     from feinschliff.defects import DefectKind
 
     long_title = (
-        "Revenue declined for three consecutive quarters because enterprise "
-        "churn accelerated faster than new logo acquisition could offset"
+        "Revenue declined for three consecutive quarters because enterprise churn "
+        "accelerated faster than new logo acquisition could offset while pipeline "
+        "coverage deteriorated across every major region and customer segment"
     )
-    assert len(long_title) > 84, "test precondition: title must exceed char budget"
+    assert len(long_title) > 168, "test precondition: title must exceed char budget"
 
     plan = _make_plan(
         "executive-summary.slide.dsl",
@@ -294,10 +296,11 @@ def test_slot_overflow_defects_are_fatal_severity():
     from feinschliff.defects import DefectKind, Severity
 
     long_title = (
-        "We must urgently restructure our go-to-market approach because "
-        "enterprise revenue has declined for three consecutive quarters"
+        "We must urgently restructure our entire go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters while churn "
+        "accelerated faster than new logo acquisition and expansion bookings could offset"
     )
-    assert len(long_title) > 84, "test precondition: title must exceed char budget"
+    assert len(long_title) > 168, "test precondition: title must exceed char budget"
 
     plan = _make_plan(
         "executive-summary.slide.dsl",
@@ -322,8 +325,9 @@ def test_validate_slot_overflow_maps_to_error():
     from feinschliff.defects import DefectKind
 
     long_title = (
-        "We must urgently restructure our go-to-market approach because "
-        "enterprise revenue has declined for three consecutive quarters"
+        "We must urgently restructure our entire go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters while churn "
+        "accelerated faster than new logo acquisition and expansion bookings could offset"
     )
     plan = _make_plan(
         "executive-summary.slide.dsl",
@@ -533,10 +537,11 @@ def test_slot_overflow_meta_contains_budget_and_over_by():
     from feinschliff.defects import DefectKind
 
     long_title = (
-        "We must urgently restructure our go-to-market approach because "
-        "enterprise revenue has declined for three consecutive quarters"
+        "We must urgently restructure our entire go-to-market approach because "
+        "enterprise revenue has declined for three consecutive quarters while churn "
+        "accelerated faster than new logo acquisition and expansion bookings could offset"
     )
-    assert len(long_title) > 84, "test precondition: title must exceed char budget"
+    assert len(long_title) > 168, "test precondition: title must exceed char budget"
 
     plan = _make_plan(
         "executive-summary.slide.dsl",
@@ -707,14 +712,15 @@ def test_content_flexible_array_slot_does_not_fire():
 # NOT abort a default build; promoting those stays --strict-static's job.
 
 _OVERFLOW_TITLE = (
-    "We must urgently restructure our go-to-market approach because "
-    "enterprise revenue has declined for three consecutive quarters"
+    "We must urgently restructure our entire go-to-market approach because "
+    "enterprise revenue has declined for three consecutive quarters while churn "
+    "accelerated faster than new logo acquisition and expansion bookings could offset"
 )
 
 
 def _overflow_plan(out_pptx: Path) -> dict:
-    """executive-summary plan whose action_title exceeds its 84-char budget."""
-    assert len(_OVERFLOW_TITLE) > 84, "test precondition: title must exceed budget"
+    """executive-summary plan whose action_title exceeds its 2-line budget."""
+    assert len(_OVERFLOW_TITLE) > 168, "test precondition: title must exceed budget"
     plan = _make_plan(
         "executive-summary.slide.dsl",
         {

@@ -254,13 +254,13 @@ def test_cli_build_autofix_inner_loop(tmp_path: Path, monkeypatch):
     plan back to disk before compile, AND compiles the PPTX from the FIXED
     content — not the pre-fix snapshot.
 
-    Fixture: executive-summary layout, action_title at 90 chars (budget = 84,
-    overflow = 6 chars, BELOW the 20% swap threshold of 100.8 chars).  This
+    Fixture: executive-summary layout, action_title at 180 chars (budget = 168,
+    overflow = 12 chars, BELOW the 20% swap threshold of 201.6 chars).  This
     forces shorten_slot (not swap_layout_larger), making it straightforward to
     assert that the PPTX text frame contains the shortened string.
 
-    The fixture pins HEURISTIC textfit numbers (budget=84 from the Noto Sans
-    table ratio) and asserts the fixed string verbatim — with real metrics,
+    The fixture pins HEURISTIC textfit numbers (budget=168 from the Noto Sans
+    table ratio at 2 bleed-model lines) and asserts the fixed string verbatim — with real metrics,
     prevent_orphan may legitimately NBSP-glue the last two words.  Force the
     heuristic path so the pins stay machine-independent; the autofix loop
     under test is metrics-agnostic.  The env var propagates to the `_run`
@@ -279,19 +279,19 @@ def test_cli_build_autofix_inner_loop(tmp_path: Path, monkeypatch):
     the fixed plan (pure python-pptx, no soffice needed).
     """
     monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
-    # action_title budget for executive-summary = 84 chars.
-    # Use 90 chars: above budget (triggers SLOT_OVERFLOW) but below the 20%
-    # swap threshold (84 * 1.20 = 100.8), so shorten_slot fires.
+    # action_title budget for executive-summary = 168 chars (2 bleed-model lines).
+    # Use 180 chars: above budget (triggers SLOT_OVERFLOW) but below the 20%
+    # swap threshold (168 * 1.20 = 201.6), so shorten_slot fires.
     # The text must be a real string (not "X"*90) so sentence-boundary trimming
     # produces a stable shortened value we can assert against in the PPTX.
     long_text = "Action required: revenue declined three quarters in a row this year."
     assert len(long_text) == 68, f"Fixture length changed: {len(long_text)}"
     # Pad to exactly 90 chars so it's above budget=84 but below threshold=100.8
-    long_text = long_text + " " + "A" * (90 - len(long_text) - 1)
-    assert len(long_text) == 90, f"Padded fixture is {len(long_text)} chars, expected 90"
-    assert 84 < len(long_text) <= 100, "Fixture must be above budget and below swap threshold"
+    long_text = long_text + " " + "A" * (180 - len(long_text) - 1)
+    assert len(long_text) == 180, f"Padded fixture is {len(long_text)} chars, expected 180"
+    assert 168 < len(long_text) <= 201, "Fixture must be above budget and below swap threshold"
 
-    budget = 84
+    budget = 168
     out_pptx = tmp_path / "deck.pptx"
     plan = {
         "brand": "feinschliff",
@@ -394,8 +394,8 @@ def test_cli_round_trip_verify_static_to_apply_fixes(tmp_path: Path):
     apply-fixes only accepted legacy vocabulary ("fatal", "warn", "info").
 
     Steps:
-    1. Build a plan with a genuinely overflowing slot (action_title 90 chars,
-       budget 84) and write it to disk.
+    1. Build a plan with a genuinely overflowing slot (action_title 180 chars,
+       budget 168) and write it to disk.
     2. Run `deck verify-static --json` — expect exit 1 and ENGINE severity
        values ("error") in the output JSON.
     3. Pipe that JSON file directly into `deck apply-fixes --defects`.
@@ -411,14 +411,14 @@ def test_cli_round_trip_verify_static_to_apply_fixes(tmp_path: Path):
     env["PYTHONUTF8"] = "1"
     env["FEINSCHMIEDE_NO_REAL_METRICS"] = "1"
 
-    # action_title budget for executive-summary = 84 chars (heuristic path).
-    # 90 chars: above budget (triggers SLOT_OVERFLOW), below swap threshold
-    # (84 * 1.20 = 100.8), so shorten_slot fires.
-    budget = 84
+    # action_title budget for executive-summary = 168 chars (heuristic path,
+    # 2 bleed-model lines). 180 chars: above budget (triggers SLOT_OVERFLOW),
+    # below swap threshold (168 * 1.20 = 201.6), so shorten_slot fires.
+    budget = 168
     long_text = "Action required: revenue declined three quarters in a row this year."
     assert len(long_text) == 68
-    long_text = long_text + " " + "A" * (90 - len(long_text) - 1)
-    assert len(long_text) == 90
+    long_text = long_text + " " + "A" * (180 - len(long_text) - 1)
+    assert len(long_text) == 180
     assert budget < len(long_text) < budget * 1.20, (
         f"Fixture must be above budget ({budget}) and below swap threshold "
         f"({budget * 1.20}); got {len(long_text)}"
