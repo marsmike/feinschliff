@@ -5,6 +5,7 @@ All notable changes to this project will be documented here. Format follows [Kee
 ## [Unreleased]
 
 ### Added
+- **feinschnitt edit path.** `feinschnitt edit` CLI + `/edit` skill: plan-driven editing of pre-recorded talking-head footage into brand-themed cuts. Pipeline: word-timestamped Whisper transcription with a correction-memory layer → deterministic plan lint (per-kind contracts, density caps, text-placement floors) → speech-anchor alignment (extend-never-shorten, refrain-aware) → brand-themed Remotion engine (`edit-engine/` — `hook_title`, `word_pop`, `stat_punch` templates + `StyleShowcase` golden comp) → preview/final render ladder with stage-keyed caching → voice-track remux verified bit-identical.
 - **Real-font text measurement** (`feinschmiede.text.measure`): fontconfig + PIL measure actual glyph widths when the brand font is installed; textfit, slot budgets, and orphan control use those widths automatically (char-ratio heuristics remain the fallback; `FEINSCHMIEDE_NO_REAL_METRICS=1` forces them). Over-wide words now model mid-word breaking instead of overflowing silently.
 - **`italic:true`** — new text primitive: accepted as a style-bundle flag and a per-node kwarg; italic runs are emitted directly in OOXML.
 - **Native bullets** — `bullet:true` / `bullet:"–"` opt-in: emits `a:buChar` with a hanging-indent paragraph so bullet text lays out natively in PowerPoint/LibreOffice (no manual indent gymnastics required).

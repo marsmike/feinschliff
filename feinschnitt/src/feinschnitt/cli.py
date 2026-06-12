@@ -3,6 +3,7 @@
 Subcommands:
   record   <recipe.toml>        drive a CLI session into an asciicast (recorder.py)
   analyze  <video> [out]        video -> .storyboard.md via Gemini (analyze.py)
+  edit     <subcommand> ...     plan-driven edit pipeline (edit/cli.py)
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ import argparse
 import sys
 
 from feinschnitt import __version__, analyze, recorder
+from feinschnitt.edit import EditError
+from feinschnitt.edit import cli as edit_cli
 from feinschnitt.env import load_home_env
 
 
@@ -23,6 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
     recorder.add_parser(sub)
     analyze.add_parser(sub)
+    edit_cli.add_parser(sub)
     return parser
 
 
@@ -31,7 +35,7 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         return args.func(args)
-    except (recorder.RecorderError, analyze.AnalyzeError,
+    except (recorder.RecorderError, analyze.AnalyzeError, EditError,
             FileNotFoundError, OSError, ValueError, ImportError) as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 1

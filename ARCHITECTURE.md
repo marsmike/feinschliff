@@ -36,7 +36,7 @@ That edge points builder → office (acyclic) and is declared in
 | **feinschliff** | plugin | Office / decks — `.slide.dsl` + brand tokens + content → `.pptx`. Ships 3 brand packs + 50 layouts. |
 | **feinbild** | plugin | Image & 2D — AI images (Replicate/Gemini) + SVG + Excalidraw diagrams, over the engine. |
 | **feinklang** | plugin | Audio — ElevenLabs voiceover. |
-| **feinschnitt** | plugin | Video — Remotion videos + CLI session recordings; composes feinbild + feinklang. |
+| **feinschnitt** | plugin | Video — Remotion videos, CLI session recordings, and plan-driven editing of talking-head footage into brand-themed cuts; composes feinbild + feinklang. |
 | **feinschliff-builder** | plugin | Brand-pack authoring toolkit (compile-html, decompile, verify, improve-brand). The office sub-family; imports feinschliff. |
 | **feinschliff-extra** | plugin (data) | 14 extra brand packs. No Python. |
 
