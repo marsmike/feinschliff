@@ -1298,9 +1298,12 @@ def _shape_geometry_kind(spPr: etree._Element) -> str:
     return "rect"
 
 
-# Presets whose geometry is a fixed closed polygon (no adjustment values
-# read from <a:avLst>). For each, `_preset_geom_path` returns the SVG `d`
-# string in the shape's local 0..w × 0..h pixel coordinate space.
+# Presets whose geometry is a closed polygon synthesized by
+# `_preset_geom_path`, which returns the SVG `d` string in the shape's
+# local 0..w × 0..h pixel coordinate space. Adjustment values from
+# <a:avLst> are honoured for the presets whose ECMA-376 guide formulas
+# use them (chevron, homePlate, parallelogram, trapezoid, hexagon,
+# octagon, arrows); the spec defaults apply when absent.
 _PRESET_PATH_PRESETS: frozenset[str] = frozenset({
     "triangle", "rtTriangle", "diamond",
     "parallelogram", "trapezoid",
@@ -1310,17 +1313,19 @@ _PRESET_PATH_PRESETS: frozenset[str] = frozenset({
 })
 
 
-def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
+def _preset_geom_path(preset: str, w: float, h: float,
+                      adj: dict[str, float] | None = None) -> str | None:
     """SVG `d` string for the known closed-polygon presets, in local px.
 
-    The shapes use PowerPoint's default unadjusted geometry — the
-    `<a:avLst>` adjustment slider values are ignored. For the simple
-    convex polygons in `_PRESET_PATH_PRESETS` the unadjusted form is
-    visually correct in the vast majority of decks. Arrows use 50%
-    barb / 50% shaft as the PowerPoint default.
+    Guide formulas follow ECMA-376 presetShapeDefinitions: adjustment
+    values are fractions of `ss` (the SHORTEST side), not of the width —
+    a wide flat chevron keeps a compact notch instead of one stretched
+    to 30% of its width. `adj` maps gd name → value/100000.
     """
     if w <= 0 or h <= 0:
         return None
+    adj = adj or {}
+    ss = min(w, h)
     if preset == "triangle":
         return f"M {w/2:.1f},0 L {w:.1f},{h:.1f} L 0,{h:.1f} Z"
     if preset == "rtTriangle":
@@ -1329,20 +1334,32 @@ def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
         return (f"M {w/2:.1f},0 L {w:.1f},{h/2:.1f} "
                 f"L {w/2:.1f},{h:.1f} L 0,{h/2:.1f} Z")
     if preset == "parallelogram":
-        # Default skew = 25% from left.
-        skew = w * 0.25
+        # x1 = ss * adj (default 25000) — skew from the left, per spec.
+        skew = min(w, ss * adj.get("adj", 0.25))
         return (f"M {skew:.1f},0 L {w:.1f},0 L {w-skew:.1f},{h:.1f} "
                 f"L 0,{h:.1f} Z")
     if preset == "trapezoid":
-        # Default top is 75% of bottom, centered.
-        inset = w * 0.125
+        # x1 = ss * adj (default 25000) — top inset on each side.
+        inset = min(w / 2, ss * adj.get("adj", 0.25))
         return (f"M {inset:.1f},0 L {w-inset:.1f},0 L {w:.1f},{h:.1f} "
                 f"L 0,{h:.1f} Z")
-    if preset in ("pentagon", "homePlate", "hexagon"):
-        # PowerPoint's `pentagon` and `homePlate` differ in spec but render
-        # similarly to `hexagon` — same convex outline for all three here.
-        return (f"M {w*0.25:.1f},0 L {w*0.75:.1f},0 L {w:.1f},{h*0.5:.1f} "
-                f"L {w*0.75:.1f},{h:.1f} L {w*0.25:.1f},{h:.1f} "
+    if preset == "pentagon":
+        # Regular pentagon inscribed in the bbox: top vertex centred, side
+        # vertices at 38.2% height, base at 19.1% / 80.9% width. (The spec's
+        # hf/vf factors reduce to this once normalised to the bbox.)
+        return (f"M {w*0.5:.1f},0 L {w:.1f},{h*0.382:.1f} "
+                f"L {w*0.809:.1f},{h:.1f} L {w*0.191:.1f},{h:.1f} "
+                f"L 0,{h*0.382:.1f} Z")
+    if preset == "homePlate":
+        # x1 = ss * adj (default 50000) — point length; flat left edge.
+        x1 = min(w, ss * adj.get("adj", 0.5))
+        return (f"M 0,0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L 0,{h:.1f} Z")
+    if preset == "hexagon":
+        # x1 = ss * adj (default 25000) — corner inset.
+        x1 = min(w / 2, ss * adj.get("adj", 0.25))
+        return (f"M {x1:.1f},0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L {x1:.1f},{h:.1f} "
                 f"L 0,{h*0.5:.1f} Z")
     if preset == "heptagon":
         # Regular-ish 7-gon inscribed in the bbox.
@@ -1355,38 +1372,46 @@ def _preset_geom_path(preset: str, w: float, h: float) -> str | None:
             pts.append(f"{cx + rx * _m.cos(ang):.1f},{cy + ry * _m.sin(ang):.1f}")
         return "M " + " L ".join(pts) + " Z"
     if preset == "octagon":
-        # Regular octagon — inset 0.2929 of bbox dimension on each corner.
-        c = 0.2929
-        return (f"M {w*c:.1f},0 L {w-w*c:.1f},0 L {w:.1f},{h*c:.1f} "
-                f"L {w:.1f},{h-h*c:.1f} L {w-w*c:.1f},{h:.1f} "
-                f"L {w*c:.1f},{h:.1f} L 0,{h-h*c:.1f} L 0,{h*c:.1f} Z")
+        # x1 = ss * adj (default 29289) — corner cut on the shortest side.
+        x1 = min(ss / 2, ss * adj.get("adj", 0.29289))
+        return (f"M {x1:.1f},0 L {w-x1:.1f},0 L {w:.1f},{x1:.1f} "
+                f"L {w:.1f},{h-x1:.1f} L {w-x1:.1f},{h:.1f} "
+                f"L {x1:.1f},{h:.1f} L 0,{h-x1:.1f} L 0,{x1:.1f} Z")
     if preset == "chevron":
-        # Right-pointing chevron (arrow head + notch in tail).
-        return (f"M 0,0 L {w*0.7:.1f},0 L {w:.1f},{h*0.5:.1f} "
-                f"L {w*0.7:.1f},{h:.1f} L 0,{h:.1f} "
-                f"L {w*0.3:.1f},{h*0.5:.1f} Z")
-    if preset == "rightArrow":
-        # 50% shaft height, 50% arrowhead length.
-        sy0, sy1 = h * 0.25, h * 0.75
-        ax = w * 0.5
-        return (f"M 0,{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
-                f"L {w:.1f},{h*0.5:.1f} L {ax:.1f},{h:.1f} "
-                f"L {ax:.1f},{sy1:.1f} L 0,{sy1:.1f} Z")
-    if preset == "leftArrow":
-        sy0, sy1 = h * 0.25, h * 0.75
-        ax = w * 0.5
-        return (f"M {w:.1f},{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
-                f"L 0,{h*0.5:.1f} L {ax:.1f},{h:.1f} "
-                f"L {ax:.1f},{sy1:.1f} L {w:.1f},{sy1:.1f} Z")
-    if preset == "upArrow":
-        sx0, sx1 = w * 0.25, w * 0.75
-        ay = h * 0.5
-        return (f"M {sx0:.1f},{h:.1f} L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
-                f"L {w*0.5:.1f},0 L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
-                f"L {sx1:.1f},{h:.1f} Z")
-    if preset == "downArrow":
-        sx0, sx1 = w * 0.25, w * 0.75
-        ay = h * 0.5
+        # x1 = ss * adj (default 50000) — point AND notch depth. The old
+        # hardcoded 30%-of-WIDTH notch stretched wide process-step chevrons
+        # into near-triangles.
+        x1 = min(w, ss * adj.get("adj", 0.5))
+        return (f"M 0,0 L {w-x1:.1f},0 L {w:.1f},{h*0.5:.1f} "
+                f"L {w-x1:.1f},{h:.1f} L 0,{h:.1f} "
+                f"L {x1:.1f},{h*0.5:.1f} Z")
+    if preset in ("rightArrow", "leftArrow", "upArrow", "downArrow"):
+        # adj1 = shaft thickness as a fraction of the cross dimension
+        # (default 50000); adj2 = head length = ss * adj2 (default 50000).
+        a1 = adj.get("adj1", 0.5)
+        a2 = adj.get("adj2", 0.5)
+        if preset in ("rightArrow", "leftArrow"):
+            head = min(w, ss * a2)
+            sy0 = h * (0.5 - a1 / 2)
+            sy1 = h * (0.5 + a1 / 2)
+            if preset == "rightArrow":
+                ax = w - head
+                return (f"M 0,{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                        f"L {w:.1f},{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                        f"L {ax:.1f},{sy1:.1f} L 0,{sy1:.1f} Z")
+            ax = head
+            return (f"M {w:.1f},{sy0:.1f} L {ax:.1f},{sy0:.1f} L {ax:.1f},0 "
+                    f"L 0,{h*0.5:.1f} L {ax:.1f},{h:.1f} "
+                    f"L {ax:.1f},{sy1:.1f} L {w:.1f},{sy1:.1f} Z")
+        head = min(h, ss * a2)
+        sx0 = w * (0.5 - a1 / 2)
+        sx1 = w * (0.5 + a1 / 2)
+        if preset == "upArrow":
+            ay = head
+            return (f"M {sx0:.1f},{h:.1f} L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
+                    f"L {w*0.5:.1f},0 L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
+                    f"L {sx1:.1f},{h:.1f} Z")
+        ay = h - head
         return (f"M {sx0:.1f},0 L {sx0:.1f},{ay:.1f} L 0,{ay:.1f} "
                 f"L {w*0.5:.1f},{h:.1f} L {w:.1f},{ay:.1f} L {sx1:.1f},{ay:.1f} "
                 f"L {sx1:.1f},0 Z")
@@ -1948,7 +1973,10 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
         pg = spPr.find("a:prstGeom", NS)
         if pg is not None and pg.get("prst") == "roundRect":
             gd = pg.find(".//a:gd[@name='adj']", NS)
-            adj_frac = 0.10  # PowerPoint default when omitted
+            # ECMA-376 default when adj is omitted: 16667/100000 of the
+            # shortest side (NOT 0.10 — that undersized default-rounded
+            # corners by ~40%).
+            adj_frac = 0.16667
             if gd is not None and gd.get("fmla"):
                 m = re.search(r"val (\d+)", gd.get("fmla"))
                 if m:
@@ -2048,7 +2076,19 @@ def _emit_sp(ch, offset, shapes, slide, cmap, theme, palette):
             if pg is not None:
                 preset = pg.get("prst")
                 if preset:
-                    svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h))
+                    adj: dict[str, float] = {}
+                    av = pg.find("a:avLst", NS)
+                    if av is not None:
+                        for gd in av.findall("a:gd", NS):
+                            fmla = gd.get("fmla") or ""
+                            if fmla.startswith("val "):
+                                try:
+                                    adj[gd.get("name") or ""] = \
+                                        int(fmla[4:]) / 100000.0
+                                except ValueError:
+                                    pass
+                    svg_d = _preset_geom_path(preset, cmap.w(w), cmap.h(h),
+                                              adj)
         # Prefer carrying the native <p:sp> verbatim for TOP-LEVEL complex chrome:
         # a real, editable vector spliced straight into the output deck — NO
         # svg → raster → picture round-trip (which both distorts the shape and is
