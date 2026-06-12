@@ -1,4 +1,4 @@
-"""feinschmiede/tests/test_geometry_units.py"""
+"""Unit conversions: baseline constants, derived scales, falsy/invalid fallbacks."""
 from feinschmiede.geometry import units
 
 
@@ -17,16 +17,18 @@ def test_emu_per_px_falls_back_to_baseline():
     assert units.emu_per_px(0, 1920) == 6350.0
     assert units.emu_per_px(None, None) == 6350.0
     assert units.emu_per_px(12192000, 0) == 6350.0
+    assert units.emu_per_px(-1, 1920) == 6350.0
+    assert units.emu_per_px(10969625, -1) == 6350.0
 
 
 def test_px_to_pt_derived():
     # 12in slide: 0.44987 pt per design-px.
-    assert abs(units.px_to_pt(10969625, 1920) - 0.44987) < 1e-4
-    assert units.px_to_pt(None, None) == 0.5
+    assert abs(units.px_to_pt_scale(10969625, 1920) - 0.44987) < 1e-4
+    assert units.px_to_pt_scale(None, None) == 0.5
 
 
 def test_font_round_trip():
-    scale = units.px_to_pt(10969625, 1920)
+    scale = units.px_to_pt_scale(10969625, 1920)
     px = units.font_pt_to_px(16.0, scale=scale)
     assert abs(units.font_px_to_pt(px, scale=scale) - 16.0) < 1e-9
     # Legacy default: 1pt = 2 design-px.

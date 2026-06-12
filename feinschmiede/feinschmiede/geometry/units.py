@@ -20,13 +20,13 @@ PX_TO_PT_BASELINE: float = EMU_PER_PX_BASELINE / EMU_PER_PT             # 0.5
 
 def emu_per_px(width_emu: float | None = None, canvas_w: float | None = None) -> float:
     """Design-px -> EMU scale. Falsy width_emu or canvas_w -> legacy baseline."""
-    if not width_emu or not canvas_w:
+    if not width_emu or not canvas_w or width_emu <= 0 or canvas_w <= 0:
         return EMU_PER_PX_BASELINE
     return float(width_emu) / float(canvas_w)
 
 
-def px_to_pt(width_emu: float | None = None, canvas_w: float | None = None) -> float:
-    """Design-px -> pt scale (= emu_per_px / EMU_PER_PT)."""
+def px_to_pt_scale(width_emu: float | None = None, canvas_w: float | None = None) -> float:
+    """Design-px -> pt scale factor (= emu_per_px / EMU_PER_PT)."""
     return emu_per_px(width_emu, canvas_w) / EMU_PER_PT
 
 
@@ -36,5 +36,5 @@ def font_px_to_pt(px: float, *, scale: float = PX_TO_PT_BASELINE) -> float:
 
 
 def font_pt_to_px(pt: float, *, scale: float = PX_TO_PT_BASELINE) -> float:
-    """Font size pt -> design-px at the given px->pt scale."""
+    """Font size pt -> design-px at the given px->pt scale (assumes scale > 0)."""
     return pt / scale
