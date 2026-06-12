@@ -51,3 +51,39 @@ def test_no_override_unchanged_legacy():
     assert b.size_px == 16.0
     assert b.size_pt == 8.0       # 16px × legacy 0.5
     assert b.width_emu == int(800 * 6350)
+
+
+def test_budget_face_matches_emitter_when_resolvable():
+    """A fontconfig-resolvable face not in textfit's ratio table must be
+    modeled verbatim (real metrics) — the same face the emitter's fit
+    paths use — not collapsed to the 'default' heuristic."""
+    import pytest
+    from feinschmiede.text import measure
+    if measure.find_font_file("DejaVu Sans") is None:
+        pytest.skip("DejaVu Sans not resolvable")
+    raw = dict(RAW_12IN)
+    raw["font-family"] = {"display": ["DejaVu Sans"], "body": ["DejaVu Sans"]}
+    b = _budgets('text 100,100 "{{ t }}" style:body maxwidth:800 maxheight:200', raw)["t"]
+    assert b.font_family == "DejaVu Sans"
+    assert b.bold is False
+
+
+def test_budget_face_falls_back_to_known_family(monkeypatch):
+    """With real metrics unavailable, the legacy walk still finds the first
+    ratio-table family in the fallback list — unchanged behavior."""
+    from feinschmiede.text import measure
+    monkeypatch.setenv("FEINSCHMIEDE_NO_REAL_METRICS", "1")
+    measure.clear_caches()
+    raw = dict(RAW_12IN)
+    raw["font-family"] = {"display": ["NoSuchFont"], "body": ["NoSuchFont", "Open Sans"]}
+    b = _budgets('text 100,100 "{{ t }}" style:body maxwidth:800 maxheight:200', raw)["t"]
+    assert b.font_family == "Open Sans"
+    measure.clear_caches()
+
+
+def test_budget_face_table_families_unchanged():
+    """Ratio-table families resolve identically to before (env-independent)."""
+    raw = dict(RAW_12IN)
+    raw["font-family"] = {"display": ["Open Sans"], "body": ["Open Sans"]}
+    b = _budgets('text 100,100 "{{ t }}" style:body maxwidth:800 maxheight:200', raw)["t"]
+    assert b.font_family == "Open Sans"

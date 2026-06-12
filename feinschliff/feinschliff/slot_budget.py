@@ -39,6 +39,7 @@ from feinschmiede.dsl.tokens import Tokens
 from feinschmiede.geometry import units
 from feinschliff.textfit import (
     chars_per_line as _cpl,
+    has_real_metrics as _has_real_metrics,
     register_font_metrics as _register_font_metrics,
     supported_fonts as _supported_fonts,
 )
@@ -185,6 +186,27 @@ def _best_font(font_family: list[str]) -> str:
     return "default"
 
 
+def _budget_face(font_family: list[str], weight: int) -> tuple[str, bool]:
+    """The (face, bold) textfit should model for this budget — the same face
+    the emitter's fit paths use, whenever textfit can actually model it.
+
+    Priority:
+    1. The emitter's face (family[0] + weight suffix via pptx_emit._resolve_face)
+       when it is registered/ratio-table-known or has real measured metrics —
+       keeps gate predictions on the same glyph widths the emitter fits with.
+    2. Otherwise today's fallback walk (_best_font + _bold_for_weight) so
+       fallback-list brands and metric-less environments are unchanged.
+    """
+    if font_family:
+        # Lazy import: pptx_emit pulls python-pptx/PIL — only needed here.
+        from feinschliff.dsl.pptx_emit import _resolve_face
+        face, bold = _resolve_face(font_family[0], weight)
+        if face in _supported_fonts() or _has_real_metrics(face, bold):
+            return face, bold
+    return (_best_font(font_family) if font_family else "default",
+            _bold_for_weight(weight))
+
+
 def compute_slot_budgets(
     nodes: Sequence[DSLNode],
     tokens: Tokens,
@@ -296,7 +318,7 @@ def compute_slot_budgets(
         except (KeyError, ValueError):
             continue
 
-        font_name = _best_font(resolved.font_family) if resolved.font_family else "default"
+        font_name, bold = _budget_face(resolved.font_family, resolved.weight)
         budget = SlotBudget(
             slot=slot,
             style=style_name,
@@ -305,7 +327,7 @@ def compute_slot_budgets(
             width_px=width_px,
             height_px=height_px,
             font_family=font_name,
-            bold=_bold_for_weight(resolved.weight),
+            bold=bold,
             emu_per_px=emu_per_px,
             px_to_pt=px_to_pt,
         )

@@ -3,8 +3,13 @@
 End-to-end honesty pin for the overflow gate: the first content length that
 trips `slot-overflow` on a 12in-deck probe slot must sit within ±10% of a
 PIL-measured greedy-wrap ground truth (the spec's bosch slide-08 class probe:
-920×787px box, size:16pt — true capacity ≈ 850–950 chars with Noto; the
-pre-fix gate said 1658)."""
+920×787px box, size:16pt — true capacity ≈ 800–850 chars with DejaVu Sans;
+the pre-fix gate said 1658, and after the size-pt fix but before font-face
+parity the gap was 8.6%).
+
+# budget.font_family now resolves to the real DejaVu face (same as the
+# emitter's fit paths), so the residual gap vs PIL truth is
+# wrap-algorithm rounding only."""
 import math
 
 import pytest
@@ -54,6 +59,7 @@ def _pil_ground_truth(box_w_px: float, box_h_px: float, *, size_pt: float,
     placed_lines: list[str] = []
     line = ""
     i = 0
+    # All words in _WORDS fit on one line at this box width; no single-word-wider-than-box guard needed.
     while i < 20_000:
         word = _WORDS[i % len(_WORDS)]
         i += 1
@@ -63,6 +69,7 @@ def _pil_ground_truth(box_w_px: float, box_h_px: float, *, size_pt: float,
             continue
         placed_lines.append(line)
         if len(placed_lines) >= max_lines:
+            # `line` starts line max_lines+1 — excluded; placed_lines is exactly full.
             return len(" ".join(placed_lines))
         line = word
     raise AssertionError("unreachable")
@@ -94,7 +101,8 @@ def test_gate_threshold_within_10pct_of_pil_truth():
             lo = mid + 1
     threshold = lo
 
+    # Residual gap is wrap-algorithm rounding (~1%); ±10% is a generous guard.
     assert abs(threshold - truth) <= 0.10 * truth, (
         f"gate first-overflow at {threshold} chars vs PIL truth {truth} "
-        f"(>±10% — the budget/emitter conversions have drifted)"
+        f"(>±10% — the budget/emitter font-face or size conversions have drifted)"
     )
