@@ -15,7 +15,6 @@ Covers:
 """
 from __future__ import annotations
 
-import pytest
 
 from feinschliff.layout_picker import pick_layout
 from feinschliff.layout_budget import plan_deck_layouts
@@ -257,14 +256,10 @@ def test_plan_deck_layouts_threads_predecessor():
         {"role": "closer", "concept_count": 3},
     ])
     assert len(result) == 2
-    slide2 = result[1]
     # The key-takeaways layout should have received follows-well bonus since
-    # slide 1 was content-columns.  We check that the winner's rationale or
-    # any candidate rationale from the full run includes it.  Because
-    # plan_deck_layouts only returns the winner's rationale, we re-run
-    # pick_layout directly with predecessor set to verify the mechanism.
-    winner_layout = slide2["layout"]
-    # Re-run pick_layout with predecessor to verify the tag.
+    # slide 1 was content-columns.  plan_deck_layouts only returns the
+    # winner's rationale, so re-run pick_layout directly with predecessor
+    # set to verify the mechanism.
     from feinschliff.layout_picker import pick_layout as _pick
     preds = _pick(
         role="closer", concept_count=3,

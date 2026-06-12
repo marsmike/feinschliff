@@ -22,7 +22,6 @@ signals_from_slide) and for plan_deck_layouts forwarding slot_lengths.
 """
 from __future__ import annotations
 
-import pytest
 
 from feinschliff.layout_picker import _BUDGET_PENALTY_SCALE, pick_layout
 from feinschliff.layout_budget import plan_deck_layouts
