@@ -70,7 +70,7 @@ def primitives_from_svg_dsl(dsl: str, brand_dir: Path, *, canvas_w: int | None =
             x, y = parse_xy(xy)
             base_size = _SVG_TEXT_SIZES.get(level, 14)
             size = base_size * scale
-            max_line_len = max((len(l) for l in content.split("\\n")), default=len(content))
+            max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
                 id=_id, kind="text",
                 x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
@@ -210,7 +210,7 @@ def primitives_from_excalidraw_dsl(dsl: str, brand_dir: Path, *, canvas_w: int |
                 if p.startswith("size:"):
                     base_size = _EXCALIDRAW_TEXT_SIZES.get(p.split(":", 1)[1], 14)
             size = base_size * scale
-            max_line_len = max((len(l) for l in content.split("\\n")), default=len(content))
+            max_line_len = max((len(line) for line in content.split("\\n")), default=len(content))
             prims.append(Primitive(
                 id=_id, kind="text", x=x, y=int(y - size), w=int(size * _CHAR_WIDTH_EM * max_line_len), h=int(size + 4),
                 label=content, role=("title" if base_size >= 20 else "body"), font_size=float(size),
