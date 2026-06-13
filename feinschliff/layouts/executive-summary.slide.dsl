@@ -86,7 +86,7 @@ text 480,894  style:h-idx maxwidth:180 maxheight:24 "{{ kpis[0].key }}"
 
 text 700,870  style:kpi-value maxwidth:300 maxheight:120 "{{ kpis[1].value }}"
 text 1000,894 style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[1].unit }}"
-text 1080,894 style:h-idx maxwidth:200 maxheight:24 "{{ kpis[1].key }}"
+text 1080,894 style:h-idx maxwidth:140 maxheight:24 "{{ kpis[1].key }}"
 
 text 1260,870 style:kpi-value maxwidth:300 maxheight:120 "{{ kpis[2].value }}"
 text 1560,894 style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[2].unit }}"

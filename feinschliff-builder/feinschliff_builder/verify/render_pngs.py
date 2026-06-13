@@ -37,7 +37,13 @@ def render_slides_to_png(deck: Path, out_dir: Path) -> dict[int, Path]:
     subprocess.check_call([
         pdftoppm, "-r", "144", "-png", str(pdf), str(out_dir / "slide"),
     ])
-    return {
-        int(p.stem.rsplit("-", 1)[-1]): p
-        for p in sorted(out_dir.glob("slide-*.png"))
-    }
+    # Filter to numerically-suffixed pages only: pdftoppm names its
+    # output `slide-N.png` (1-based) but the same out_dir may already
+    # carry a `slide-thumb.png` from an earlier render step, which then
+    # crashed the int() parse.
+    out: dict[int, Path] = {}
+    for p in sorted(out_dir.glob("slide-*.png")):
+        suffix = p.stem.rsplit("-", 1)[-1]
+        if suffix.isdigit():
+            out[int(suffix)] = p
+    return out
