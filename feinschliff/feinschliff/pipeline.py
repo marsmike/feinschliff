@@ -120,6 +120,15 @@ def compile_slide(
         slide_index=slide_index,
     )
 
+    # Snap-to-rail: enforce the brand's left-rail (slide.left-rail, default
+    # slide.padding-x) on every text node whose x sits within ±threshold of
+    # it. The visual-vocabulary skill spells the principle: "every element
+    # anchors to an invisible grid; misaligned elements read as mistakes".
+    # Per-node opt-out via `nosnap:true`. Disabled when the threshold token
+    # is 0.
+    from feinschliff.dsl.expander import snap_to_rails
+    interp = snap_to_rails(interp, tokens)
+
     sw, sh = _slide_canvas(interp)
 
     defects: list[Defect] = []

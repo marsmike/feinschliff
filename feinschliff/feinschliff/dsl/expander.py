@@ -380,6 +380,242 @@ def interpolate_nodes(nodes: list[DSLNode], ctx: dict) -> list[DSLNode]:
 
 
 # ---------------------------------------------------------------------------
+# Snap-to-rail post-pass
+# ---------------------------------------------------------------------------
+
+# Element kinds whose visible left edge is the eye's alignment cue. Tight
+# scope on purpose: this only snaps content text whose drift breaks the
+# left rail. Structural rects, shapes, pictures, lines and embedded
+# diagram frames stay untouched so panels / grids / illustrations that
+# intentionally bleed past the rail are preserved. Per-node opt-out via
+# `nosnap:true` attribute for the rare TEXT node that needs to sit off-rail.
+_SNAP_KINDS: frozenset[str] = frozenset({"text"})
+
+
+def _node_box(n: DSLNode) -> tuple[float, float, float, float] | None:
+    """(x, y, w, h) in canvas px for a primitive that has a position+size,
+    or `None` if we can't extract one. Used by the snap pass and the lint
+    to find "shoulder" elements that explain an intentional indent."""
+    if not n.pos_args:
+        return None
+    try:
+        x_str, y_str = n.pos_args[0].split(",", 1)
+        x = float(x_str.strip())
+        y = float(y_str.strip())
+    except (ValueError, IndexError):
+        return None
+    w = h = 0.0
+    if len(n.pos_args) >= 2 and "x" in n.pos_args[1]:
+        try:
+            w_str, h_str = n.pos_args[1].lower().split("x", 1)
+            w = float(w_str.strip())
+            h = float(h_str.strip())
+        except (ValueError, IndexError):
+            pass
+    if w == 0 and n.kw_args.get("maxwidth"):
+        try:
+            w = float(n.kw_args["maxwidth"])
+        except (ValueError, TypeError):
+            pass
+    if h == 0 and n.kw_args.get("maxheight"):
+        try:
+            h = float(n.kw_args["maxheight"])
+        except (ValueError, TypeError):
+            pass
+    return x, y, w, h
+
+
+def snap_to_rails(nodes: list[DSLNode], tokens) -> list[DSLNode]:
+    """Snap left edges of text nodes to the brand's `slide.left-rail`.
+
+    Reads token `slide.left-rail` (default: `slide.padding-x`, default 100)
+    and `slide.rail-snap-threshold` (default 30). A text node whose x sits
+    within ±threshold of the rail but isn't exactly on it has its x snapped
+    to the rail and its maxwidth shrunk by the same delta so the right edge
+    stays put. Opt-out with `nosnap:true`.
+
+    Indent-respecting: if any sibling has its right edge in (rail, text.x]
+    and its y range overlaps the text's vertical band by 8+ pixels, the
+    text is treated as an intentional indent past a shoulder element
+    (bullet glyph, counter chip, illustration band) and is left in place.
+    That keeps designs like exec-summary's bullet-square + indented body
+    intact while still catching pure drift (e.g. 104 vs 100 in
+    horizontal-bullets where no shoulder exists).
+    """
+    # Snap is brand-opt-in. Brands declare `slide.rail-snap-enabled: 1`
+    # in tokens.json. Decompiled brand packs whose layouts came from a
+    # source PPTX with a different native rail (BSH at x=76, Bosch at
+    # x=85 etc.) stay off until the rail is tuned per-brand. A brand
+    # that opts in but sets no explicit `left-rail` inherits the value
+    # from `slide.padding-x` (default 100).
+    try:
+        enabled = bool(int(tokens.slide("rail-snap-enabled")))
+    except Exception:
+        enabled = False
+    if not enabled:
+        return nodes
+    try:
+        rail = int(tokens.slide("left-rail")) or int(tokens.slide("padding-x")) or 100
+    except Exception:
+        rail = 100
+    try:
+        threshold = int(tokens.slide("rail-snap-threshold")) or 30
+    except Exception:
+        threshold = 30
+    if threshold <= 0 or rail <= 0:
+        return nodes
+
+    boxes = [(_node_box(n), n) for n in nodes]
+
+    def _direct_shoulder(text_x: float, text_y: float, text_h: float,
+                          self_node: DSLNode) -> bool:
+        ty0, ty1 = text_y, text_y + max(text_h, 1.0)
+        for box, other in boxes:
+            if other is self_node or box is None:
+                continue
+            ox, oy, ow, oh = box
+            right = ox + max(ow, 1.0)
+            if not (rail <= right <= text_x):
+                continue
+            oy1 = oy + max(oh, 1.0)
+            overlap = min(ty1, oy1) - max(ty0, oy)
+            if overlap >= 8:
+                return True
+        return False
+
+    def _has_left_shoulder(text_x: float, text_y: float, text_h: float,
+                           self_node: DSLNode) -> bool:
+        # Direct shoulder: a structural element to the left in this row.
+        if _direct_shoulder(text_x, text_y, text_h, self_node):
+            return True
+        # Block-inherited shoulder: a sibling text at the SAME x within
+        # 80px vertically has a direct shoulder, so the block is indented
+        # together. Catches "bullet square next to heading; body sits
+        # below at the same indent" patterns.
+        for box, other in boxes:
+            if other is self_node or box is None:
+                continue
+            if other.kind not in _SNAP_KINDS:
+                continue
+            ox, oy, _ow, oh = box
+            if ox != text_x or abs(oy - text_y) > 80:
+                continue
+            if _direct_shoulder(ox, oy, oh, other):
+                return True
+        return False
+
+    out: list[DSLNode] = []
+    for n in nodes:
+        if (n.kind not in _SNAP_KINDS
+                or n.kw_args.get("nosnap") in ("true", "1", True)):
+            out.append(n)
+            continue
+        box = _node_box(n)
+        if box is None:
+            out.append(n)
+            continue
+        x, y, _w, h = box
+        if x == rail or abs(x - rail) > threshold:
+            out.append(n)
+            continue
+        if x > rail and _has_left_shoulder(x, y, h, n):
+            out.append(n)
+            continue
+        dx = rail - x
+        y_out = int(y) if y == int(y) else y
+        new_pos = [f"{rail},{y_out}"] + list(n.pos_args[1:])
+        new_kw = dict(n.kw_args)
+        mw = new_kw.get("maxwidth")
+        if mw is not None:
+            try:
+                new_kw["maxwidth"] = str(max(1, int(mw) - int(dx)))
+            except (ValueError, TypeError):
+                pass
+        out.append(replace(n, pos_args=new_pos, kw_args=new_kw))
+    return out
+
+
+def rail_drift_report(nodes: list[DSLNode], tokens) -> list[str]:
+    """List drift the snap pass will silently fix at render time: text
+    nodes whose x is within ±threshold of the left rail, off-rail, and
+    without a shoulder element justifying the indent. Mirrors
+    `snap_to_rails` exactly — what shows up here is exactly what snap is
+    rewriting. Empty list = clean. Surfaces in `feinschliff-builder
+    audit` so authors can choose to fix the source instead of relying on
+    the silent fix. Brand-gated by `slide.rail-snap-enabled`."""
+    try:
+        enabled = bool(int(tokens.slide("rail-snap-enabled")))
+    except Exception:
+        enabled = False
+    if not enabled:
+        return []
+    try:
+        rail = int(tokens.slide("left-rail")) or int(tokens.slide("padding-x")) or 100
+    except Exception:
+        rail = 100
+    try:
+        threshold = int(tokens.slide("rail-snap-threshold")) or 30
+    except Exception:
+        threshold = 30
+    boxes = [(_node_box(n), n) for n in nodes]
+
+    def _direct_shoulder(text_x: float, text_y: float, text_h: float,
+                          self_node: DSLNode) -> bool:
+        ty0, ty1 = text_y, text_y + max(text_h, 1.0)
+        for box, other in boxes:
+            if other is self_node or box is None:
+                continue
+            ox, oy, ow, oh = box
+            right = ox + max(ow, 1.0)
+            if not (rail <= right <= text_x):
+                continue
+            oy1 = oy + max(oh, 1.0)
+            overlap = min(ty1, oy1) - max(ty0, oy)
+            if overlap >= 8:
+                return True
+        return False
+
+    def _has_left_shoulder(text_x: float, text_y: float, text_h: float,
+                           self_node: DSLNode) -> bool:
+        # Direct shoulder: a structural element to the left in this row.
+        if _direct_shoulder(text_x, text_y, text_h, self_node):
+            return True
+        # Block-inherited shoulder: a sibling text at the SAME x within
+        # 80px vertically has a direct shoulder, so the block is indented
+        # together. Catches "bullet square next to heading; body sits
+        # below at the same indent" patterns.
+        for box, other in boxes:
+            if other is self_node or box is None:
+                continue
+            if other.kind not in _SNAP_KINDS:
+                continue
+            ox, oy, _ow, oh = box
+            if ox != text_x or abs(oy - text_y) > 80:
+                continue
+            if _direct_shoulder(ox, oy, oh, other):
+                return True
+        return False
+
+    report: list[str] = []
+    for n in nodes:
+        if n.kind not in _SNAP_KINDS:
+            continue
+        if n.kw_args.get("nosnap") in ("true", "1", True):
+            continue
+        box = _node_box(n)
+        if box is None:
+            continue
+        x, y, _w, h = box
+        if x == rail or abs(x - rail) > threshold:
+            continue
+        if x > rail and _has_left_shoulder(x, y, h, n):
+            continue
+        label = (n.label or "").strip().strip('"')[:32]
+        report.append(f"x={x:g} → rail={rail} (drift {x - rail:+g}px) {label!r}")
+    return report
+
+
+# ---------------------------------------------------------------------------
 # Native-payload slot interpolation
 # ---------------------------------------------------------------------------
 

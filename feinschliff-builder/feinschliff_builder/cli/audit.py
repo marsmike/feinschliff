@@ -39,9 +39,40 @@ def register(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--max-mark-px", type=int, default=64,
                         help="JPEG native pics with min(w, h) above this are "
                              "flagged as unslotted photos (default 64)")
+    parser.add_argument("--strict-rail", action="store_true",
+                        help="Fail when any layout has rail-drift text "
+                             "(non-strict mode only warns).")
     parser.add_argument("--json", action="store_true",
                         help="Machine-readable report on stdout")
     parser.set_defaults(func=cmd_audit)
+
+
+def _rail_drift_for_layout(path: Path, brand_pack: Path) -> list[str]:
+    """Lint pass that imports the brand's tokens and runs the engine's
+    rail_drift_report against the layout's DSL nodes. Mirrors the snap
+    pass exactly: the same node kinds, threshold, and shoulder semantics
+    decide what's drift and what's intentional indent."""
+    try:
+        from feinschliff.dsl.parser import parse_lines
+        from feinschliff.dsl.expander import rail_drift_report
+        from feinschmiede.dsl.tokens import load_tokens
+    except Exception:
+        return []
+    try:
+        tokens = load_tokens(brand_pack)
+    except Exception:
+        return []
+    try:
+        body = path.read_text(encoding="utf-8")
+        if body.startswith("---"):
+            body = body.split("---\n", 2)[2]
+        nodes, _ = parse_lines(body, source=str(path))
+    except Exception:
+        return []
+    try:
+        return rail_drift_report(nodes, tokens)
+    except Exception:
+        return []
 
 
 def _width_emu(brand_pack: Path) -> float:
@@ -62,13 +93,15 @@ def cmd_audit(args) -> int:
     px_per_emu = 1920.0 / _width_emu(brand_pack)
 
     report: dict[str, dict] = {}
-    total_unslot = total_pics = 0
+    total_unslot = total_pics = total_drift = 0
     for path in sorted(layouts_dir.glob("*.slide.dsl")):
         text = path.read_text(encoding="utf-8")
         body = text.split("---\n", 2)[2] if text.startswith("---") else text
         name = path.name[: -len(".slide.dsl")]
 
         unslot = unslotified_text_report(body, asset_root)
+        rail_drift = _rail_drift_for_layout(path, brand_pack)
+        total_drift += len(rail_drift)
 
         content_pics: list[str] = []
         for line in body.splitlines():
@@ -110,22 +143,28 @@ def cmd_audit(args) -> int:
                 content_pics.append(f"{line.split()[1]} {w:.0f}x{h:.0f}px (jpeg)")
 
         has_pagenum = '"page-number"' in text or "role: page-number" in text
-        if unslot or content_pics:
+        if unslot or content_pics or rail_drift:
             report[name] = {"unslotified": unslot, "content_native_pics": content_pics,
+                            "rail_drift": rail_drift,
                             "page_number_slot": has_pagenum}
         total_unslot += len(unslot)
         total_pics += len(content_pics)
 
     if args.json:
         print(json.dumps({"layouts": report, "total_unslotified": total_unslot,
-                          "total_content_native_pics": total_pics}, indent=2))
+                          "total_content_native_pics": total_pics,
+                          "total_rail_drift": total_drift}, indent=2))
     else:
         for name, entry in report.items():
             for u in entry["unslotified"]:
                 print(f"  {name}: unslotified {u}")
             for p in entry["content_native_pics"]:
                 print(f"  {name}: photo carried as native chrome {p}")
+            for d in entry.get("rail_drift") or []:
+                tag = "rail-drift" if args.strict_rail else "rail-drift (warn)"
+                print(f"  {name}: {tag} {d}")
         n_layouts = len(list(layouts_dir.glob("*.slide.dsl")))
         print(f"audit: {n_layouts} layouts — {total_unslot} unslotified text(s), "
-              f"{total_pics} photo native(s)")
-    return 0 if (total_unslot == 0 and total_pics == 0) else 1
+              f"{total_pics} photo native(s), {total_drift} rail-drift text(s)")
+    bad_drift = total_drift if args.strict_rail else 0
+    return 0 if (total_unslot == 0 and total_pics == 0 and bad_drift == 0) else 1
