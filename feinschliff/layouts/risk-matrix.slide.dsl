@@ -45,7 +45,7 @@ header pgmeta:"{{ pgmeta }}"
 rect 100,180 80x4 fill:ink
 text 100,220 style:tracker    maxwidth:1720 maxheight:24 "{{ tracker }}"
 text 100,260 style:act-kicker color:accent maxwidth:1720 maxheight:30 "{{ kicker }}"
-text 100,300 style:act-title  maxwidth:1720 maxheight:140 "{{ action_title }}"
+text 100,300 style:act-title  maxwidth:1720 maxheight:96  "{{ action_title }}"
 
 # --- Severity zones (drawn first as flat backgrounds, low opacity) ---
 # Low zone: bottom-left 3×3 block (prob 1-3 × impact 1-3).
@@ -88,10 +88,14 @@ text 40,700 style:h-idx color:graphite maxwidth:50 maxheight:20 align:right "3"
 text 40,800 style:h-idx color:graphite maxwidth:50 maxheight:20 align:right "2"
 text 40,900 style:h-idx color:graphite maxwidth:50 maxheight:20 align:right "1"
 
-# Axis-label combined caption above the grid, left-aligned with the grid.
-# Bottom of the title bbox is y=440; this sits flush at y=440 so the
-# strict-less-than overlap check does not flag.
-text 100,440 style:tracker color:graphite maxwidth:500 maxheight:18 "IMPACT (Y) × PROBABILITY (X) — 1 LOW → 5 HIGH"
+# Axis-label combined caption above the grid, left-aligned with it. The
+# bleed-model textfit (PR #78) lets tracker glyphs (~16px line, ~20px
+# em-with-leading) extend past their declared box; placing the caption
+# flush at y=440 over a grid border at y=460 visibly overprinted the
+# border. Sit 24px above the grid (caption renders y=410–428), with 14px
+# clearance from the action_title — which is itself shrunk to maxheight:96
+# (single-line act-title at 50pt fits in ~70px under the bleed model).
+text 100,410 style:tracker color:graphite maxwidth:500 maxheight:24 "IMPACT (Y) × PROBABILITY (X) — 1 LOW → 5 HIGH"
 
 # --- Risk markers (60×60 ovals at computed centers) ---
 # Every marker is `if:`-guarded on `risks[N].name` because the marker

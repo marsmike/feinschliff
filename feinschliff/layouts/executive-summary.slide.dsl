@@ -74,16 +74,22 @@ rect 100,860 1720x1 fill:fog
 rect 660,860 1x80 fill:fog
 rect 1220,860 1x80 fill:fog
 
-text 100,870  style:kpi-value maxwidth:240 maxheight:80 "{{ kpis[0].value }}"
-text 340,894  style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[0].unit }}"
-text 420,894  style:h-idx maxwidth:240 maxheight:24 "{{ kpis[0].key }}"
+# kpi-value renders at 120px font (line-height 0.95 ≈ 115px). The old
+# maxwidth:240 was too narrow for 4-char values like "+5.1" or "−10.2",
+# wrapping them onto a second line that fell past the canvas bottom; the
+# old maxheight:80 was also below the actual one-line glyph height under
+# the bleed-model textfit. Boxes widened to 320/120, unit pushed to x=400
+# (still inside the cell that ends at x=660 / 1220 / 1820 dividers).
+text 100,870  style:kpi-value maxwidth:300 maxheight:120 "{{ kpis[0].value }}"
+text 400,894  style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[0].unit }}"
+text 480,894  style:h-idx maxwidth:180 maxheight:24 "{{ kpis[0].key }}"
 
-text 700,870  style:kpi-value maxwidth:240 maxheight:80 "{{ kpis[1].value }}"
-text 940,894  style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[1].unit }}"
-text 1000,894 style:h-idx maxwidth:200 maxheight:24 "{{ kpis[1].key }}"
+text 700,870  style:kpi-value maxwidth:300 maxheight:120 "{{ kpis[1].value }}"
+text 1000,894 style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[1].unit }}"
+text 1080,894 style:h-idx maxwidth:200 maxheight:24 "{{ kpis[1].key }}"
 
-text 1260,870 style:kpi-value maxwidth:240 maxheight:80 "{{ kpis[2].value }}"
-text 1500,894 style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[2].unit }}"
-text 1560,894 style:h-idx maxwidth:240 maxheight:24 "{{ kpis[2].key }}"
+text 1260,870 style:kpi-value maxwidth:300 maxheight:120 "{{ kpis[2].value }}"
+text 1560,894 style:kpi-unit  maxwidth:60 maxheight:32 "{{ kpis[2].unit }}"
+text 1640,894 style:h-idx maxwidth:180 maxheight:24 "{{ kpis[2].key }}"
 
 footer left:"{{ footer_left }}" right:"{{ footer_right }}"

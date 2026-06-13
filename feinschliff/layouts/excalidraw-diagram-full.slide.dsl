@@ -30,13 +30,17 @@ header pgmeta:"{{ pgmeta }}"
 
 rect 100,180 80x4 fill:ink
 text 100,220 style:eyebrow maxwidth:1720 maxheight:30 "{{ tracker }}"
-text 100,260 style:title   maxwidth:1720 maxheight:60 "{{ action_title }}"
+text 100,260 style:title   maxwidth:1720 maxheight:50 "{{ action_title }}"
 
-excalidraw diagram 100,340 1720x720 virtual:6880x2880 {
+# Diagram + caption sit ABOVE the y=1000 footer strip; old 720px diagram
+# extended to y=1060, painting over the footer chrome. Now: diagram
+# y=320–940 (620px tall), then a 30px gap, then the optional so_what
+# caption at y=970 maxheight:24 ending y=994 — 6px clear of the footer.
+excalidraw diagram 100,320 1720x620 virtual:6880x2240 {
   {{ diagram_dsl }}
 }
 
-text 100,1060 style:detail color:graphite maxwidth:1720 maxheight:20 if:"{{ so_what }}" "So what: {{ so_what }}"
+text 100,970 style:detail color:graphite maxwidth:1720 maxheight:24 if:"{{ so_what }}" "So what: {{ so_what }}"
 
 # Note: `source` slot dropped — text at y=1080 overflowed canvas edge.
 # Cite via speaker notes (deck-level `notes:` per slide) instead.

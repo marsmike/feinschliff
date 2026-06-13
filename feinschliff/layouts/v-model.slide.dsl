@@ -68,9 +68,11 @@ text 760,812  style:tracker maxwidth:400 align:center "{{ pairs[3].connector }}"
 text 1460,792 style:h-idx maxwidth:120 align:right    "{{ pairs[3].right_counter }}"
 text 1300,820 style:h-hd  maxwidth:280 maxheight:40 align:right "{{ pairs[3].right_title }}"
 
-# Pivot at the V apex.
-rect 760,900 400x60 fill:accent
-text 760,912 style:h-idx  color:ink align:center maxwidth:400 maxheight:18 "Pivot"
-text 760,935 style:tracker color:ink align:center maxwidth:400 maxheight:22 "{{ pivot_title }}"
+# Pivot at the V apex. Rect raised to 80px so both labels sit inside it
+# under the bleed-model textfit: tracker (16px font + 0.12 letter-spacing)
+# bled past the old maxheight:22 and printed below the 60px rect bottom.
+rect 760,900 400x80 fill:accent
+text 760,910 style:h-idx  color:ink align:center maxwidth:400 maxheight:18 "Pivot"
+text 760,940 style:tracker color:ink align:center maxwidth:400 maxheight:24 "{{ pivot_title }}"
 
 footer left:"{{ footer_left }}" right:"{{ footer_right }}"

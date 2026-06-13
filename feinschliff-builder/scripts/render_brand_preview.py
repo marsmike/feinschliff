@@ -46,8 +46,11 @@ import yaml
 from feinschliff.io.soffice import SOFFICE, pptx_to_pdf
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SHARED_LAYOUTS = REPO_ROOT / "layouts"
-SHARED_CONTENT = REPO_ROOT / "tests" / "fixtures" / "layouts"
+# Toolkit layouts moved out of feinschliff-builder when the packages were
+# split: shared `.slide.dsl` files now live in sibling `feinschliff/layouts`,
+# and the per-layout content fixtures stayed under feinschliff/tests.
+SHARED_LAYOUTS = REPO_ROOT.parent / "feinschliff" / "layouts"
+SHARED_CONTENT = REPO_ROOT.parent / "feinschliff" / "tests" / "fixtures" / "layouts"
 
 PDFUNITE = shutil.which("pdfunite") or "/opt/homebrew/bin/pdfunite"
 FEINSCHLIFF_CLI = "feinschliff"  # resolved via `uv run`, see _build_pptx
@@ -125,6 +128,10 @@ def _build_pptx(layout: Path, content: Path, brand: str, out: Path) -> None:
             "-o", str(out),
             "--skip-content-lint",  # showcase render; content quality not gated
             "--allow-missing-assets",  # image slots may be empty in fixtures
+            "--allow-diagram-warnings",  # the multi-slide path already passes
+                                         # this; deep diagrams (excalidraw-
+                                         # diagram-full) trip arrow-crossing
+                                         # warnings that are fatal by default.
         ],
         check=True,
         capture_output=True,
@@ -145,7 +152,10 @@ def _build_multislide_pptx(brand: str, slides: list[tuple[Path, Path]],
         "brand": brand,
         "slides": [
             {
-                "layout": str(layout.relative_to(REPO_ROOT)),
+                # Use the absolute layout path: SHARED_LAYOUTS now lives in
+                # a sibling package (feinschliff/layouts), so relative_to
+                # REPO_ROOT fails. The deck builder resolves any abs path.
+                "layout": str(layout),
                 "content_file": str(overlay.relative_to(plan_dir)),
             }
             for layout, overlay in slides
