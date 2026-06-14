@@ -61,3 +61,16 @@ markers = [
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["feinschliff*"]
+
+[tool.setuptools.package-data]
+# Non-.py runtime resources read by the package at import / first-use time.
+# Without these declarations the wheel ships only .py files and every CLI gate
+# that reads a JSON schema or YAML arc fixture crashes on first use with
+# FileNotFoundError. Keep this list in sync with any new data files added under
+# the feinschliff/ package tree.
+feinschliff = [
+    "intake/*.json",
+    "schemas/*.json",
+    "storyline/*.json",
+    "storyline/arcs/*.yaml",
+]
