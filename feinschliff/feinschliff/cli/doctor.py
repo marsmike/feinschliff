@@ -114,10 +114,9 @@ def _check_wheelhouse() -> DoctorCheck:
         "wheelhouse",
         "fail",
         "No wheelhouse found (offline wheel cache missing)",
-        f"The wheelhouse supplies Python packages for air-gapped installs.\n"
-        f"Set DATA_DIR to your data directory and ensure a "
-        f"wheels-{version_tag}/ subdirectory "
-        f"exists with at least 5 .whl files." + release_hint,
+        "The wheelhouse supplies Python packages for plugin installs.\n"
+        "Run the plugin's bin/<name> launcher once — it fetches the rolling "
+        "wheelhouse from the GitHub release into $DATA_DIR/wheels-latest/wheels/." + release_hint,
     )
 
 
