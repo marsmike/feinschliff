@@ -128,13 +128,13 @@ jobs:
         # the feinbild leg of the `packages` matrix, which installs libcairo2.)
         run: |
           uv run pytest -q \
-            --ignore=tests/test_skill_validator.py \
-            --ignore=tests/test_layout_excalidraw_diagram.py \
-            --ignore=tests/test_layout_svg_infographic.py \
-            --ignore=tests/test_diagrams_render.py \
-            --ignore=tests/test_excalidraw_render.py \
-            --ignore=tests/test_excalidraw_vocabulary_parity.py \
-            --deselect tests/test_examples_decks.py::test_deck_builds
+            --ignore=../tests/feinschliff/test_skill_validator.py \
+            --ignore=../tests/feinschliff/test_layout_excalidraw_diagram.py \
+            --ignore=../tests/feinschliff/test_layout_svg_infographic.py \
+            --ignore=../tests/feinschliff/test_diagrams_render.py \
+            --ignore=../tests/feinschliff/test_excalidraw_render.py \
+            --ignore=../tests/feinschliff/test_excalidraw_vocabulary_parity.py \
+            --deselect ../tests/feinschliff/test_examples_decks.py::test_deck_builds
 
   feinschliff-builder:
     name: feinschliff-builder tests
@@ -158,8 +158,8 @@ jobs:
         # (python-pptx/lxml + filesystem) and run here.
         run: |
           uv run pytest -q \
-            --ignore=tests/test_examples_refurbish.py \
-            --ignore=tests/test_refurbish_polish_cli.py
+            --ignore=../tests/feinschliff-builder/test_examples_refurbish.py \
+            --ignore=../tests/feinschliff-builder/test_refurbish_polish_cli.py
 
   packages:
     name: ${{ matrix.pkg }} tests

@@ -34,5 +34,8 @@ feinbild = [
     "brands/*/claude-design/*",
 ]
 
+[tool.pytest.ini_options]
+testpaths = ["../tests/feinbild"]
+
 [tool.uv.sources]
 feinschmiede = { workspace = true }

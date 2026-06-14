@@ -40,10 +40,11 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../tests/feinschliff-builder"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402"]
+"../tests/feinschliff-builder/**" = ["E402"]
 "scripts/**" = ["E402"]
 
 [tool.setuptools.packages.find]
