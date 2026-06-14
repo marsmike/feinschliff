@@ -45,13 +45,14 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../tests/feinschliff"]
 markers = [
   "orchestration: end-to-end deck pipeline tests (slow; run with `pytest -m orchestration`)",
 ]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402"]
+"../tests/feinschliff/**" = ["E402"]
 "scripts/**" = ["E402"]
 # Vendored, self-contained media-skill CLI scripts (copied verbatim from
 # agentic-toolkit). They do __future__/sys.path setup before imports, so E402

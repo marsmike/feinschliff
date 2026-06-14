@@ -27,4 +27,4 @@ include = ["feinschmiede*"]
 feinschmiede = ["schemas/*.json", "compounds/*.dsl", "diagrams/playwright_assets/*.html"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["../tests/feinschmiede"]

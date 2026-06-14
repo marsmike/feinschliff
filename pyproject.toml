@@ -9,3 +9,8 @@ members = [
     "feinklang",
     "feinschnitt",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests moved to repo-root tests/<plugin>/ — suppress the same lint rules that
+# each plugin's pyproject.toml suppresses for their own tests/** path.
+"tests/**" = ["E402"]

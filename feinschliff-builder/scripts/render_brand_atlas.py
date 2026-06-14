@@ -20,7 +20,7 @@ Run:
     uv run python scripts/render_brand_atlas.py --workers 8           # parallel soffice
 
 Content fixtures:
-  - Shared layout `<id>.slide.dsl` looks for `tests/fixtures/layouts/<id>.yaml`
+  - Shared layout `<id>.slide.dsl` looks for `tests/feinschliff/fixtures/layouts/<id>.yaml`
     at repo root, falling back to `brands/<brand>/tests/fixtures/layouts/<id>.yaml`.
   - Brand-specific layouts must ship `brands/<brand>/tests/fixtures/layouts/<id>.yaml`.
 
@@ -59,7 +59,7 @@ for _root in (WORKSPACE / "feinschliff" / "brands",
                 BRAND_ROOTS.setdefault(_d.name, _d)
 
 SHARED_LAYOUTS = WORKSPACE / "feinschliff" / "layouts"
-SHARED_CONTENT = WORKSPACE / "feinschliff" / "tests" / "fixtures" / "layouts"
+SHARED_CONTENT = WORKSPACE / "tests" / "feinschliff" / "fixtures" / "layouts"
 GALLERY_DIR = WORKSPACE / "docs" / "brand-previews"
 
 
