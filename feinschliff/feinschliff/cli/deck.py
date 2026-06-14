@@ -77,6 +77,8 @@ try:
     from feinschliff_builder.verify.deck.titles import extract_titles_from_plan  # type: ignore[import]
     from feinschliff_builder.verify.deck.storyline import render_contact_sheet, write_storyline_report  # type: ignore[import]
     from feinschliff_builder.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report  # type: ignore[import]
+    from feinschliff_builder.verify.deck.ghost_deck import judge_ghost_deck, write_ghost_deck_report  # type: ignore[import]
+    from feinschliff_builder.verify.deck.title_lint import lint_titles  # type: ignore[import]
 except ImportError:
     validate_notes = None  # type: ignore[assignment]
     extract_titles_from_plan = None  # type: ignore[assignment]
@@ -84,6 +86,9 @@ except ImportError:
     write_storyline_report = None  # type: ignore[assignment]
     judge_plan = None  # type: ignore[assignment]
     write_claim_evidence_report = None  # type: ignore[assignment]
+    judge_ghost_deck = None  # type: ignore[assignment]
+    write_ghost_deck_report = None  # type: ignore[assignment]
+    lint_titles = None  # type: ignore[assignment]
 from feinschliff.pipeline_log import log_event
 
 
@@ -267,6 +272,21 @@ def register(parser: argparse.ArgumentParser) -> None:
     )
     p_intake_s.set_defaults(func=cmd_intake_skeleton)
 
+    p_commit_v = sub.add_parser(
+        "commitment-validate",
+        help="Validate a commitment.yaml against the schema and "
+             "(optionally) cross-check arc-alignment against the matching "
+             "deck_type arc schema. Exit 0 clean / 1 invalid / 2 plumbing.",
+    )
+    p_commit_v.add_argument("commitment", help="Path to commitment.yaml")
+    p_commit_v.add_argument(
+        "--check-arc",
+        action="store_true",
+        help="Also run check_arc_alignment against the loaded arc schema "
+             "for the commitment's deck_type.",
+    )
+    p_commit_v.set_defaults(func=cmd_commitment_validate)
+
     p_storyline = sub.add_parser(
         "storyline",
         help="Emit a title-only contact sheet from a deck_plan.json / "
@@ -308,6 +328,49 @@ def register(parser: argparse.ArgumentParser) -> None:
         help="Model to use for judgment (default: claude-haiku-4-5-20251001).",
     )
     p_ce.set_defaults(func=cmd_claim_evidence)
+
+    p_gd = sub.add_parser(
+        "ghost-deck",
+        help="Ghost-deck title-strip check: judge whether slide titles tell a "
+             "coherent argument without body content. Exit 0 = pass/warn, 1 = fail, "
+             "2 = plumbing.",
+    )
+    p_gd.add_argument(
+        "plan",
+        help="Path to plan.yaml (or a flat YAML list of titles).",
+    )
+    p_gd.add_argument(
+        "-o", "--output", required=True,
+        help="Output path for ghost_deck_report.md.",
+    )
+    p_gd.add_argument(
+        "--offline", action="store_true",
+        help="Skip all LLM calls; return a pass verdict (for CI without keys).",
+    )
+    p_gd.add_argument(
+        "--model", default="claude-haiku-4-5-20251001",
+        help="Model to use for judgment (default: claude-haiku-4-5-20251001).",
+    )
+    p_gd.set_defaults(func=cmd_ghost_deck)
+
+    p_tl = sub.add_parser(
+        "title-lint",
+        help="Deterministic title rules: empty, too-long, no-verb, and-conjunction. "
+             "Zero LLM. Exit 0 = clean, 1 = issues found, 2 = plumbing.",
+    )
+    p_tl.add_argument(
+        "plan",
+        help="Path to plan.yaml (or a flat YAML list of titles).",
+    )
+    p_tl.add_argument(
+        "-o", "--output", required=True,
+        help="Output path for title_lint_report.md.",
+    )
+    p_tl.add_argument(
+        "--json", dest="emit_json", action="store_true",
+        help="Emit issues as a JSON array to stdout instead of a markdown report.",
+    )
+    p_tl.set_defaults(func=cmd_title_lint)
 
     p_wf = sub.add_parser(
         "wireframe",
@@ -566,6 +629,41 @@ def cmd_intake_validate(args) -> int:
         print(str(e), file=sys.stderr)
         return 1
     print(f"deck: deck_brief OK ({path})")
+    return 0
+
+
+def cmd_commitment_validate(args) -> int:
+    """Validate commitment.yaml; optionally cross-check arc alignment."""
+    from feinschliff.storyline import (
+        check_arc_alignment,
+        load_all_arcs,
+        load_commitment,
+    )
+
+    path = Path(args.commitment).resolve()
+    if not path.is_file():
+        print(f"deck: commitment not found: {path}", file=sys.stderr)
+        return 2
+    try:
+        commitment = load_commitment(path)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    if args.check_arc:
+        arcs = load_all_arcs()
+        arc = arcs.get(commitment["deck_type"])
+        if arc is None:
+            print(
+                f"deck: no arc schema for deck_type={commitment['deck_type']!r}",
+                file=sys.stderr,
+            )
+            return 1
+        misses = check_arc_alignment(commitment, arc)
+        if misses:
+            for m in misses:
+                print(f"deck: arc: {m}", file=sys.stderr)
+            return 1
+    print(f"deck: commitment OK ({path})")
     return 0
 
 
@@ -1597,6 +1695,121 @@ def cmd_claim_evidence(args) -> int:
     print(f"wrote {out_path} (verdict: {overall}, {judged_count} judged / {slide_count} total)")
 
     return 0 if overall == "clean" else 1
+
+
+def _load_titles_from_path(path: Path) -> list[str]:
+    """Load titles from *path*.
+
+    Accepts two shapes:
+    - A plan YAML with a top-level ``slides`` list (delegated to
+      ``extract_titles_from_plan``).
+    - A flat YAML list of strings (titles directly).
+
+    Raises ``FileNotFoundError`` or ``ValueError`` on bad input.
+    """
+    if not path.is_file():
+        raise FileNotFoundError(f"file not found: {path}")
+    text = path.read_text(encoding="utf-8")
+    data = yaml.safe_load(text)
+    if isinstance(data, list):
+        # Flat list of titles
+        return [str(t).strip() if t else "" for t in data]
+    if isinstance(data, dict) and "slides" in data:
+        # Plan-YAML shape — delegate to extract_titles_from_plan
+        return extract_titles_from_plan(path)
+    raise ValueError(
+        f"unrecognised shape: expected a plan YAML with `slides:` or a flat list of titles ({path})"
+    )
+
+
+def cmd_ghost_deck(args) -> int:
+    """``feinschliff deck ghost-deck`` — narrative coherence check on titles.
+
+    Exit codes:
+    - 0: pass or warn (titles form a coherent story, or minor issues only)
+    - 1: fail (significant narrative gaps detected)
+    - 2: plumbing error (file not found, parse failure, etc.)
+    """
+    _require_or_delegate_builder("deck ghost-deck")
+    plan_path = Path(args.plan).resolve()
+    out_path = Path(args.output).resolve()
+
+    try:
+        titles = _load_titles_from_path(plan_path)
+    except FileNotFoundError as exc:
+        print(f"deck ghost-deck: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"deck ghost-deck: {exc}", file=sys.stderr)
+        return 2
+
+    try:
+        result = judge_ghost_deck(titles, offline=args.offline, model=args.model)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        print(f"deck ghost-deck: judgment failed: {exc}", file=sys.stderr)
+        return 2
+
+    write_ghost_deck_report(result, out_path)
+    issue_count = len(result.issues)
+    print(
+        f"wrote {out_path} "
+        f"(verdict: {result.verdict}, {issue_count} issue(s), {len(titles)} title(s))"
+    )
+    return 1 if result.verdict == "fail" else 0
+
+
+def cmd_title_lint(args) -> int:
+    """``feinschliff deck title-lint`` — deterministic title rules, zero LLM.
+
+    Exit codes:
+    - 0: clean (no issues)
+    - 1: issues found (at least one warn or fail)
+    - 2: plumbing error (file not found, parse failure, etc.)
+    """
+    _require_or_delegate_builder("deck title-lint")
+    import json as _json
+
+    plan_path = Path(args.plan).resolve()
+    out_path = Path(args.output).resolve()
+
+    try:
+        titles = _load_titles_from_path(plan_path)
+    except FileNotFoundError as exc:
+        print(f"deck title-lint: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"deck title-lint: {exc}", file=sys.stderr)
+        return 2
+
+    issues = lint_titles(titles)
+
+    if getattr(args, "emit_json", False):
+        import dataclasses
+        sys.stdout.write(_json.dumps([dataclasses.asdict(i) for i in issues], indent=2) + "\n")
+    else:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fail_count = sum(1 for i in issues if i.severity == "fail")
+        warn_count = sum(1 for i in issues if i.severity == "warn")
+        parts: list[str] = [
+            f"# Title Lint — {len(titles)} titles",
+            "",
+            f"**Issues:** {len(issues)} ({fail_count} fail, {warn_count} warn)",
+            "",
+        ]
+        if not issues:
+            parts.append("_No issues._")
+        else:
+            for iss in issues:
+                parts.append(f"- [{iss.severity.upper()}] `{iss.rule}` — {iss.message}")
+        out_path.write_text("\n".join(parts) + "\n", encoding="utf-8")
+        print(
+            f"wrote {out_path} "
+            f"({len(issues)} issue(s) across {len(titles)} title(s))"
+        )
+
+    return 1 if issues else 0
 
 
 # ──────────────────────────────────────────────────────────────────────────────
