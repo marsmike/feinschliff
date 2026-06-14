@@ -2087,14 +2087,56 @@ def _write_speaker_notes(slide, notes: str) -> None:
     slide.notes_slide.notes_text_frame.text = notes
 
 
+def _append_slide_number_footer(slide, tokens: Tokens, *,
+                                slide_index: int, total: int,
+                                canvas_w: float, canvas_h: float) -> None:
+    """Stamp a bottom-right 'NN / TOTAL' footer text frame onto *slide*.
+
+    Uses the brand's 'steel' color token (tertiary/muted labels) with a
+    fallback chain to 'graphite' then 'ink' so any brand pack works without
+    modification.
+    """
+    from pptx.enum.text import PP_ALIGN  # already imported at module level, re-import harmless
+    label = f"{slide_index:02d} / {total:02d}"
+    # Position: bottom-right corner.  Box is 120×30 design-px wide; sits
+    # 8 px above the bottom edge and 16 px from the right edge so it clears
+    # the typical slide bleed margin.
+    BOX_W, BOX_H = 120, 30
+    x = canvas_w - BOX_W - 16
+    y = canvas_h - BOX_H - 8
+    box = slide.shapes.add_textbox(_px(x), _px(y), _px(BOX_W), _px(BOX_H))
+    tf = box.text_frame
+    tf.word_wrap = False
+    para = tf.paragraphs[0]
+    para.alignment = PP_ALIGN.RIGHT
+    run = para.runs[0] if para.runs else para.add_run()
+    run.text = label
+    run.font.size = Pt(9)
+    run.font.bold = False
+    # Resolve muted color: prefer 'steel' (tertiary labels in most packs),
+    # fall back to 'graphite', then 'ink'.
+    for _tok in ("steel", "graphite", "ink"):
+        try:
+            run.font.color.rgb = _hex_to_rgb(tokens.color(_tok))
+            break
+        except KeyError:
+            pass
+
+
 def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                   asset_root: Path | None,
                   asset_root_fallback: Path | None = None,
                   missing_assets: list[dict] | None = None,
                   image_provider: "ImageProvider | None" = None,
                   deck_dir: Path | None = None,
-                  notes: str | None = None) -> None:
-    """Append one slide built from `nodes` to `prs`, using the tokens for fills."""
+                  notes: str | None = None,
+                  slide_number: int | None = None,
+                  total_slides: int | None = None) -> None:
+    """Append one slide built from `nodes` to `prs`, using the tokens for fills.
+
+    When `slide_number` and `total_slides` are both provided, a small
+    'NN / TOTAL' footer is stamped in the bottom-right corner of the slide.
+    """
     cw, ch = _slide_canvas(nodes)
     slide = prs.slides.add_slide(prs.slide_layouts[6])    # blank
     try:
@@ -2122,6 +2164,12 @@ def _append_slide(prs: Presentation, nodes: list[DSLNode], tokens: Tokens, *,
                 f"add it to _EMITTERS or remove it from the DSL"
             )
         emit(slide, n, ctx)
+    if slide_number is not None and total_slides is not None:
+        _append_slide_number_footer(
+            slide, tokens,
+            slide_index=slide_number, total=total_slides,
+            canvas_w=cw, canvas_h=ch,
+        )
     if notes is not None:
         _write_speaker_notes(slide, notes)
     if missing_assets is not None and ctx.missing_assets:
@@ -2342,6 +2390,7 @@ def build_multi_slide(
     asset_root_fallback: Path | None = None,
     image_provider: "ImageProvider | None" = None,
     deck_dir: Path | None = None,
+    slide_numbers: bool = False,
 ) -> Presentation:
     """Build a Presentation with N slides. Each slide entry is
     `(nodes, tokens, asset_root)` or `(nodes, tokens, asset_root, notes)`.
@@ -2356,6 +2405,9 @@ def build_multi_slide(
 
     The optional 4th element of each slide tuple is speaker-notes text
     written into the PPTX notes pane for that slide.
+
+    When `slide_numbers` is True, each slide receives a small bottom-right
+    'NN / TOTAL' footer text frame using the brand's muted color token.
     """
     if not slides:
         raise ValueError("build_multi_slide: no slides provided")
@@ -2400,7 +2452,9 @@ def build_multi_slide(
                       missing_assets=per_slide,
                       image_provider=image_provider,
                       deck_dir=deck_dir,
-                      notes=notes)
+                      notes=notes,
+                      slide_number=slide_idx if slide_numbers else None,
+                      total_slides=len(slides) if slide_numbers else None)
         for entry_d in per_slide:
             entry_d.setdefault("slide_index", slide_idx)
             missing.append(entry_d)

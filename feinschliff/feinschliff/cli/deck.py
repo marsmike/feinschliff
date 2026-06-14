@@ -244,6 +244,12 @@ def register(parser: argparse.ArgumentParser) -> None:
              "pdftoppm; skipped with a warning when neither is available. "
              "Opt-in only — omitting this flag skips all PNG rendering.",
     )
+    p_build.add_argument(
+        "--no-slide-numbers",
+        action="store_true",
+        help="Suppress the automatic 'NN / TOTAL' slide-number footer that is "
+             "stamped in the bottom-right corner of every slide by default.",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -1110,6 +1116,7 @@ def cmd_build(args) -> int:
             asset_root_fallback=_bundled_assets(),
             image_provider=provider,
             deck_dir=out_path.parent,
+            slide_numbers=not getattr(args, "no_slide_numbers", False),
         )
         missing = getattr(prs, "missing_assets", []) or []
         if missing and not getattr(args, "allow_missing_assets", False):
