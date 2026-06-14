@@ -229,6 +229,11 @@ If the user explicitly names a style preference ("keep it clean and minimal", "u
 - Classify concept (via LLM): one of [title, chapter, agenda, data-quantity, data-comparison, content, quote, closer].
 - Capture raw content verbatim — don't paraphrase.
 
+After extraction, the mode branches on `--mode` (or the AskUserQuestion answer from the mode picker — see `modes.md`):
+
+- **cosmetic mode** — extraction is complete; skip design-brief inference (Step 1b) and storyline gate (Step 1c). Proceed directly to the approval gate showing the slide-count and brand-map plan, then to Step 2 layout pick (brand-map only).
+- **redesign mode** — extraction is complete; run the full pipeline from Step 1b onward (design-brief inference, storyline gate, full picker run). This is the original polish behavior.
+
 **Critique mode:** same as polish ingest (content is derived from the existing `.pptx`).
 
 **Also infer the design brief.** See `design-brief-schema.md` for fields. Write `design_brief.json` alongside `content_plan.json`.

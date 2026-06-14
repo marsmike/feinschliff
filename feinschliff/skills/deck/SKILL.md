@@ -22,7 +22,7 @@ See [`references/quick-start.md`](references/quick-start.md) for examples.
 
 - **create** — `/deck "brief"` → new deck.
 - **plan** — `/deck plan "brief"` → paper draft, no render.
-- **polish** — `/deck polish rough.pptx` → reflow into v2 layouts. Add `--refurbish-all` to also extract embedded diagrams, rebuild them as brand-aware DSL (`.exc.dsl`/`.svg.dsl`), and substitute back into the rebuilt deck. Use `--no-refurbish` / `--refurbish-default` to control per-run. Intake runs in all modes; in polish mode it defaults heavily from the extracted source content.
+- **polish** — `/deck polish rough.pptx` → `--mode cosmetic` (default) preserves slide count, order, and content verbatim and fixes brand chrome / typography / slot overflow only; `--mode redesign` rebuilds arc, layouts, and titles (existing behavior; `--refurbish-all` / `--no-refurbish` / `--refurbish-default` apply here). Pick via flag or AskUserQuestion. Intake still runs; defaults seed from extracted content.
 - **critique** — `/deck critique existing.pptx` → read-only defect analysis.
 
 See [`references/modes.md`](references/modes.md) for mode semantics.
