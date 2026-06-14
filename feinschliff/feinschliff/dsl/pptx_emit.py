@@ -2102,7 +2102,7 @@ def _append_slide_number_footer(slide, tokens: Tokens, *,
     # 8 px above the bottom edge and 16 px from the right edge so it clears
     # the typical slide bleed margin.
     BOX_W, BOX_H = 120, 30
-    x = canvas_w - BOX_W - 16
+    x = canvas_w - BOX_W - 100   # right margin matches header content edge
     y = canvas_h - BOX_H - 8
     box = slide.shapes.add_textbox(_px(x), _px(y), _px(BOX_W), _px(BOX_H))
     tf = box.text_frame

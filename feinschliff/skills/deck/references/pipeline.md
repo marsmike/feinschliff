@@ -563,6 +563,8 @@ back to the frontmatter `image_queries` hint) — only when an image
 provider is configured. Explicit `content:` bindings (even an explicit
 `""`) always win; `class: keep` slots are never auto-bound.
 
+**`pgmeta` carries the deck name + year or section + year** (e.g. `"Bahncard 100 · 2026"`, `"Architecture · 2026"`). **Never author slide numbers into `pgmeta`** — the renderer stamps the slide counter `NN / TT` automatically as a bottom-right footer. Adding a counter to `pgmeta` produces a duplicate that appears twice on every slide.
+
 **Compute slot budgets** before drafting slot values. The same call
 runs at pre-render content-lint time, so honoring the budget here
 avoids burning an iteration on `slot-overflow` defects:

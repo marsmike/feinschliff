@@ -13,8 +13,14 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import re
 from pathlib import Path
 from typing import Any
+
+# Trailing slide-counter pattern that LLMs sometimes author into pgmeta,
+# e.g. "Bahncard 100 · 5 / 11" or "Cover - 3/11". Strip it so the
+# renderer footer (bottom-right NN / TT) is never duplicated in the header.
+_PGMETA_COUNTER_RE = re.compile(r"\s*[·\-—|]\s*\d{1,3}\s*/\s*\d{1,3}\s*$")
 
 from feinschliff.defects import Defect, DefectKind, Severity, from_engine_defect
 
@@ -89,6 +95,16 @@ def compile_slide(
     layout_nodes, layout_compounds = parse_file(layout_path)
     for cd in layout_compounds:
         compounds[cd.name] = cd
+
+    # Defensive: strip any trailing slide-counter that was erroneously
+    # authored into pgmeta (e.g. "Deck Name · 5 / 11"). The renderer stamps
+    # the slide counter as a separate bottom-right footer; allowing it in
+    # pgmeta too would produce duplicates visible in the header. This strip
+    # is idempotent and safe — pgmeta content never legitimately ends with
+    # a "· NN / TT" pattern.
+    if isinstance(ctx, dict) and isinstance(ctx.get("pgmeta"), str):
+        ctx = dict(ctx)
+        ctx["pgmeta"] = _PGMETA_COUNTER_RE.sub("", ctx["pgmeta"])
 
     # Slot-coverage debugging (deck build --slot-debug-color): every
     # slot-sourced text renders in this colour, so a render diff against the

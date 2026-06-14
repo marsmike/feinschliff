@@ -6,7 +6,7 @@ compound header(pgmeta):
   # optional so descendant brands that don't ship a gem (e.g. `claude`
   # extends `feinschliff` but uses its own wordmark only) don't trip the
   # missing-asset fatal policy.
-  picture 100,52 22x26 path:gem.png optional:true
+  picture 100,55 22x26 path:gem.png optional:true
   # Wordmark — `style:wordmark` carries medium weight + letter-spacing + uppercase
   # transform. Canonical SVG sets font-size:18 font-weight:500 letter-spacing:3.
   text 132,56 style:wordmark maxwidth:300 "FEINSCHLIFF."
