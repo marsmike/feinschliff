@@ -11,8 +11,6 @@ description: Generate SVG diagrams from a compact DSL with brand-resolved colors
 /svg diagram.svg.dsl
 ```
 
-See [`references/examples.md`](references/examples.md) for examples.
-
 `feinbild` is a command on your PATH. Two steps: expand a `.svg.dsl` to `.svg`
 (brand colors resolved), then render to PNG.
 
@@ -26,6 +24,13 @@ feinbild verify chart.svg                               # lint: overflow, overla
 `render` takes no brand (it consumes already-resolved colors). Write outputs
 into the project so other plugins can consume them.
 
+## Default to clean
+
+- **≤3 arrows per flow.** More than that means the layout is wrong — re-chunk or pick another visualization.
+- **No text over shapes.** Labels live inside boxes or adjacent via a connector — never on a border.
+- **Aspect-aware.** Default 16:9 (1920×1080). If the brief specifies a target slot match it; otherwise embeds get squished.
+- **Metaphor, not clutter.** Briefs saying "messy" / "tangled" / "stitched" describe a CONCEPT — convey via composition (overlap, dim color, tight grouping), not by drawing actual chaos.
+
 ## References
 
 - [DSL reference](references/dsl-reference.md) — canvas header, basic + extended
@@ -36,6 +41,5 @@ into the project so other plugins can consume them.
   extended primitive set (`stacked_bar`, `brace`, `callout`, `swatch_grid`,
   `label_box`, `polyline`, `path`); see `examples/yocto-build-pipeline.svg.dsl`.
 
-Workflow: author a `.svg.dsl`, run `feinbild svg expand` then `feinbild svg
-render`, inspect the PNG, and do at most one DSL fix loop before escalating to
-the references above.
+Workflow: author a `.svg.dsl`, run `feinbild svg expand` then `render`, inspect
+the PNG, and do at most one DSL fix loop before escalating to the references above.
