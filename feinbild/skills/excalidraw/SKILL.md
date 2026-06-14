@@ -11,8 +11,6 @@ description: Generate Excalidraw diagrams from a compact DSL with brand-resolved
 /excalidraw flow.exc.dsl
 ```
 
-See [`references/examples.md`](references/examples.md) for examples.
-
 `feinbild` is a command on your PATH. Expand a `.exc.dsl` to `.excalidraw`
 (brand colors resolved), then render to PNG.
 
@@ -26,6 +24,13 @@ Primitives: `box ellipse diamond dot line zone lane text` and
 `arrow <from> -> <to> [label:"…"]`. Set `theme dark` in the DSL for a dark
 canvas. `--brand` selects the brand; `render` is brand-agnostic.
 
+## Default to clean
+
+- **≤3 arrows per flow.** More than that means the layout is wrong — re-chunk or pick another visualization.
+- **No text over shapes.** Labels live inside boxes or adjacent via a connector — never on a border.
+- **Aspect-aware.** Default 16:9 (1920×1080). If the brief specifies a target slot match it; otherwise embeds get squished.
+- **Metaphor, not clutter.** Briefs saying "messy" / "tangled" / "stitched" describe a CONCEPT — convey via composition (overlap, dim color, tight grouping), not by drawing actual chaos.
+
 ## References
 
 - [Methodology](references/methodology.md) — argue-not-display patterns, depth assessment, hierarchy & arrow-routing rules
@@ -37,7 +42,4 @@ canvas. `--brand` selects the brand; `render` is brand-agnostic.
 
 ### Brand override
 
-The default brand is `feinschliff`. Override (highest precedence first): an inline
-`@brand <name>` line at the top of the `.exc.dsl`, then `--brand <name>` on
-`feinbild excalidraw expand`, then the `FEINSCHLIFF_BRAND` environment variable.
-`expand` resolves brand colors; `render` is brand-agnostic.
+Override: inline `@brand <name>`, then `--brand`, then `FEINSCHLIFF_BRAND`. `expand` resolves brand colors; `render` is brand-agnostic.
