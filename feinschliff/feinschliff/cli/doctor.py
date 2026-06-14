@@ -48,24 +48,24 @@ def _check_python_version() -> DoctorCheck:
 
 
 def _check_wheelhouse() -> DoctorCheck:
-    data_dir = os.environ.get("DATA_DIR", "")
-    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
-    vi = sys.version_info
-    version_tag = f"{vi[0]}.{vi[1]}"
+    data_dir = os.environ.get("DATA_DIR") or os.environ.get("CLAUDE_PLUGIN_DATA", "")
+    plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT") or os.environ.get("PLUGIN_ROOT", "")
 
+    # The launcher (gen_launchers.py) caches the fetched rolling-latest
+    # wheelhouse at $DATA_DIR/wheels-latest/wheels/. Check that path first.
     if data_dir:
-        wheels_dir = os.path.join(data_dir, f"wheels-{version_tag}")
-        if os.path.isdir(wheels_dir):
-            whl_files = [f for f in os.listdir(wheels_dir) if f.endswith(".whl")]
+        rolling = os.path.join(data_dir, "wheels-latest", "wheels")
+        if os.path.isdir(rolling):
+            whl_files = [f for f in os.listdir(rolling) if f.endswith(".whl")]
             if len(whl_files) >= 5:
                 return DoctorCheck(
                     "wheelhouse",
                     "ok",
-                    f"Wheelhouse found ({len(whl_files)} wheels)",
+                    f"Rolling wheelhouse cached ({len(whl_files)} wheels)",
                     None,
                 )
 
-    # Check local plugin-root wheels/ fallback
+    # Check local plugin-root wheels/ fallback (dev / pre-bundled installs).
     if plugin_root:
         local_wheels = os.path.join(plugin_root, "wheels")
         if os.path.isdir(local_wheels):

@@ -21,6 +21,11 @@ set -euo pipefail
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-"$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"}"
 DATA_DIR="${CLAUDE_PLUGIN_DATA:-"${XDG_DATA_HOME:-$HOME/.local/share}/feinschmiede/feinschliff-builder"}"
+# Export so the CLI (e.g. `feinschliff doctor`) can probe the wheelhouse + venv
+# locations that the launcher actually used.
+export PLUGIN_ROOT DATA_DIR
+export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
+export CLAUDE_PLUGIN_DATA="${CLAUDE_PLUGIN_DATA:-$DATA_DIR}"
 
 VENV="$DATA_DIR/venv"
 WHEELS="$PLUGIN_ROOT/wheels"
@@ -63,16 +68,44 @@ _source_sig() {
 # upstream tarball hasn't changed (HTTP 304 / If-Modified-Since via curl -z).
 # Sets WHEELS to the unpacked directory on success.
 # ---------------------------------------------------------------------------
+_find_python() {
+  # macOS's /usr/bin/python3 is 3.9 — too old for the wheels we ship (3.11+).
+  # Probe versioned interpreters in descending preference, then plain python3.
+  # Echoes the absolute path to a Python >= 3.11 on stdout; returns 1 if none.
+  local candidate
+  for candidate in python3.13 python3.12 python3.11 python3; do
+    local path
+    path="$(command -v "$candidate" 2>/dev/null || true)"
+    [[ -z "$path" ]] && continue
+    if "$path" -c 'import sys; sys.exit(0 if sys.version_info >= (3,11) else 1)' \
+       2>/dev/null; then
+      printf '%s\n' "$path"
+      return 0
+    fi
+  done
+  return 1
+}
+
 _fetch_wheels_from_manifest() {
   local manifest="$PLUGIN_ROOT/wheels-manifest.json"
   [[ -f "$manifest" ]] || return 1
 
   # Detect Python minor version (3.11 / 3.12 / 3.13 ...).
-  local pyminor pykey url
-  pyminor="$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || return 1
+  local pyminor pykey url PYTHON
+  PYTHON="$(_find_python)" || {
+    cat >&2 <<'NOPY'
+feinschliff-builder: no Python >= 3.11 found on PATH
+  install one of: python3.13, python3.12, python3.11
+  macOS: brew install python@3.12
+  Linux: apt-get install python3.12  (or python3.11 / python3.13)
+  Then re-run this command.
+NOPY
+    return 1
+  }
+  pyminor="$("$PYTHON" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>/dev/null)" || return 1
   pykey="py${pyminor/./}"
 
-  url="$(python3 - "$manifest" "$pykey" <<'PYEOF'
+  url="$("$PYTHON" - "$manifest" "$pykey" <<'PYEOF'
 import json, sys
 m = json.loads(open(sys.argv[1]).read())
 pykey = sys.argv[2]
@@ -142,9 +175,15 @@ _bootstrap() {
   local pyver=""
   [[ -f "$WHEELS/.python-version" ]] && pyver="$(cat "$WHEELS/.python-version")"
 
+  # The bundled wheelhouse is built on linux-x86_64 (the release runner) and
+  # may not contain wheels for the host platform (macOS arm64, etc.). Drop
+  # --no-index so uv/pip can fetch any missing platform-specific wheels (lxml,
+  # pillow, etc.) from PyPI while preferring the bundled wheelhouse for
+  # everything that matches. Net result: pure-Python deps install offline;
+  # binary-wheel deps fall back to PyPI for the host platform on first run.
   if command -v uv >/dev/null 2>&1; then
     uv venv ${pyver:+--python "$pyver"} "$VENV" >&2
-    uv pip install --reinstall --python "$VENV/bin/python" --no-index --find-links "$WHEELS" feinschliff-builder >&2
+    uv pip install --reinstall --python "$VENV/bin/python" --find-links "$WHEELS" feinschliff-builder >&2
   else
     local py=""
     [[ -n "$pyver" ]] && py="$(command -v "python$pyver" || true)"
@@ -160,7 +199,7 @@ _bootstrap() {
         exit 1
       }
     fi
-    "$VENV/bin/python" -m pip install --force-reinstall --no-index --find-links "$WHEELS" feinschliff-builder >&2
+    "$VENV/bin/python" -m pip install --force-reinstall --find-links "$WHEELS" feinschliff-builder >&2
   fi
 
   printf '%s\n' "$sig" > "$READY"
