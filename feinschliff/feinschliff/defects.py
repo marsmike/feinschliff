@@ -75,6 +75,8 @@ class DefectKind(str, Enum):
     # Image quality (image_preflight)
     IMAGE_PALETTE_CLASH = "image-palette-clash"
     IMAGE_CROP_RISK = "image-crop-risk"
+    # Craft rules (quality/craft_rules.py — Knaflic deterministic checks)
+    CRAFT_RULE = "craft-rule"
 
 
 _FATAL: frozenset[str] = frozenset({

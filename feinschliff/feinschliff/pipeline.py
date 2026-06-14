@@ -73,6 +73,7 @@ def compile_slide(
     brand_dir: Path,
     slide_index: int,
     diagrams_out_dir: Path,
+    craft_check: bool = False,
 ) -> CompileResult:
     diagrams_out_dir.mkdir(parents=True, exist_ok=True)
 
@@ -173,6 +174,21 @@ def compile_slide(
                 message=f"unknown compound: Check the compound name or load order. {d.format()}",
                 meta={"diagnostic_kind": d.kind},
             ))
+
+    if craft_check:
+        from feinschliff.quality.craft_rules import check_craft_rules
+        _craft_report = check_craft_rules(
+            [{"layout": str(layout_path), "content_inline": ctx}]
+        )
+        for _ci in _craft_report.issues:
+            if _ci.severity == "fail":
+                defects.append(Defect(
+                    slide_index=slide_index,
+                    kind=DefectKind.CRAFT_RULE,
+                    severity=Severity.FATAL,
+                    message=f"[{_ci.rule}] {_ci.message}",
+                    meta=dict(_ci.meta),
+                ))
 
     return CompileResult(
         primitives=primitives,

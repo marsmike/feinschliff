@@ -212,6 +212,14 @@ def register(parser: argparse.ArgumentParser) -> None:
              "abort too (exit 1, defects printed).",
     )
     p_build.add_argument(
+        "--strict-craft",
+        action="store_true",
+        help="Run Knaflic deterministic craft-rules checks (no-pie-chart, "
+             "chart-title-claim, title-word-count, …) over every slide after "
+             "compile. Writes craft_report.md next to the output deck. "
+             "Exit 1 if verdict is 'fail'; exit 0 on 'warn' or 'clean'.",
+    )
+    p_build.add_argument(
         "--autofix",
         action="store_true",
         help="Run the static verifier before compile and automatically apply "
@@ -239,6 +247,15 @@ def register(parser: argparse.ArgumentParser) -> None:
              "fan out across processes; the final PPTX assembly stays "
              "serial). Default 16; 0 = auto (min(8, cpu/2)); 1 = sequential.",
     )
+    p_build.add_argument(
+        "--strict-visual",
+        action="store_true",
+        help="After building, render slides to PNG and run AeSlides visual "
+             "metrics (whitespace ratio, visual balance, element collision). "
+             "Writes out/visual_metrics_report.md. Requires soffice or "
+             "pdftoppm; skipped with a warning when neither is available. "
+             "Opt-in only — omitting this flag skips all PNG rendering.",
+    )
     p_build.set_defaults(func=cmd_build)
 
     p_pick = sub.add_parser("pick", help="Recommend a layout for the given signals")
@@ -246,6 +263,31 @@ def register(parser: argparse.ArgumentParser) -> None:
     p_pick.add_argument("--top-k", type=int, default=3,
                         help="Print the top-K candidates with scores (default 3)")
     p_pick.set_defaults(func=cmd_pick)
+
+    p_pick_deck = sub.add_parser(
+        "pick-deck",
+        help="Run the arc-aware deck-level picker over a plan.yaml. "
+             "Emits picker_report.json with chosen layouts, runners-up, "
+             "and arc warnings.",
+    )
+    p_pick_deck.add_argument("plan", help="Path to the deck plan YAML")
+    p_pick_deck.add_argument(
+        "--deck-brief",
+        default=None,
+        help="Path to a deck_brief.yaml/json. When provided and deck_type is "
+             "set, arc-position warnings are computed against the matching arc schema.",
+    )
+    p_pick_deck.add_argument(
+        "-o", "--output",
+        default=None,
+        help="Output path for picker_report.json. Default: picker_report.json "
+             "next to plan.yaml.",
+    )
+    p_pick_deck.add_argument(
+        "--top-k", type=int, default=5,
+        help="Candidates per slide passed to pick_layout (default 5).",
+    )
+    p_pick_deck.set_defaults(func=cmd_pick_deck)
 
     p_intake_v = sub.add_parser(
         "intake-validate",
@@ -1116,6 +1158,93 @@ def cmd_build(args) -> int:
             elapsed_ms=int((_time.perf_counter() - _build_t0) * 1000),
             slides=len(prs.slides), output=str(out_path),
         )
+
+        # ── Post-build visual metrics (--strict-visual) ───────────────────
+        if getattr(args, "strict_visual", False):
+            import tempfile as _tempfile
+            from feinschliff.quality import compute_visual_metrics
+            from feinschliff.quality.visual_metrics_report import (
+                write_visual_metrics_report,
+            )
+            _png_map: dict[int, Path] = {}
+            try:
+                from feinschliff_builder.verify.render_pngs import (
+                    render_slides_to_png,
+                )
+                with _tempfile.TemporaryDirectory() as _tmp:
+                    _png_map = render_slides_to_png(out_path, Path(_tmp))
+                    if not _png_map:
+                        print(
+                            "deck build: --strict-visual: PNG render returned "
+                            "no slides (soffice/pdftoppm unavailable?); "
+                            "skipping visual metrics.",
+                            file=sys.stderr,
+                        )
+                    else:
+                        _vm_result = compute_visual_metrics(_png_map)
+                        _report_path = out_path.parent / "visual_metrics_report.md"
+                        write_visual_metrics_report(_vm_result, _report_path)
+                        print(
+                            f"visual metrics: {_vm_result.verdict} "
+                            f"({len(_vm_result.issues)} issue(s)); "
+                            f"report → {_report_path}"
+                        )
+                        if _vm_result.issues:
+                            for _vi in _vm_result.issues:
+                                print(
+                                    f"  slide {_vi.slide} [{_vi.metric}/"
+                                    f"{_vi.severity}]: {_vi.message}",
+                                    file=sys.stderr,
+                                )
+            except ImportError:
+                print(
+                    "deck build: --strict-visual: feinschliff-builder not "
+                    "installed; skipping visual metrics.",
+                    file=sys.stderr,
+                )
+            except Exception as _ve:
+                print(
+                    f"deck build: --strict-visual: visual metrics failed "
+                    f"({_ve}); skipping.",
+                    file=sys.stderr,
+                )
+
+        # ── Post-build Knaflic craft-rules check (--strict-craft) ────────
+        if getattr(args, "strict_craft", False):
+            from feinschliff.quality import check_craft_rules, write_craft_report
+            _craft_slides = [
+                {
+                    "layout": str(
+                        (plan_dir / spec["layout"]).resolve()
+                        if not Path(spec["layout"]).is_absolute()
+                        else Path(spec["layout"])
+                    ),
+                    "content_inline": spec.get("content") or {},
+                }
+                for spec in slides_spec
+            ]
+            _craft_report = check_craft_rules(_craft_slides)
+            _craft_report_path = out_path.parent / "craft_report.md"
+            write_craft_report(_craft_report, _craft_report_path)
+            print(
+                f"craft rules: {_craft_report.verdict} "
+                f"({len(_craft_report.issues)} issue(s)); "
+                f"report → {_craft_report_path}"
+            )
+            for _ci in _craft_report.issues:
+                print(
+                    f"  slide {_ci.slide} [{_ci.rule}/{_ci.severity}]: "
+                    f"{_ci.message}",
+                    file=sys.stderr,
+                )
+            if _craft_report.verdict == "fail":
+                print(
+                    "deck build: --strict-craft: craft-rules verdict is 'fail'. "
+                    "Fix the flagged slides or remove --strict-craft to skip.",
+                    file=sys.stderr,
+                )
+                return 1
+
         return 0
 
 
@@ -1135,6 +1264,63 @@ def cmd_pick(args) -> int:
         return 1
     for c in candidates:
         print(f"{c.score:5.2f}  {c.layout_name:<24}  {c.reason}")
+    return 0
+
+
+def cmd_pick_deck(args) -> int:
+    """Run the arc-aware deck-level picker; emit picker_report.json."""
+    from feinschliff.picker import pick_deck
+    from feinschliff.picker.report import write_picker_report
+
+    plan_path = Path(args.plan).resolve()
+    if not plan_path.is_file():
+        print(f"deck pick-deck: plan not found: {plan_path}", file=sys.stderr)
+        return 2
+
+    plan = yaml.safe_load(plan_path.read_text()) or {}
+    brand = plan.get("brand", "feinschliff")
+    slides_spec = plan.get("slides") or []
+    if not slides_spec:
+        print(f"deck pick-deck: plan '{plan_path}' has no slides", file=sys.stderr)
+        return 2
+
+    deck_brief: dict | None = None
+    if args.deck_brief:
+        brief_path = Path(args.deck_brief).resolve()
+        if not brief_path.is_file():
+            print(
+                f"deck pick-deck: --deck-brief not found: {brief_path}",
+                file=sys.stderr,
+            )
+            return 2
+        import json as _json
+        raw = brief_path.read_text()
+        try:
+            deck_brief = _json.loads(raw)
+        except _json.JSONDecodeError:
+            deck_brief = yaml.safe_load(raw) or {}
+
+    report = pick_deck(
+        slides_spec,
+        brand=brand,
+        deck_brief=deck_brief,
+        top_k=args.top_k,
+    )
+
+    out_path = (
+        Path(args.output).resolve()
+        if args.output
+        else plan_path.parent / "picker_report.json"
+    )
+    write_picker_report(report, out_path)
+
+    for w in report.arc_warnings:
+        print(f"arc warning: {w}", file=sys.stderr)
+
+    print(
+        f"picker_report: {len(report.picks)} slide(s), "
+        f"{len(report.arc_warnings)} arc warning(s) → {out_path}"
+    )
     return 0
 
 

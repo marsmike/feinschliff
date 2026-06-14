@@ -596,6 +596,8 @@ pick `tech-radar`. Slot args: `view` (one of
 `genai-tooling`), optional `volume` (edition number), and `new_since`
 (ISO date for the NEW badge).
 
+After the per-slide picker runs, optionally invoke `feinschliff deck pick-deck plan.yaml -o picker_report.json` for the arc-aware rebalance. It forces a title-primary layout on slide 1, a closer layout on the last slide, and emits warnings when the deck_type's required `opening`/`closing` acts don't appear in the appropriate band.
+
 Output: `plan.yaml` — an ordered list of `{layout, content_inline|content_file}`
 entries that `feinschliff deck build` consumes directly (see Step 3).
 
@@ -788,6 +790,10 @@ The `-full` layouts use a virtual 6880×2880 canvas so the model has
 16× more pixel area to compose into; PowerPoint downscales on insert.
 See the `feinbild` plugin's excalidraw skill references (`dsl-syntax.md`,
 `examples-deep.md`) — the standalone diagram-DSL authoring docs moved there.
+
+Pass `--strict-craft` to enforce Knaflic deterministic rules at build time: no pie charts, no 3-D charts, title word-count budgets, body word-count budgets, compound titles containing "and", titles that are topics rather than claims, chart titles that omit a claim, and palettes with too many simultaneous colors. Violations abort the build and the findings are written to `out/<deck>/craft_report.md`.
+
+Pass `--strict-visual` to run PIL-based post-render metrics after each slide is composited: whitespace ratio, left/right balance, and element collision. Violations abort the build and the findings are written to `out/<deck>/visual_metrics_report.md`.
 
 Output: `out/<deck>/deck.pptx` (draft).
 
