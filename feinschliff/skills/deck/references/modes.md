@@ -10,6 +10,8 @@ Three user-facing modes. All share the same pipeline described in `pipeline.md`;
 
 Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) always runs at least once** — no matter how obviously-correct the first build looks. The universal completion gate is `out/verify_report.md` with `Verdict: clean`; see `pipeline.md` step 4. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI.
 
+**Outputs include** `deck_brief.yaml` (committed at Step 0a).
+
 ## plan
 
 ```
@@ -17,10 +19,11 @@ Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) a
 /deck plan polish rough.pptx
 ```
 
-Runs **steps 0 → 1 → 1b → 1c only** (ingest, design-brief inference, 1b approval gate, step 1c Storyline gate). Stops after step 1c. Does NOT proceed to step 2 plan / step 3 build / step 4 verify.
+Runs **steps 0 → 0a → 1 → 1b → 1c only** (intake, ingest, design-brief inference, 1b approval gate, step 1c Storyline gate). Stops after step 1c. Does NOT proceed to step 2 plan / step 3 build / step 4 verify.
 
 **Outputs (only):**
 
+- `deck_brief.yaml` (committed at Step 0a)
 - `content_plan.json`
 - `design_brief.json`
 - `out/storyline_report.md`
@@ -38,7 +41,7 @@ The CLI helper that materializes the storyline report from a saved `content_plan
 /deck polish rough.pptx "make it 5 slides, executive-focused"
 ```
 
-Ingests an existing `.pptx`, reflows into brand layouts. Same steps as create; step 1 starts from existing content instead of a brief. **Verify is mandatory here too** — reflowing into brand layouts doesn't guarantee the result fits the slots.
+Ingests an existing `.pptx`, reflows into brand layouts. Same steps as create; step 1 starts from existing content instead of a brief. **Verify is mandatory here too** — reflowing into brand layouts doesn't guarantee the result fits the slots. Intake (Step 0a) still runs in polish mode; `deck_brief.yaml` fields are seeded from the extracted source content rather than a free-text brief, so the user confirms defaults rather than building them from scratch.
 
 ## critique
 
@@ -46,7 +49,7 @@ Ingests an existing `.pptx`, reflows into brand layouts. Same steps as create; s
 /deck critique existing.pptx
 ```
 
-Read-only defect analysis. Runs steps 1 → 1b → 4 only. No build, no revise.
+Read-only defect analysis. Runs steps 1 → 1b → 4 only. No build, no revise. Intake (Step 0a) still runs; `deck_brief.yaml` fields are seeded from the extracted source content so the rubric has goal and audience context when flagging off-tone slides.
 
 ### Procedure
 

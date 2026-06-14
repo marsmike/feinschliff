@@ -22,14 +22,14 @@ See [`references/quick-start.md`](references/quick-start.md) for examples.
 
 - **create** — `/deck "brief"` → new deck.
 - **plan** — `/deck plan "brief"` → paper draft, no render.
-- **polish** — `/deck polish rough.pptx` → reflow into v2 layouts. Add `--refurbish-all` to also extract embedded diagrams, rebuild them as brand-aware DSL (`.exc.dsl`/`.svg.dsl`), and substitute back into the rebuilt deck. Use `--no-refurbish` / `--refurbish-default` to control per-run.
+- **polish** — `/deck polish rough.pptx` → reflow into v2 layouts. Add `--refurbish-all` to also extract embedded diagrams, rebuild them as brand-aware DSL (`.exc.dsl`/`.svg.dsl`), and substitute back into the rebuilt deck. Use `--no-refurbish` / `--refurbish-default` to control per-run. Intake runs in all modes; in polish mode it defaults heavily from the extracted source content.
 - **critique** — `/deck critique existing.pptx` → read-only defect analysis.
 
 See [`references/modes.md`](references/modes.md) for mode semantics.
 
 ## Pipeline
 
-`ask → ingest → approve → plan → pick layouts → build → verify → revise`.
+`ask → intake → ingest → approve → plan → pick layouts → build → verify → revise`.
 Full step-by-step: [`references/pipeline.md`](references/pipeline.md).
 
 **Picker signals** — `diagram_kind` (`concept`/`chart`) steers diagram picks; `layout_history` applies recency penalties for variety (structural layouts exempt). **Build-time checks**: `diagram-overflow`, `diagram-color-mismatch`, `diagram-text-too-small`, `text-overlap`, `out-of-bounds`. Verify also catches filler words, vague-so-what, and bare claims.
