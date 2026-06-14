@@ -29,7 +29,7 @@ cp "$BUILD"/feinschliff-*.whl "$BUILD"/feinschmiede-*.whl "$STAGE"/
 
 # Vendor the third-party runtime closure (resolves the full closure for this platform).
 python3 -m pip download "${CONSTRAINTS[@]}" --only-binary=:all: --dest "$STAGE" \
-  python-pptx lxml pillow cairosvg pyphen jsonschema pyyaml rough
+  python-pptx lxml pillow cairosvg pyphen jsonschema pyyaml rough anthropic
 # Pure-python fallback for the one universal binary dep (ABI portability; best-effort).
 python3 -m pip download --no-deps --only-binary=:all: \
   --implementation py --abi none --platform any --python-version 3 \

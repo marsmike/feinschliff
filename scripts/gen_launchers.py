@@ -96,7 +96,7 @@ PLUGINS: dict[str, dict] = {
     "feinschliff": {
         "builds": ["feinschliff", "feinschmiede"],
         "third_party": ["python-pptx", "lxml", "pillow", "cairosvg",
-                        "pyphen", "jsonschema", "pyyaml", "rough"],
+                        "pyphen", "jsonschema", "pyyaml", "rough", "anthropic"],
         "env_tail": "office",
     },
     "feinbild": {
