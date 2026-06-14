@@ -11,16 +11,9 @@ Concretely:
 - **`out/verify_report.md` is the universal completion gate.** Markdown, human-readable, so the user can scan it without parsing JSON. If it isn't on disk, the skill hasn't finished. See `pipeline.md` step 4 for the format. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI — but `out/verify_report.md` with `Verdict: clean` is the gate for all installs.
 - **The HTML design is the visual ground truth.** The active brand's `feinschliff/<brand-root>/claude-design/<brand>-2026.html` defines what each layout should look like (e.g. `feinschliff/brands/feinschliff/claude-design/feinschliff-2026.html` by default). When the rendered PNG diverges from the HTML reference for that layout, that's a defect — even if it doesn't map cleanly to one of the 11 named classes.
 
-## Budget (ask the user at the start)
+## Budget
 
-Ask once, before the first build: **"How perfect should this be?"**
-
-| Answer | Iteration budget | When to use |
-|---|---|---|
-| default / normal / "3" | **3 iterations** | Everyday decks — weekly updates, internal reviews, working drafts. Catches obvious defects without spiraling. |
-| perfectionist / "polish it" / "6" | **6 iterations** | First-impression decks — exec audiences, board packs, client-facing teasers. Extra passes for typography tuning, overflow edge cases, cover-slide polish. |
-
-Default to 3 if the user doesn't respond or says "normal". **The budget is a ceiling on revise cycles, not a floor on verify passes — verify always runs at least once regardless of budget.**
+The iteration loop terminates when `out/verify_report.md` reports `Verdict: clean`, or the **8-iteration safety cap** is hit — whichever comes first. There is no user-facing iteration count question. Default expectation is 2–3 iterations on most decks; the cap of 8 protects against runaway loops. **Verify always runs at least once regardless of how confident the build looks.**
 
 ## Loop
 
@@ -46,8 +39,7 @@ Default to 3 if the user doesn't respond or says "normal". **The budget is a cei
                                   ▼
                              (back to build)
 
-Max N iterations total (N = 3 or 6 per the budget ask).
-After iter N, emit RESIDUAL_ISSUES.md.
+Max 8 iterations (hard safety cap). After iter 8, emit RESIDUAL_ISSUES.md.
 ```
 
 ### `deck apply-fixes` — mechanical defect resolution
@@ -179,8 +171,8 @@ Write the findings as `out/verify_report.md` — the human-readable format in `p
 
 - Each iteration = 1 build + 1 LibreOffice render + 1 LLM eyeball pass. Iteration 1 always includes a verify pass — there is no iteration 0.
 - `verify_report.md` header says `Verdict: clean` → done, emit the deck.
-- `Verdict: dirty` and iteration < budget → revise and re-build.
-- `Verdict: dirty` and iteration == budget → stop; emit residuals.
+- `Verdict: dirty` and iteration < 8 → revise and re-build.
+- `Verdict: dirty` and iteration == 8 → stop; emit residuals.
 - If at the final iteration issues remain, emit:
   - Final draft `out/<name>.pptx` (with whatever improvements did land).
   - `out/RESIDUAL_ISSUES.md` listing specifically what's still off (derived from the final `verify_report.md`).
@@ -192,16 +184,24 @@ Theory defects and visual defects share the same iteration budget. A slide with 
 
 Before telling the user the deck is ready, confirm all of these:
 
+- [ ] `deck_brief.yaml` exists.
+- [ ] `commitment.yaml` exists.
+- [ ] `content_plan.json` exists.
+- [ ] `out/ghost_deck_report.md` exists.
+- [ ] `out/title_lint_report.md` exists.
+- [ ] `picker_report.json` exists.
+- [ ] `plan.yaml` exists.
+- [ ] `out/craft_report.md` exists.
 - [ ] `out/<name>.pptx` exists.
 - [ ] `out/verify_report.md` exists, is human-readable, and its `Iteration:` header matches the last build.
-- [ ] Either the header says `Verdict: clean`, OR `Iteration == budget` AND `out/RESIDUAL_ISSUES.md` exists summarising what's left.
+- [ ] Either the header says `Verdict: clean`, OR `Iteration == 8` AND `out/RESIDUAL_ISSUES.md` exists summarising what's left.
 - [ ] You actually read the rendered PNGs during the last verify pass — not just ran `soffice` and assumed.
 
 Skipping this checklist is the failure mode the iteration loop exists to prevent.
 
 ## Why a cap at all
 
-One-shot agents produce garbage. 15-shot agents spiral and burn budget. A hard stop keeps iteration a discipline, not a compulsion. **3 is the sweet spot for everyday work** — enough to catch obvious defects, not enough to dither. **6 is for first-impression decks** where the extra passes are worth the cost: cover-slide polish, typography tuning, overflow edge cases that only show up on 3rd-render eyeball.
+One-shot agents produce garbage. 15-shot agents spiral and burn budget. A hard stop keeps iteration a discipline, not a compulsion. The scorer terminates the loop as soon as the deck is clean — **2–3 iterations is the expected range for most decks**. The 8-iteration safety cap guards against oscillating verifiers, not against a user wanting more polish.
 
 ## Per-slide verify cache
 

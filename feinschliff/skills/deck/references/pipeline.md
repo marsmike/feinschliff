@@ -27,10 +27,10 @@ For sub-agent work, add `--agent <id>` so the parallel windows are
 distinguishable. Missing `end` events still show up as dangling `start`
 in the report — useful for catching aborted phases.
 
-## Parallel mode — when slide_count ≥ 10
+## Parallel mode — default at slide_count ≥ 10
 
 For larger decks (≥10 slides), Step 2 (authoring) and Step 4 (verify)
-parallelize cleanly via subagents:
+parallelize cleanly via subagents. Fan-out is the default; opt out with `--no-fanout`.
 
 - **Step 2a (fan-out authoring)**: parent runs `deck plan-skeleton` to
   centrally pick layouts and emit an empty plan.yaml; parent spawns
@@ -44,9 +44,9 @@ parallelize cleanly via subagents:
   them into a single `verify_report.md`. See
   [§ Step 4a](#step-4a--fan-out-verify) below.
 
-Decks under 10 slides skip the fan-out — the coordination overhead
+Decks under 10 slides run serially — the coordination overhead
 (extra subagent input tokens, parent-side merge) eats the wall-clock
-win.
+win. Decks ≥10 slides use fan-out by default; pass `--no-fanout` to override.
 
 ## Brand layout inventory — before you do anything else
 
@@ -73,24 +73,24 @@ none of them live in `brands/gs-ramspau/layouts/`.
 only the brand-local directory.** That's the toolkit pool not yet
 queried.
 
-## Step 0 — Set the perfection bar (ask the user)
+## Step 0 — Pre-flight
 
-Before ingesting, ask the user once:
+The iteration loop runs until `out/verify_report.md` reports `Verdict: clean` OR a hard safety cap of **8 iterations** is hit. There is no user-facing iteration count — the scorer terminates the loop. Log a one-line progress note each iteration so the user sees convergence:
 
-> **How perfect should this be?** Default is **3 iterations** (good enough for most decks). Say "perfectionist" or "polish it" if you want **6 iterations** (first-impression decks, exec audiences, board materials).
+`iter N / 8 — Verdict: <clean|dirty> (M defects on K slides)`.
 
-The answer sets the iteration budget for step 6. Defaults to 3 if the user doesn't respond or says "normal" / "default".
+If image style is ambiguous from the brief, ask once here (bundle with any other Step 0a intake question). Skip if the brief makes it obvious.
 
-If image style is ambiguous from the brief, also ask here (bundle it into the same message, not a separate turn):
+## Step 0a — Intake
 
-> **Visual style for images?** Options: photorealistic photos · illustrations · minimal/no images · data-viz only. Skip this if the brief makes it obvious (e.g., a data-heavy technical deck → data-viz; a human-narrative deck → photorealistic).
-
-## Step 0a — Intake (NEW)
+**Required artifact before Step 0a starts:** none (this is the first step).
 
 Intake captures the user's target picture as a structured `deck_brief.yaml`
 before any content is analyzed or planned. Previously the pipeline inferred
 goal, audience, deck type, and visual style from free text; those inferences
 now have an explicit first-class artifact that every downstream step reads.
+
+Run Step 0a. Block until `deck_brief.yaml` is written and validated.
 
 ### Path A — brief present (`/deck "..."`)
 
@@ -153,8 +153,10 @@ feinschliff deck intake-validate <deck-dir>/deck_brief.yaml
 ```
 
 Exit 0 = all required fields present and valid. Exit 1 = validation error
-with a descriptive message. Fail fast here — do not proceed to Step 1 with
+with a descriptive message. Fail fast here — do not proceed to Step 0b with
 a malformed brief.
+
+**Artifact produced:** `deck_brief.yaml`. Step 0b cannot start without it.
 
 ### Skip path
 
@@ -168,7 +170,7 @@ the backstop for any inference errors this misses.
 
 | Step | Reads | Behavior |
 |---|---|---|
-| Step 0 (perfection bar) | — | Unchanged; runs before intake |
+| Step 0 (pre-flight) | — | Image-style question if ambiguous; runs before intake |
 | Step 0b commitment | `deck_brief.yaml` | Writes `commitment.yaml`; validates arc alignment before per-slide planning |
 | Step 1a ghost-deck | `content_plan.json` | Extracts titles; runs ghost-deck + title-lint checks; result feeds Step 1b prompt |
 | Step 1 plan generation | `deck_brief.yaml` | Planner prompt takes deck_brief as primary input; brief.txt as secondary |
@@ -176,7 +178,11 @@ the backstop for any inference errors this misses.
 | Step 2 layout picker | `deck_brief.yaml` + plan | New signals: `deck_type`, `visual_style`, `audience_prior` |
 | Step 6 verify rubric | `deck_brief.yaml` | Rubric prompt mentions goal + audience → catches off-tone slides |
 
-## Step 0b — Commitment (NEW)
+## Step 0b — Commitment
+
+**Required artifact before Step 0b starts:** `deck_brief.yaml`.
+
+Run Step 0b. Block until `commitment.yaml` is written and validated.
 
 After `deck_brief.yaml` exists (Step 0a) and before per-slide content
 planning starts, the orchestrating LLM writes a `commitment.yaml` to the
@@ -219,7 +225,13 @@ Exit 0 = schema valid and all required arc acts covered. Exit 1 = validation
 error or uncovered acts (warnings printed). The user reviews the commitment
 and approves it — or requests edits — before per-slide planning starts.
 
-## Step 1a — Ghost-deck title-strip check (NEW)
+**Artifact produced:** `commitment.yaml`. Step 1 cannot start without it.
+
+## Step 1a — Ghost-deck title-strip check
+
+**Required artifact before Step 1a starts:** `content_plan.json`.
+
+Run Step 1a. Block until `ghost_deck_report.md` and `title_lint_report.md` are written.
 
 After `content_plan.json` is generated (the initial slide list) and before
 the Step 1b approval gate, extract the proposed slide titles and run two
@@ -257,6 +269,8 @@ feinschliff deck title-lint <deck-dir>/content_plan.json \
 
 Checks: titles exceeding the character limit, titles with no verb, titles
 that contain " and " (compound claims that should split), and empty titles.
+
+**Artifacts produced:** `out/ghost_deck_report.md` · `out/title_lint_report.md`. Step 1b cannot start without both.
 
 ### Into Step 1b
 
@@ -596,15 +610,18 @@ pick `tech-radar`. Slot args: `view` (one of
 `genai-tooling`), optional `volume` (edition number), and `new_since`
 (ISO date for the NEW badge).
 
-After the per-slide picker runs, optionally invoke `feinschliff deck pick-deck plan.yaml -o picker_report.json` for the arc-aware rebalance. It forces a title-primary layout on slide 1, a closer layout on the last slide, and emits warnings when the deck_type's required `opening`/`closing` acts don't appear in the appropriate band.
+After the per-slide picker runs, run `feinschliff deck pick-deck plan.yaml -o picker_report.json` for the arc-aware rebalance. Block until `picker_report.json` is written. It forces a title-primary layout on slide 1, a closer layout on the last slide, and emits warnings when the deck_type's required `opening`/`closing` acts don't appear in the appropriate band.
+
+**Artifact produced:** `picker_report.json`.
 
 Output: `plan.yaml` — an ordered list of `{layout, content_inline|content_file}`
 entries that `feinschliff deck build` consumes directly (see Step 3).
 
 ## Step 2a — Fan-out authoring (decks ≥ 10 slides)
 
-Use this when slide_count ≥ 10 to cut authoring wall-clock by ~3-5x.
-Required to be opted into — short decks should skip.
+**Default for slide_count ≥ 10.** The orchestrator MUST fan out at this size unless the user passed `--no-fanout`. Cut authoring wall-clock by ~3-5x.
+
+`--no-fanout` is a CLI flag for the rare case where the orchestrator must run serial for debugging or low-quota environments. Default fan-out is correct for any production run.
 
 **Parent (orchestrator) flow:**
 
@@ -791,9 +808,9 @@ The `-full` layouts use a virtual 6880×2880 canvas so the model has
 See the `feinbild` plugin's excalidraw skill references (`dsl-syntax.md`,
 `examples-deep.md`) — the standalone diagram-DSL authoring docs moved there.
 
-Pass `--strict-craft` to enforce Knaflic deterministic rules at build time: no pie charts, no 3-D charts, title word-count budgets, body word-count budgets, compound titles containing "and", titles that are topics rather than claims, chart titles that omit a claim, and palettes with too many simultaneous colors. Violations abort the build and the findings are written to `out/<deck>/craft_report.md`.
+Run `feinschliff deck build out/<deck>/plan.yaml --strict-craft --strict-visual` for a clean build. `--strict-craft` enforces Knaflic deterministic rules at build time: no pie charts, no 3-D charts, title word-count budgets, body word-count budgets, compound titles containing "and", titles that are topics rather than claims, chart titles that omit a claim, and palettes with too many simultaneous colors. Violations abort the build and the findings are written to `out/<deck>/craft_report.md`. `--strict-visual` runs PIL-based post-render metrics after each slide is composited: whitespace ratio, left/right balance, and element collision. Violations abort the build and the findings are written to `out/<deck>/visual_metrics_report.md`.
 
-Pass `--strict-visual` to run PIL-based post-render metrics after each slide is composited: whitespace ratio, left/right balance, and element collision. Violations abort the build and the findings are written to `out/<deck>/visual_metrics_report.md`.
+**Artifacts produced:** `out/<deck>/craft_report.md` · `out/<deck>/visual_metrics_report.md`.
 
 Output: `out/<deck>/deck.pptx` (draft).
 
@@ -843,9 +860,7 @@ If the file does not exist on disk, the deck is not done — regardless of how c
 
 ## Step 4a — Fan-out verify (decks ≥ 10 slides)
 
-Use this when slide_count ≥ 10 to cut verify wall-clock from ~3-5 min to
-~1-1.5 min. The verify pass is decomposed into six independent aspects,
-each runnable as a subagent in parallel:
+**Default for slide_count ≥ 10.** The orchestrator MUST fan out at this size unless the user passed `--no-fanout`. Cuts verify wall-clock from ~3-5 min to ~1-1.5 min. The verify pass is decomposed into six independent aspects, each runnable as a subagent in parallel:
 
 | Aspect | Checks | Determinism | Time budget |
 |---|---|---|---|
@@ -900,7 +915,7 @@ extract. Roughly 5–6× the input tokens vs serial. Worth it above
 
 If `verify_report.md` header says `Verdict: dirty`: adjust `deck_plan.json` (change layouts, shorten text, split slides, rewrite titles as claims) and loop back to step 3. Increment `Iteration:` in the next verify report.
 
-**Hard stop at the budget set in step 0.** Default = 3 iterations, perfectionist = 6. Each iteration = one build + one verify pass. The verify pass runs on iteration 1 too — there is no "skip verify on the last happy-path build" shortcut.
+**Hard stop at 8 iterations.** Default expectation is 2–3 iterations on most decks. Each iteration = one build + one verify pass. The verify pass runs on iteration 1 too — there is no "skip verify on the last happy-path build" shortcut.
 
 If the final iteration still has defects:
 - Emit the current draft to `out/<name>.pptx`.
@@ -912,7 +927,7 @@ If the final iteration still has defects:
 `/deck critique existing.pptx` runs a subset of the pipeline:
 
 ```
-Step 0   ASK perfection bar                             — SKIPPED (no iteration loop)
+Step 0   Pre-flight (image style if ambiguous)          — SKIPPED (no iteration loop)
 Step 1   INGEST existing .pptx → content_plan.json
          DERIVE design_brief.json from extracted content
 Step 1b  PRESENT brief for approval / edit             — user can correct audience/frame

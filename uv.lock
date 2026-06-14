@@ -505,6 +505,7 @@ name = "feinschliff"
 version = "0.3.0"
 source = { editable = "feinschliff" }
 dependencies = [
+    { name = "anthropic" },
     { name = "cairosvg" },
     { name = "feinschmiede" },
     { name = "jsonschema" },
@@ -526,6 +527,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "anthropic", specifier = ">=0.40" },
     { name = "cairosvg", specifier = ">=2.9.0" },
     { name = "feinschmiede", editable = "feinschmiede" },
     { name = "jsonschema", specifier = ">=4.26.0" },

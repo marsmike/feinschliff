@@ -186,6 +186,26 @@ jobs:
         working-directory: ${{ matrix.pkg }}
         run: uv run pytest -q
 
+  feinschliff-orchestration:
+    name: feinschliff orchestration tests
+    runs-on: ubuntu-latest
+    # Only run on pushes to main — not on PRs. The e2e tests are slow and
+    # exercise the tooling layer in offline mode (no LLM / API calls).
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    env:
+      FEINSCHLIFF_BRAND_PATH: ${{ github.workspace }}/feinschliff-extra/brands
+      RUN_E2E_DECK_TEST: "1"
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+      - name: Install workspace (all packages + dev groups)
+        run: uv sync --all-packages --all-groups
+      - name: Run orchestration tests
+        working-directory: feinschliff
+        run: uv run pytest -m orchestration -v
+
   wheel-install:
     name: ${{ matrix.plugin }} wheel install + CLI smoke
     runs-on: ubuntu-latest
