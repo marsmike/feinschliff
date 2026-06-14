@@ -383,7 +383,18 @@ def register(parser: argparse.ArgumentParser) -> None:
         "--refurbish-default",
         choices=("excalidraw", "svg"),
         default=None,
-        help="Force a specific emitter instead of letting kind_selector choose.",
+        help="Force a specific emitter instead of letting kind_selector choose."
+        " Only applies to --mode redesign.",
+    )
+    p_polish.add_argument(
+        "--mode",
+        choices=["cosmetic", "redesign"],
+        default="cosmetic",
+        help=(
+            "cosmetic (default): preserve slide count + content verbatim, fix brand"
+            " chrome/typography only. redesign: extract diagram IR and rebuild"
+            " diagram slides (legacy behaviour). --refurbish-* flags only apply to redesign."
+        ),
     )
     p_polish.set_defaults(func=cmd_polish)
 
@@ -1274,6 +1285,23 @@ def cmd_polish(args) -> int:
         shutil.copy(src_path, out_path)
         print(f"deck polish: --no-refurbish — copied {src_path.name} → {out_path}")
         return 0
+
+    if getattr(args, "mode", "redesign") == "cosmetic":
+        import subprocess
+        from feinschliff.polish import cosmetic_polish
+
+        report = cosmetic_polish(src_path, args.brand, out_path)
+        for w in report.warnings:
+            print(f"deck polish: warning: {w}", file=sys.stderr)
+        print(
+            f"deck polish: cosmetic plan written → {report.plan_path}"
+            f" ({report.slides_preserved} slide(s))"
+        )
+        result = subprocess.run(
+            ["feinschliff", "deck", "build", str(report.plan_path)],
+            check=False,
+        )
+        return result.returncode
 
     refurbish_dir = out_path.parent / "refurbished"
     refurbish_dir.mkdir(exist_ok=True)

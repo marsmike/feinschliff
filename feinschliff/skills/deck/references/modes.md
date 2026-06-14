@@ -38,10 +38,83 @@ The CLI helper that materializes the storyline report from a saved `content_plan
 
 ```
 /deck polish rough.pptx
-/deck polish rough.pptx "make it 5 slides, executive-focused"
+/deck polish rough.pptx --mode cosmetic
+/deck polish rough.pptx --mode redesign
 ```
 
-Ingests an existing `.pptx`, reflows into brand layouts. Same steps as create; step 1 starts from existing content instead of a brief. **Verify is mandatory here too** — reflowing into brand layouts doesn't guarantee the result fits the slots. Intake (Step 0a) still runs in polish mode; `deck_brief.yaml` fields are seeded from the extracted source content rather than a free-text brief, so the user confirms defaults rather than building them from scratch.
+Ingests an existing `.pptx` and applies brand-correct output. The command has two modes that differ in how much of the source deck is preserved. Verify is mandatory in both — reflowing into brand layouts doesn't guarantee slot fit. Intake (Step 0a) runs in both modes; `deck_brief.yaml` fields are seeded from the extracted source content.
+
+### Mode picker (`--mode` or AskUserQuestion)
+
+When no `--mode` flag is supplied, the skill extracts content (Step 1) and then pauses for a single AskUserQuestion before any planning:
+
+```
+Header: Polish mode
+
+Options:
+  cosmetic   (Recommended) — keeps slides, order, and content; fixes brand
+             chrome, typography, and slot overflow only.
+  redesign   — keeps raw content; rebuilds slide count, layouts, titles, and arc.
+```
+
+Default recommendation is `cosmetic`. Power users can skip the question by passing `--mode cosmetic` or `--mode redesign` at invocation.
+
+### cosmetic mode
+
+Preserves:
+- Slide count and order (no inserts, merges, or splits)
+- Per-slide content verbatim — titles, bullets, data, claims
+- Slide-to-layout mapping via brand-map (source layout → brand analog by role + slot count)
+- User-authored images (re-cropped / re-positioned only)
+
+Fixes:
+- Typography, colors, brand chrome (header/footer, cover/closer)
+- Slot overflow — visual shrink only (font-size/line-height/slot expansion); text values are never rewritten
+- Native chrome substitution (per-brand cover / closer / chapter layouts)
+
+Does NOT touch:
+- Storyline or arc (no SCR gate, no claim-evidence check, no ghost-deck check)
+- Slide count or order
+- Per-slide claims or evidence
+- Layout picker scoring beyond brand-map-driven role substitution
+
+### redesign mode
+
+Preserves:
+- Raw content (claims, evidence, numbers, quotes) captured verbatim from the source `.pptx`
+- User-authored images (offered for re-use; planner may drop or re-place them)
+
+Reworks:
+- Slide count (may collapse, expand, or reorder)
+- Per-slide layout (full picker run)
+- Titles (claim titles, not topic labels)
+- Arc and storyline (full pipeline: storyline gate, claim-evidence check)
+
+This is the original polish behavior, now made explicit via `--mode redesign`. Add `--refurbish-all` to also extract embedded diagrams, rebuild them as brand-aware DSL (`.exc.dsl`/`.svg.dsl`), and substitute back into the rebuilt deck.
+
+### Pipeline-skip matrix
+
+| Step | Cosmetic | Redesign |
+|---|---|---|
+| 0. Perfection bar | Yes | Yes |
+| 0b. Intake — `deck_brief.yaml` | Skip by default (no goal/audience change) | Yes (full intake) |
+| 1. Content extraction | Yes — verbatim | Yes — verbatim |
+| 1b. Design-brief inference | Skip | Yes |
+| 1c. Storyline gate | Skip | Yes |
+| 1d. Approval gate | Yes — "I will preserve N slides; brand-fit only" | Yes — full plan summary |
+| 2. Layout pick | Brand-map only (source layout → brand analog) | Full picker run |
+| 2b. Claim-evidence check | Skip | Yes |
+| 3. Compile | Yes | Yes |
+| 4. Static verify (slot overflow, autofix) | Yes — visual shrink only, no content edit | Yes |
+| 5. PPTX emit | Yes | Yes |
+| 6. Post-render rubric | Brand-fit subset only (chrome, typography, slot, color) | Full rubric |
+| Iteration budget | Default 2 | Default 3, perfectionist 6 |
+
+### Edge cases
+
+- **Missing brand layout (cosmetic)**: if the source has a layout with no brand analog (no role match), fall back to the brand's nearest `content-columns` layout and log a warning. Never silently substitute a redesign for a slide.
+- **Slot overflow that can't be fixed visually (cosmetic)**: prompt the user inline ("Slide 7's title is 87 chars; brand cap is 60. Shorten or accept overflow?"). Do not silently rewrite content.
+- **User-authored images (redesign)**: extracted images are listed in `image_inventory.json`; the planner is told which exist and may use them but is not required to.
 
 ## critique
 
