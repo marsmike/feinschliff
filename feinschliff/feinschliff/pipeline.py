@@ -17,11 +17,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-# Trailing slide-counter pattern that LLMs sometimes author into pgmeta,
-# e.g. "Bahncard 100 · 5 / 11" or "Cover - 3/11". Strip it so the
-# renderer footer (bottom-right NN / TT) is never duplicated in the header.
-_PGMETA_COUNTER_RE = re.compile(r"\s*[·\-—|]\s*\d{1,3}\s*/\s*\d{1,3}\s*$")
-
 from feinschliff.defects import Defect, DefectKind, Severity, from_engine_defect
 
 try:
@@ -70,6 +65,11 @@ class CompileResult:
 from feinschliff.slot_budget import (  # noqa: E402
     register_tokens_font_metrics as _register_brand_font_metrics,
 )
+
+# Trailing slide-counter pattern that LLMs sometimes author into pgmeta,
+# e.g. "Bahncard 100 · 5 / 11" or "Cover - 3/11". Strip it so the
+# renderer footer (bottom-right NN / TT) is never duplicated in the header.
+_PGMETA_COUNTER_RE = re.compile(r"\s*[·\-—|]\s*\d{1,3}\s*/\s*\d{1,3}\s*$")
 
 
 def compile_slide(
