@@ -133,6 +133,30 @@ Cross-reference: `audience-calibration.md` for jargon tolerances per bucket.
 
 Cross-reference: `iteration-loop.md` defect #28 (image-slide-fit) and #29 (image-consistency).
 
+## 14. fabricated-skip-reason (wrong or invented reason for skipping a step)
+
+**Definition:** the orchestrator declares a step skipped with a fabricated or incorrect reason (e.g., "builder missing", "gate not available on this install"). The correct behavior on any crash is to surface the actual stderr.
+
+**Example:**
+> Incorrect: "Skipped verify-aspect because feinschliff-builder is not installed."
+> Correct: surface the actual error from `feinschliff deck verify-aspect`; all verify-aspect subcommands ship in feinschliff core.
+
+## 15. missing-artifact-clean-verdict (declaring done without the verify artifact on disk)
+
+**Definition:** the orchestrator prints `Verdict: clean` to the user without first writing `out/verify_report.md` containing that verdict line. Declaring done without the artifact is not verification.
+
+**Example:**
+> Incorrect: print "Verdict: clean — deck looks great!" without writing `out/verify_report.md`.
+> Correct: write `out/verify_report.md` with the `Verdict: clean` line in the header, then report done.
+
+## 16. no-image-deck (image-capable deck with zero image-bearing slides)
+
+**Definition:** a deck has zero slides with image-bearing layouts despite the brief being image-friendly. The default-on policy is "any slide that can carry an image SHOULD carry one." Only exceptions: pure data decks (`visual_style: data-dense`) or explicit `image_style: none` in deck_brief.yaml.
+
+**Example:**
+> Incorrect: all 10 slides use text-only layouts for a customer story deck.
+> Correct: slides carrying a customer story, team intro, or hero metric use `content-with-visual`, `kpi-photo`, `text-picture`, or similar image-bearing layouts.
+
 ## 13. image-consistency (mixed visual styles across the deck)
 
 **Detection:** The deck's image assets span two or more distinct visual style categories. Examples: slide 3 uses a photorealistic stock photo of people in an office; slide 7 uses a flat-vector illustration; slide 10 uses an abstract gradient background. The deck's `design_brief.json` has an `image_style` field — any image that contradicts the declared style is a violation.

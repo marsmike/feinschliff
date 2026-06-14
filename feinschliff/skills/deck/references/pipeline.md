@@ -83,7 +83,7 @@ If image style is ambiguous from the brief, ask once here (bundle with any other
 
 ## Step 0a — Intake
 
-**Required artifact before Step 0a starts:** none (this is the first step).
+> **Required artifact:** none (this is the first step). ABORT if this step's command fails — do NOT fabricate an excuse.
 
 Intake captures the user's target picture as a structured `deck_brief.yaml`
 before any content is analyzed or planned. Previously the pipeline inferred
@@ -180,7 +180,7 @@ the backstop for any inference errors this misses.
 
 ## Step 0b — Commitment
 
-**Required artifact before Step 0b starts:** `deck_brief.yaml`.
+> **Required artifact:** `deck_brief.yaml`. ABORT if this step's command fails — do NOT fabricate an excuse.
 
 Run Step 0b. Block until `commitment.yaml` is written and validated.
 
@@ -229,7 +229,7 @@ and approves it — or requests edits — before per-slide planning starts.
 
 ## Step 1a — Ghost-deck title-strip check
 
-**Required artifact before Step 1a starts:** `content_plan.json`.
+> **Required artifact:** `content_plan.json`. ABORT if this step's command fails — do NOT fabricate an excuse.
 
 Run Step 1a. Block until `ghost_deck_report.md` and `title_lint_report.md` are written.
 
@@ -610,6 +610,8 @@ pick `tech-radar`. Slot args: `view` (one of
 `genai-tooling`), optional `volume` (edition number), and `new_since`
 (ISO date for the NEW badge).
 
+**Image-bearing layout preference.** When the slide's content suits a picture (a customer story, a team intro, a hero metric with context, a contrast, a quote), prefer a layout that includes an image slot: `content-with-visual`, `kpi-photo`, `chart-photo`, `picture-full`, `text-picture`, `picture-text`. A no-image deck is the exception, not the default. The picker's `--strict-visual` flag warns on whitespace/balance issues that often signal an image-starved layout.
+
 After the per-slide picker runs, run `feinschliff deck pick-deck plan.yaml -o picker_report.json` for the arc-aware rebalance. Block until `picker_report.json` is written. It forces a title-primary layout on slide 1, a closer layout on the last slide, and emits warnings when the deck_type's required `opening`/`closing` acts don't appear in the appropriate band.
 
 **Artifact produced:** `picker_report.json`.
@@ -816,6 +818,8 @@ Output: `out/<deck>/deck.pptx` (draft).
 
 ## Step 4 — Verify (visual + theory) — MANDATORY, NEVER SKIPPED
 
+> **Required artifact:** `out/verify_report.md`. ABORT if this step's command fails — do NOT fabricate an excuse.
+
 **This step runs at least once. No exceptions.** You do not know whether step 3 succeeded until you look at the rendered PNGs. "The build didn't error" is not verification. Even if the iteration budget is 1, you still run one verify pass before declaring completion.
 
 Render the draft:
@@ -857,6 +861,8 @@ The header block is the completion gate: `Verdict:` must be readable by both Cla
 `out/verify_report.md` is overwritten on each iteration; the file always reflects the most recent build. If you need iteration history, prior reports are recoverable from `git log` or conversation transcript.
 
 If the file does not exist on disk, the deck is not done — regardless of how confident you feel about the build. Before telling the user "done", confirm the file exists and the header says `Verdict: clean` (or budget is exhausted and you're emitting residuals per step 5).
+
+Never print `Verdict: clean` to the user without first writing `out/verify_report.md` containing that verdict line. If the visual rubric crashed for any reason, surface the actual error — do not silently downgrade to a header-only summary.
 
 ## Step 4a — Fan-out verify (decks ≥ 10 slides)
 
@@ -916,6 +922,8 @@ extract. Roughly 5–6× the input tokens vs serial. Worth it above
 If `verify_report.md` header says `Verdict: dirty`: adjust `deck_plan.json` (change layouts, shorten text, split slides, rewrite titles as claims) and loop back to step 3. Increment `Iteration:` in the next verify report.
 
 **Hard stop at 8 iterations.** Default expectation is 2–3 iterations on most decks. Each iteration = one build + one verify pass. The verify pass runs on iteration 1 too — there is no "skip verify on the last happy-path build" shortcut.
+
+If the budget is exhausted with any artifact missing, emit `out/RESIDUAL_ISSUES.md` listing exactly what's missing and what the orchestrator tried to do about it.
 
 If the final iteration still has defects:
 - Emit the current draft to `out/<name>.pptx`.

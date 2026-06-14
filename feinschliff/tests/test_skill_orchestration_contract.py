@@ -189,6 +189,118 @@ def test_iteration_loop_references_8_cap() -> None:
     )
 
 
+def test_skill_md_forbids_builder_missing_excuse() -> None:
+    """SKILL.md must explicitly forbid the 'builder is missing, gates skipped' excuse.
+
+    Bug surfaced 2026-06-14: a cold-start dry-run had the orchestrator print
+    'feinschliff-builder is missing wheels on this machine, so the optional
+    gates were skipped' — but those gates all ship in feinschliff core after
+    PR #85. Forbid that excuse in prose so the orchestrator stops fabricating
+    it. The test checks for the explicit "Never tell the user" / "is wrong"
+    framing — soft wording lets the LLM justify it again.
+    """
+    text = _read(_SKILL_MD).lower()
+    must_contain = [
+        "core",  # gates ship in core
+        "not required",  # builder not required
+        "never tell the user",  # explicit ban
+    ]
+    missing = [phrase for phrase in must_contain if phrase not in text]
+    assert not missing, (
+        f"SKILL.md is missing the explicit ban on the 'builder missing' excuse.\n"
+        f"Missing phrases: {missing}\n"
+        f"The skill must state that title-lint / ghost-deck / claim-evidence / "
+        f"commitment-validate / storyline ship in feinschliff core, that the "
+        f"builder is NOT required, and that the orchestrator must never tell "
+        f"the user 'builder missing' as a skip reason."
+    )
+
+
+def test_skill_md_forbids_clean_without_report() -> None:
+    """SKILL.md must explicitly forbid 'Verdict: clean' without verify_report.md.
+
+    Bug surfaced 2026-06-14: orchestrator printed 'Verdict: clean across all 7
+    slides' without ever writing verify_report.md to disk. The visual rubric
+    must produce the file before the verdict is communicated.
+    """
+    text = _read(_SKILL_MD).lower()
+    needles = [
+        "do not print",
+        "verdict: clean",
+        "verify_report.md",
+    ]
+    missing = [n for n in needles if n not in text]
+    assert not missing, (
+        f"SKILL.md must explicitly say: do NOT print 'Verdict: clean' without "
+        f"first writing verify_report.md to disk. Missing phrases: {missing}"
+    )
+
+
+def test_skill_md_mandates_images_by_default() -> None:
+    """SKILL.md must mandate image-bearing layouts as the default.
+
+    User feedback 2026-06-14: 'there are no images at all in the slide deck.
+    We should refrain from creating slide decks without images. We should use
+    images more.' The skill must instruct the orchestrator to prefer
+    image-bearing layouts unless the brief is explicitly data-dense / minimal.
+    """
+    text = _read(_SKILL_MD).lower()
+    needles = [
+        "image",  # must mention the topic
+    ]
+    image_layouts = [
+        "content-with-visual",
+        "kpi-photo",
+        "chart-photo",
+        "picture-full",
+    ]
+    image_layout_hits = sum(1 for layout in image_layouts if layout in text)
+    assert all(n in text for n in needles) and image_layout_hits >= 2, (
+        f"SKILL.md must mandate images by default. It needs to name >=2 of the "
+        f"image-bearing layouts ({image_layouts}) — currently hits "
+        f"{image_layout_hits}."
+    )
+
+
+def test_anti_patterns_lists_fabricated_skip_and_missing_artifact() -> None:
+    """anti-patterns.md must list the failure modes Claude-03 exhibited."""
+    text = _read(_SKILLS_ROOT / "references" / "anti-patterns.md").lower()
+    needles = [
+        "fabricated-skip-reason",
+        "missing-artifact-clean-verdict",
+        "no-image-deck",
+    ]
+    missing = [n for n in needles if n not in text]
+    assert not missing, (
+        f"anti-patterns.md must name the three failure modes surfaced today: "
+        f"{missing} not found."
+    )
+
+
+def test_modes_md_lists_builder_only_subcommands() -> None:
+    """modes.md must clearly enumerate which subcommands need the builder.
+
+    Without this, the orchestrator falls back to 'optional gates need
+    builder' — which is wrong since PR #85.
+    """
+    text = _read(_MODES_MD).lower()
+    needles = [
+        "wireframe",  # needs builder
+        "polish",  # redesign mode needs builder
+        "verify-static",  # needs builder
+    ]
+    core_needles = [
+        "title-lint",  # ships in core
+        "ghost-deck",  # ships in core
+        "claim-evidence",  # ships in core
+    ]
+    missing = [n for n in needles + core_needles if n not in text]
+    assert not missing, (
+        f"modes.md must enumerate builder-only AND core subcommands. "
+        f"Missing: {missing}"
+    )
+
+
 def test_skill_md_body_under_40_lines() -> None:
     """SKILL.md body (excluding frontmatter) must be ≤ 40 lines."""
     text = _read(_SKILL_MD)
