@@ -22,7 +22,7 @@ theme feinschliff
 
 # Full-bleed image background. Placeholder is paper-2 (dim warm) when absent.
 rect 0,0 1920x1080 fill:paper-2
-picture 0,0 1920x1080 path:{{ image }} cover:true
+picture 0,0 1920x1080 path:{{ image }} query:{{ image_query }} cover:true
 
 # Header chrome (chrome stays default — pgmeta is on top of pic, ink-colored).
 header pgmeta:"{{ pgmeta }}"

@@ -39,7 +39,7 @@ rect 0,648 1920x432 fill:paper
 # ── Hero picture (top 60%) ───────────────────────────────────────────────────
 # Fallback placeholder when image slot is empty.
 rect 0,0 1920x648 fill:paper-2
-picture 0,0 1920x648 path:{{ image }} cover:true
+picture 0,0 1920x648 path:{{ image }} query:{{ image_query }} cover:true
 
 # ── Header chrome (drawn on top of image) ────────────────────────────────────
 header pgmeta:"{{ pgmeta }}"

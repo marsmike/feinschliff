@@ -37,7 +37,7 @@ theme feinschliff
 # ── Background: full-bleed image (bottommost layer) ──────────────────────────
 # Fallback placeholder fills canvas when image slot is empty.
 rect 0,0 1920x1080 fill:paper-2
-picture 0,0 1920x1080 path:{{ image }} cover:true
+picture 0,0 1920x1080 path:{{ image }} query:{{ image_query }} cover:true
 
 # ── Header chrome (drawn on top of image) ────────────────────────────────────
 header pgmeta:"{{ pgmeta }}"

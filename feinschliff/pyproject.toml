@@ -74,4 +74,5 @@ feinschliff = [
     "schemas/*.json",
     "storyline/*.json",
     "storyline/arcs/*.yaml",
+    "assets/illustrations/*",
 ]

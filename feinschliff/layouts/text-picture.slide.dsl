@@ -25,7 +25,7 @@ header pgmeta:"{{ pgmeta }}"
 
 # Right column: hero image (placeholder is paper-2 when path empty).
 rect 1040,200 780x720 fill:paper-2 stroke:fog
-picture 1040,200 780x720 path:{{ image }} cover:true
+picture 1040,200 780x720 path:{{ image }} query:{{ image_query }} cover:true
 
 # Left column: rule + eyebrow + title + body + buttons.
 rect 100,200 80x4 fill:ink

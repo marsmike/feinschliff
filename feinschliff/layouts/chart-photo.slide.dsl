@@ -42,7 +42,7 @@ theme feinschliff
 header pgmeta:"{{ pgmeta }}"
 
 # Right column: hero photo (full content height, right half).
-picture 1000,100 820x880 path:{{ image }} cover:true
+picture 1000,100 820x880 path:{{ image }} query:{{ image_query }} cover:true
 
 # ── Left column: title block ────────────────────────────────────────────────
 rect 100,200 80x4 fill:ink
