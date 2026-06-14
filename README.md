@@ -59,6 +59,13 @@ Use a different brand pack (add the extra brands first):
 FEINSCHLIFF_BRAND=catppuccin-macchiato /deck "..."
 ```
 
+Before your first run, see [`INSTALLATION.md`](INSTALLATION.md) for the
+system prerequisites (Python 3.11+, `soffice`, `pdftoppm`, …) and the
+API keys each plugin needs (`ANTHROPIC_API_KEY` for `feinschliff`,
+`ELEVENLABS_API_KEY` for `feinklang`, etc.). Keys go in `~/.env`; every
+plugin reads it at startup. After install, run `feinschliff doctor` to
+verify the setup.
+
 ## How it fits together
 
 Each plugin ships a `bin/` launcher that provisions a self-contained Python
