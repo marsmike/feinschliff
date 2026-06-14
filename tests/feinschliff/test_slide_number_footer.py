@@ -142,3 +142,34 @@ def test_no_slide_numbers_flag_accepted(tmp_path):
     # Parsing with --no-slide-numbers must not raise.
     args = parser.parse_args(["build", "--no-slide-numbers", "dummy.yaml"])
     assert getattr(args, "no_slide_numbers", False) is True
+
+
+# ---------------------------------------------------------------------------
+# Footer right-alignment with content edge (Fix C)
+# ---------------------------------------------------------------------------
+
+def test_footer_right_edge_aligns_with_content_edge():
+    """Footer right edge must sit at canvas_w - 100 (matching header content right margin).
+
+    The header gem sits at left=100; content extends to canvas_w-100 on the
+    right. The footer must align its right edge to that same content rail, not
+    to the bleed edge (canvas_w - 16).
+    """
+    payload = _make_payload(1)
+    prs = build_multi_slide(payload, slide_numbers=True)
+    slide = prs.slides[0]
+    slide_w = prs.slide_width
+    footers = _footer_frames(prs)
+    assert footers, "no footer frame found"
+    _, _, shape = footers[0]
+    # shape.left + shape.width = right edge of the footer box (in EMU).
+    # Convert canvas px to EMU: slide_w / 1920 gives px→emu ratio.
+    # Expected right edge in design-px: canvas_w - 100 (right-align to content).
+    px_to_emu = slide_w / 1920
+    right_edge_px = (shape.left + shape.width) / px_to_emu
+    expected_right_px = 1920 - 100   # canvas_w=1920 minus content right margin
+    tolerance = 5  # px tolerance for rounding
+    assert abs(right_edge_px - expected_right_px) <= tolerance, (
+        f"Footer right edge {right_edge_px:.1f}px, expected {expected_right_px}px "
+        f"(±{tolerance}px). Footer should align with header content edge, not bleed."
+    )

@@ -40,6 +40,6 @@ Full step-by-step: [`references/pipeline.md`](references/pipeline.md).
 
 ## References
 
-**Recipe:** [`references/pipeline.md`](references/pipeline.md) · [`references/modes.md`](references/modes.md) · [`references/quick-start.md`](references/quick-start.md) · [`references/iteration-loop.md`](references/iteration-loop.md).
+**Recipe:** [`references/pipeline.md`](references/pipeline.md) · [`references/modes.md`](references/modes.md) · [`references/quick-start.md`](references/quick-start.md) · [`references/iteration-loop.md`](references/iteration-loop.md). **Slot authoring rules (pgmeta, footer, slide counter):** [`references/pipeline.md`](references/pipeline.md).
 
 **Theory:** [`references/visual-vocabulary.md`](references/visual-vocabulary.md) · [`references/content-best-practices.md`](references/content-best-practices.md) · [`references/narrative-frames.md`](references/narrative-frames.md) · [`references/audience-calibration.md`](references/audience-calibration.md) · [`references/slide-claim-test.md`](references/slide-claim-test.md) · [`references/anti-patterns.md`](references/anti-patterns.md) · [`references/design-brief-schema.md`](references/design-brief-schema.md) · [`references/speaker-notes.md`](references/speaker-notes.md) · [`references/slide-grammar.md`](references/slide-grammar.md).

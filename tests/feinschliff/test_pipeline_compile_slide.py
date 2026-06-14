@@ -82,6 +82,44 @@ def test_compile_slide_surfaces_fatal_diagram_overflow(tmp_path):
     assert DefectKind.DIAGRAM_OVERFLOW in kinds
 
 
+def test_pgmeta_slide_counter_stripped(tmp_path):
+    """compile_slide must strip a trailing slide counter from pgmeta.
+
+    LLMs occasionally author pgmeta as "Deck Name · 3 / 11" — the renderer
+    stamps the slide counter separately as a bottom-right footer, so
+    allowing it inside pgmeta produces a duplicate on every slide. The
+    pipeline should silently strip the trailing "· NN / TT" pattern so the
+    rendered text reads "Deck Name" only.
+    """
+    result = compile_slide(
+        layout_path=SAMPLE_LAYOUT,
+        ctx={
+            **_ctx_for_exec_summary(),
+            "pgmeta": "Cover · 3 / 11",
+        },
+        brand_dir=SAMPLE_BRAND,
+        slide_index=3,
+        diagrams_out_dir=tmp_path / "diagrams",
+    )
+    # Find any text primitive whose label still contains the raw counter.
+    counter_labels = [
+        n.label for n in result.primitives
+        if getattr(n, "label", None) and "3 / 11" in str(n.label)
+    ]
+    assert counter_labels == [], (
+        f"pgmeta slide counter was NOT stripped; found in primitives: {counter_labels}"
+    )
+    # Also confirm the non-counter part of pgmeta survives.
+    pgmeta_labels = [
+        n.label for n in result.primitives
+        if getattr(n, "label", None) and "Cover" in str(n.label)
+    ]
+    assert pgmeta_labels, (
+        "pgmeta base text 'Cover' missing from primitives after strip — "
+        "the strip removed too much"
+    )
+
+
 def test_compile_slide_writes_only_under_diagrams_out_dir(tmp_path, monkeypatch):
     seen_writes: list[Path] = []
     real_write_bytes = Path.write_bytes
