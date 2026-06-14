@@ -182,6 +182,8 @@ Theory defects and visual defects share the same iteration budget. A slide with 
 
 ## Completion checklist
 
+At the end of every iteration, confirm ALL 9 required artifacts exist on disk. If any is missing, the next iteration's job is to produce it before doing anything else.
+
 Before telling the user the deck is ready, confirm all of these:
 
 - [ ] `deck_brief.yaml` exists.

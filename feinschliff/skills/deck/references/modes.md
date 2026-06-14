@@ -10,7 +10,7 @@ Three user-facing modes. All share the same pipeline described in `pipeline.md`;
 
 Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) always runs at least once** — no matter how obviously-correct the first build looks. The universal completion gate is `out/verify_report.md` with `Verdict: clean`; see `pipeline.md` step 4. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI.
 
-**Outputs include:** `deck_brief.yaml` · `commitment.yaml` · `content_plan.json` · `ghost_deck_report.md` · `title_lint_report.md` · `picker_report.json` · `plan.yaml` · `craft_report.md` · `verify_report.md`.
+**Outputs (all required):** `deck_brief.yaml` · `commitment.yaml` · `content_plan.json` · `ghost_deck_report.md` · `title_lint_report.md` · `picker_report.json` · `plan.yaml` · `craft_report.md` · `verify_report.md`. Every artifact on this list MUST exist on disk before the skill reports completion.
 
 ## plan
 
@@ -21,7 +21,7 @@ Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) a
 
 Runs **steps 0 → 0a → 1 → 1b → 1c only** (intake, ingest, design-brief inference, 1b approval gate, step 1c Storyline gate). Stops after step 1c. Does NOT proceed to step 2 plan / step 3 build / step 4 verify.
 
-**Outputs (only):**
+**Outputs (all required for this mode):**
 
 - `deck_brief.yaml` (committed at Step 0a)
 - `commitment.yaml`
@@ -249,6 +249,28 @@ Approve? (press enter) · Edit: say what to change · Redo from scratch: type 'r
 ```
 
 Empty input = approve. Free-form edit triggers a targeted revision. `redo` re-infers from scratch.
+
+## What feinschliff-builder is for (NOT runtime gates)
+
+`feinschliff-builder` is an optional authoring plugin. Its absence never justifies skipping or downgrading a pipeline step. The following commands require the builder:
+
+- `feinschliff-builder wireframe` — visual wireframe generation
+- `feinschliff-builder polish --mode redesign` — brand-map redesign mode
+- `feinschliff-builder book` — multi-deck book output
+- `feinschliff-builder verify-static` — pre-render static geometry check (builder CLI surface)
+- `feinschliff-builder apply-fixes` — mechanical defect patching
+
+The following commands ship in feinschliff core and are always available:
+
+- `feinschliff deck title-lint`
+- `feinschliff deck ghost-deck`
+- `feinschliff deck claim-evidence`
+- `feinschliff deck commitment-validate`
+- `feinschliff deck storyline`
+- `feinschliff deck verify-aspect` (all aspects: bbox, font, narrative, brand, image, content)
+- `feinschliff deck pick-deck`
+
+If a gate fails, surface the actual stderr. Never tell the user "I skipped these because the builder is missing" — that explanation is always wrong for the core-shipped commands above.
 
 ## `--no-storyline` skip flag
 
