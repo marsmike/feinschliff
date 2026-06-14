@@ -19,7 +19,8 @@ feinschliff deck log-event step:1-ingest end --dir .debug/<deck>/ --elapsed-ms <
 ```
 
 Use phase names that match the step name (`step:0-ask`, `step:0a-intake`,
-`step:1-ingest`, `step:1b-approve`, `step:1c-storyline`, `step:2-plan`,
+`step:0b-commitment`, `step:1-ingest`, `step:1a-ghost-deck`,
+`step:1b-approve`, `step:1c-storyline`, `step:2-plan`,
 `step:2a-fanout`, `step:3-build`, `step:4-verify`, `step:4a-fanout`,
 `step:5-revise`).
 For sub-agent work, add `--agent <id>` so the parallel windows are
@@ -168,10 +169,104 @@ the backstop for any inference errors this misses.
 | Step | Reads | Behavior |
 |---|---|---|
 | Step 0 (perfection bar) | — | Unchanged; runs before intake |
+| Step 0b commitment | `deck_brief.yaml` | Writes `commitment.yaml`; validates arc alignment before per-slide planning |
+| Step 1a ghost-deck | `content_plan.json` | Extracts titles; runs ghost-deck + title-lint checks; result feeds Step 1b prompt |
 | Step 1 plan generation | `deck_brief.yaml` | Planner prompt takes deck_brief as primary input; brief.txt as secondary |
 | Step 1c storyline gate | `deck_brief.yaml` + plan | Gate uses deck_type-specific arc schema instead of generic SCR (e.g. pitch → Raskin arc) |
 | Step 2 layout picker | `deck_brief.yaml` + plan | New signals: `deck_type`, `visual_style`, `audience_prior` |
 | Step 6 verify rubric | `deck_brief.yaml` | Rubric prompt mentions goal + audience → catches off-tone slides |
+
+## Step 0b — Commitment (NEW)
+
+After `deck_brief.yaml` exists (Step 0a) and before per-slide content
+planning starts, the orchestrating LLM writes a `commitment.yaml` to the
+deck directory.
+
+### Schema
+
+```yaml
+deck_type:        pitch | data-story | ...   # copied from deck_brief.yaml
+thesis:           "One sentence: the single claim this deck must land."
+key_moves:
+  - "Move 1 — what argument or evidence this section advances."
+  - "..."   # 3-7 moves total
+evidence_anchors:               # optional
+  - claim: "Retention improved 18%"
+    source: "Q3 OKR tracker"
+```
+
+`deck_type` is copied from `deck_brief.yaml`. `thesis` is one sentence.
+`key_moves` is a list of 3–7 sentences, each naming one argument step or
+evidence block the deck will make. `evidence_anchors` is optional: each
+entry pairs a specific claim with its source reference.
+
+### Arc alignment
+
+The orchestrating LLM compares each required narrative act in the
+deck_type's arc schema
+(`feinschliff/feinschliff/storyline/arcs/<deck_type>.yaml`) with the
+`key_moves` list. Every required act must map to at least one move.
+Unmapped acts surface as warnings in the Step 1b approval gate so the
+user sees them before per-slide planning begins.
+
+### Validation
+
+```bash
+feinschliff deck commitment-validate <deck-dir>/commitment.yaml --check-arc
+```
+
+Exit 0 = schema valid and all required arc acts covered. Exit 1 = validation
+error or uncovered acts (warnings printed). The user reviews the commitment
+and approves it — or requests edits — before per-slide planning starts.
+
+## Step 1a — Ghost-deck title-strip check (NEW)
+
+After `content_plan.json` is generated (the initial slide list) and before
+the Step 1b approval gate, extract the proposed slide titles and run two
+checks.
+
+### Ghost-deck check (LLM)
+
+Extract titles from the plan:
+
+```python
+titles = [slide["title"] for slide in plan["slides"]]
+```
+
+Run the LLM title-strip check:
+
+```bash
+feinschliff deck ghost-deck <deck-dir>/content_plan.json \
+  -o <deck-dir>/out/ghost_deck_report.md
+```
+
+The report carries a verdict of `pass`, `warn`, or `fail`.
+- `warn` — one or more titles are weak (topic nouns, vague, no verb); these
+  surface inline in the Step 1b approval prompt so the user can accept or
+  request a rewrite.
+- `fail` — the title sequence breaks the narrative arc badly enough to
+  warrant a re-plan; the orchestrator runs one re-plan pass and re-checks
+  (capped at 2 iterations) before proceeding.
+
+### Deterministic title lint
+
+```bash
+feinschliff deck title-lint <deck-dir>/content_plan.json \
+  -o <deck-dir>/out/title_lint_report.md
+```
+
+Checks: titles exceeding the character limit, titles with no verb, titles
+that contain " and " (compound claims that should split), and empty titles.
+
+### Into Step 1b
+
+Both reports are summarized as a single line appended to the Step 1b
+approval prompt:
+
+> Ghost-deck: warn (2 weak titles) · Title-lint: 1 long title, 0 empty
+
+The user sees this summary alongside the brief and decides whether to
+approve or request changes before the approval gate closes.
 
 ## Step 1 — Ingest
 

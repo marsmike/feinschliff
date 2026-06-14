@@ -91,3 +91,23 @@ def write_storyline_report(
         for s in suggestions:
             parts.append(f"- {s}")
     path.write_text("\n".join(parts) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Arc schema lookup (dispatch wiring happens in a separate PR)
+# ---------------------------------------------------------------------------
+
+def select_arc_schema(deck_type: str) -> dict | None:
+    """Return the arc schema dict for *deck_type*, or None if not found.
+
+    Loads arc schemas via ``feinschliff.storyline.load_all_arcs`` (catches
+    ``ImportError`` → returns ``None`` so callers degrade gracefully when the
+    module is absent). Returns ``None`` when *deck_type* is not in the
+    registry.
+    """
+    try:
+        from feinschliff.storyline import load_all_arcs  # type: ignore[import]
+    except ImportError:
+        return None
+    arcs = load_all_arcs()
+    return arcs.get(deck_type)

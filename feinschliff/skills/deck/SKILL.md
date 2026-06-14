@@ -29,7 +29,7 @@ See [`references/modes.md`](references/modes.md) for mode semantics.
 
 ## Pipeline
 
-`ask → intake → ingest → approve → plan → pick layouts → build → verify → revise`.
+`ask → intake → commit → ingest → approve → plan → ghost-deck → pick layouts → build → verify → revise`.
 Full step-by-step: [`references/pipeline.md`](references/pipeline.md).
 
 **Picker signals** — `diagram_kind` (`concept`/`chart`) steers diagram picks; `layout_history` applies recency penalties for variety (structural layouts exempt). **Build-time checks**: `diagram-overflow`, `diagram-color-mismatch`, `diagram-text-too-small`, `text-overlap`, `out-of-bounds`. Verify also catches filler words, vague-so-what, and bare claims.
