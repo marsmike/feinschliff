@@ -4,6 +4,48 @@ Working memory for AI contributors to this repo. Read before touching
 `feinschliff/examples/`, build scripts, the diagram pipeline, or the brand
 gallery / R2 publish flow.
 
+## Cold-start the plugins (test like a fresh user)
+
+Before any dry-run of the deck pipeline or another plugin, reset the
+install state to match what a brand-new user sees on first install:
+
+```bash
+# 1. Pull the latest main into the working tree.
+cd /Users/mike/work/feinschmiede && git pull --rebase
+
+# 2. Pull the latest marketplace clone Claude Code uses.
+cd ~/.claude/plugins/marketplaces/feinschmiede && git pull --ff-only
+
+# 3. Nuke every plugin's local venv (forces the rolling-latest fetch).
+rm -rf ~/.local/share/feinschmiede
+
+# 4. (Optional) drop the plugin cache too — forces a fresh clone next
+# /reload-plugins. Only needed if you've edited the plugin source dirs
+# locally without committing.
+rm -rf ~/.claude/plugins/cache/feinschmiede
+
+# 5. Inside Claude Code: /reload-plugins. The next /deck (or /excalidraw,
+# /tts, etc.) invocation hits the rolling-latest release, downloads the
+# wheels, provisions a new venv. This is exactly the path a real
+# first-time user takes.
+```
+
+This procedure is the only way to verify that the marketplace install
+actually works after a packaging / launcher change — the dev shell's
+editable install hides every issue with wheel data files,
+`build-wheels.sh` paths, and launcher Python discovery. See PRs #87 and
+#88 for two such bugs that only surfaced after this dance.
+
+After the cold-start, run `feinschliff doctor` to confirm the install
+is healthy in plain English. See [`INSTALLATION.md`](INSTALLATION.md)
+for the user-facing equivalent.
+
+## Stats
+
+See [`STATS.md`](STATS.md) for the size + context-cost breakdown across
+the whole plugin suite (install footprint, wheel sizes, skill body
+lines, references/, brand packs).
+
 ## Repo size discipline
 
 This repo stays small on purpose. Rendered artifacts are NOT committed:
