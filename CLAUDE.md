@@ -1,214 +1,147 @@
 # CLAUDE.md — feinschmiede repo
 
-Working memory for AI contributors to this repo. Read before touching
+Working memory for AI contributors. Read before touching
 `feinschliff/examples/`, build scripts, the diagram pipeline, or the brand
 gallery / R2 publish flow.
 
+## North Star — shrink the suite, run it in half the time
+
+Two goals every change pursues step by step:
+
+1. **Decrease repository size and code complexity.** Every non-trivial
+   PR should leave the suite smaller or simpler than it found it, or
+   have a concrete reason it cannot. Check [`STATS.md`](STATS.md) before
+   and after — install footprint, source LOC, skill context cost. New
+   features should subtract weight elsewhere wherever possible; if the
+   PR grows the install, call it out and offset it with a cut. Reject
+   premature abstractions: three similar lines beats a generic helper.
+   PR #91 (−48 % install size via test relocation) is the template.
+2. **Speed of execution.** Default parallel-worker count for any batch /
+   CPU-bound script is **`max(1, os.cpu_count() // 2)`**, with a
+   `--workers N` override flag. Half the cores keeps the operator's
+   machine responsive. Already wired into the brand-atlas renderer, R2
+   uploader, wheel build, and validators — keep it consistent for any
+   new batch-style code. Pass `--workers 8` explicitly in docs /
+   examples rather than relying on script defaults.
+
 ## Cold-start the plugins (test like a fresh user)
 
-Before any dry-run of the deck pipeline or another plugin, reset the
-install state to match what a brand-new user sees on first install:
+Reset install state to match a brand-new user before any dry-run:
 
 ```bash
-# 1. Pull the latest main into the working tree.
-cd /Users/mike/work/feinschmiede && git pull --rebase
+# 1. Refresh repo + the marketplace clone Claude Code uses.
+git pull --rebase
+git -C ~/.claude/plugins/marketplaces/feinschmiede pull --ff-only
 
-# 2. Pull the latest marketplace clone Claude Code uses.
-cd ~/.claude/plugins/marketplaces/feinschmiede && git pull --ff-only
-
-# 3. Nuke every plugin's local venv (forces the rolling-latest fetch).
+# 2. Nuke every plugin's local venv (forces rolling-latest fetch).
 rm -rf ~/.local/share/feinschmiede
 
-# 4. (Optional) drop the plugin cache too — forces a fresh clone next
-# /reload-plugins. Only needed if you've edited the plugin source dirs
-# locally without committing.
-rm -rf ~/.claude/plugins/cache/feinschmiede
-
-# 5. Inside Claude Code: /reload-plugins. The next /deck (or /excalidraw,
-# /tts, etc.) invocation hits the rolling-latest release, downloads the
-# wheels, provisions a new venv. This is exactly the path a real
-# first-time user takes.
+# 3. Inside Claude Code: /reload-plugins. The next /deck (or /excalidraw,
+# /tts, …) invocation hits the rolling-latest release, downloads the
+# wheels, provisions a new venv — exactly the path a first-time user takes.
 ```
 
-This procedure is the only way to verify that the marketplace install
-actually works after a packaging / launcher change — the dev shell's
-editable install hides every issue with wheel data files,
-`build-wheels.sh` paths, and launcher Python discovery. See PRs #87 and
-#88 for two such bugs that only surfaced after this dance.
+Only way to catch packaging / launcher bugs that the dev shell's
+editable install hides. After cold-start, run `feinschliff doctor` for a
+plain-English health check. See [`INSTALLATION.md`](INSTALLATION.md) for
+the user-facing equivalent.
 
-After the cold-start, run `feinschliff doctor` to confirm the install
-is healthy in plain English. See [`INSTALLATION.md`](INSTALLATION.md)
-for the user-facing equivalent.
+## Output discipline
 
-## Stats
+Repo stays small on purpose. `feinschliff/examples/` is a public
+showcase — users want proof of high-quality generation, not the inputs.
 
-See [`STATS.md`](STATS.md) for the size + context-cost breakdown across
-the whole plugin suite (install footprint, wheel sizes, skill body
-lines, references/, brand packs).
+**Committed under `examples/`:** `README.md` · `*.pdf` · `*.pptx` ·
+`*.png` · `ATTRIBUTION.md` (only where licensing requires).
+**Never under `examples/`** (move to `.debug/`): `brief.txt` ·
+`content_plan.yaml` · `design_brief.json` · `wireframe.svg` ·
+`verify_report.md` · `*.exc.dsl` · `*.excalidraw` · `*.svg.dsl` ·
+`*.svg` · `*.yaml` build plans · any "how it was built" intermediate.
 
-## Repo size discipline
+**Gitignored** (generated locally, not committed):
 
-This repo stays small on purpose. Rendered artifacts are NOT committed:
-
-- `docs/brand-previews/` — per-brand × per-layout PNGs (gitignored; ~50 MB
-  local) → uploaded to R2 via
+- `docs/brand-previews/` — ~50 MB; uploaded to R2 via
   `feinschliff-builder/scripts/upload_brand_previews_to_r2.py`.
-- `docs/brands/` and `docs/index.html` — gallery HTML, generated fresh by
-  the Pages workflow on every push to `main`.
-- `feinschliff/examples/<brand>/Template.{pdf,pptx}` — multi-slide brand
-  showcases (gitignored).
-- `feinschliff/.debug/` — every intermediate / debug artifact (see below).
+- `docs/brands/` + `docs/index.html` — regenerated by Pages workflow.
+- `feinschliff/examples/<brand>/Template.{pdf,pptx}` — multi-slide
+  brand showcases.
+- `feinschliff/.debug/` — every intermediate / debug / ad-hoc render.
+  Mirrors `examples/` structure. Build scripts render here first, then
+  copy final artifacts into `examples/`. No `/tmp/` or `~/Downloads`
+  shortcuts — even single-use renders land in `.debug/`.
 
-The only committed binary assets are the brand gem marks
-(`feinschliff/brands/feinschliff/assets/gem.png`, `gem-light.png`), the
-illustration placeholder (`feinschliff/assets/illustrations/placeholder.jpg`),
-one verify-quality test fixture
-(`feinschliff/tests/fixtures/verify_quality/clean-deck.pptx`), and the
-feinschmiede umbrella mark in `assets/` (`feinschmiede-mark.svg` +
-`-dark.svg`, regenerated by `feinschliff/.debug/feinschmiede-logo/gen_logo.py`,
-and the `feinschmiede-social.png` GitHub social-preview card).
+**Allowed binary assets in git:** brand gem marks
+(`feinschliff/brands/feinschliff/assets/gem*.png`), illustration
+placeholder, one verify-quality fixture
+(`feinschliff/tests/fixtures/verify_quality/clean-deck.pptx`),
+feinschmiede mark + social card under `assets/`. Nothing else.
 
-## Examples folder discipline
+**Verify:** after any regen, `git status` should show only
+`*.pdf` / `*.pptx` / `*.png` / `README.md` under `examples/`; untracked
+only under `.debug/` or `docs/brand-previews/`. A `.yaml` / `.json` /
+`.dsl` / `.svg` / `.txt` under `examples/` means you broke the rule.
 
-`feinschliff/examples/` is a public-facing showcase, watched by users browsing
-the repo on GitHub. **Users want proof of high-quality generation, not the
-DSL inputs.** Keep the folder ruthlessly clean.
+## Diagram pipeline
 
-**Allowed in `feinschliff/examples/`:**
+Engine lives in the shared `feinschmiede` package, not office. See
+[`feinschmiede/feinschmiede/diagrams/README.md`](feinschmiede/feinschmiede/diagrams/README.md)
+for primitives, color tokens, arrow routing, and the render dispatcher
+(rough fast path → playwright fallback).
 
-- `README.md` (one per example directory + the top-level one)
-- `*.pdf` — rendered deck previews, multi-fixture preview sheets
-- `*.pptx` — downloadable PowerPoint output
-- `*.png` — rendered diagrams + per-slide thumbnails
-- `ATTRIBUTION.md` — only where third-party content licensing requires it
-  (currently `refurbish/`)
+Two invariants to preserve when editing:
 
-**Forbidden in `feinschliff/examples/` (move to `feinschliff/.debug/`):**
-
-- `brief.txt`, `content_plan.yaml`, `design_brief.json` — the deck inputs
-- `wireframe.svg` — diagnostic visualization
-- `verify_report.md` — diagnostic output
-- `*.exc.dsl`, `*.excalidraw` — Excalidraw DSL + intermediate JSON
-- `*.svg.dsl`, `*.svg` — SVG DSL + intermediate SVG
-- `*.yaml` build plans (e.g. `feinschliff-showcase.yaml`)
-- Any other "how it was built" intermediate
-
-## The `feinschliff/.debug/` mirror
-
-`feinschliff/.debug/` is gitignored. It mirrors the `feinschliff/examples/`
-directory structure and holds every intermediate / debug artifact that used
-to clutter `examples/`. Build scripts that regenerate examples should:
-
-1. Render the full chain to `feinschliff/.debug/examples/<mirror-path>/`.
-2. Copy only the user-facing final artifacts (pdf / pptx / png) into
-   `feinschliff/examples/<path>/`.
-
-When you (the AI) regenerate any example output, write everything to
-`.debug/` first, then mirror the polished artifacts to `examples/`. Never
-add a new file type to `examples/` without first asking whether it belongs
-in `.debug/` instead.
-
-**This also covers ad-hoc / debugging renders.** A/B comparison runs,
-prototype-render-backend testing, one-off PNG inspection — all of it
-lands under `feinschliff/.debug/<descriptive-subdir>/`, never `/tmp/`.
-Even single-use renders. Every intermediate file the project generates
-lives inside `.debug/` so the contributor can scrub through them later
-without hunting across `/tmp` or `~/Downloads`.
-
-## Diagram pipeline notes
-
-- **DSL expander** — `feinschmiede/feinschmiede/diagrams/excalidraw_expand.py`
-  (the diagram engine lives in the shared `feinschmiede` package, not office).
-  Primitives: `box`, `ellipse`, `diamond`, `dot`, `line` (with `dashed`
-  flag), `arrow` (with `label:"..."`), `text` (levels: `title`, `subtitle`,
-  `eyebrow`, `body`, `detail`, `mono`), `theme dark`, `group`. Color tokens
-  resolve through `brand_bridge.resolve()`; upstream Excalidraw color names
-  (`start`, `end`, `decision`, `ai`, `inactive`, `error`, `code`, `data`)
-  alias onto brand tokens. `\\n` inside a quoted label becomes a real
-  newline. Label color flips to `paper` on dark fills (luminance check).
-  Arrow routing is **edge-to-edge straight line** along the center-to-center
-  ray (matches upstream Excalidraw's `make_arrow`); no Z-elbows, no
-  collision avoidance — author places boxes so straight arrows have room.
-- **Render dispatcher** — `feinschmiede/feinschmiede/diagrams/render.py`. Tries
-  **`render_rough`** (pure-Python: `rough` Python port + `cairosvg`, ~150
-  ms, no browser) first with `roughness=0 + disableMultiStroke=True` for
-  the clean "normal" Excalidraw look. Falls back to **`render_playwright`**
-  (real Excalidraw web app in headless Chromium, ~1.5 s + 200 MB) when
-  the rough path is unavailable or the document contains elements it
-  doesn't model (freedraw / image / frame).
-- `expand_diagram_blocks` (`feinschliff/feinschliff/dsl/expander.py`) cache key
-  includes `{slide_index, kind, w, h, virtual_w, virtual_h, brand_dir.name,
-  tokens_hash, from_path, layout_dir.name, body}` where `tokens_hash` is a
-  12-char SHA-1 of `brand_dir/tokens.json` (empty string when absent) — do
-  not regress to hashing only `body`, and do not drop `tokens_hash`,
-  `from_path`, or `layout_dir.name`.
-- Diagram validators (`validate_diagrams`, `_color`, `_text_size`) run in
-  both `feinschliff build` and `feinschliff deck build`. Keep parity if
-  you add another build entry point.
+- `expand_diagram_blocks` (`feinschliff/feinschliff/dsl/expander.py`)
+  cache key must keep `{slide_index, kind, w, h, virtual_w, virtual_h,
+  brand_dir.name, tokens_hash, from_path, layout_dir.name, body}` —
+  `tokens_hash` is a 12-char SHA-1 of `brand_dir/tokens.json` (empty
+  when absent). Don't regress to body-only.
+- Diagram validators (`validate_diagrams`, `_color`, `_text_size`) run
+  in BOTH `feinschliff build` AND `feinschliff deck build`. Keep
+  parity if you add another build entry point.
 
 ## Brand-gallery publish flow
 
-The gallery at `https://marsmike.github.io/feinschmiede/brands/` is the
-public face of the brand-pack work. Update path:
-
-The brand-gallery scripts live in `feinschliff-builder/scripts/` (the authoring
-toolkit), so run them from there:
+Gallery at `https://marsmike.github.io/feinschmiede/brands/`. Scripts
+live in `feinschliff-builder/scripts/`:
 
 1. `cd feinschliff-builder && uv run python scripts/render_brand_atlas.py --force --workers 8`
-   — renders `docs/brand-previews/<brand>/<NN>-<id>.png` for all brand packs
-   (3 in feinschliff + 14 in feinschliff-extra).
+   — renders `docs/brand-previews/<brand>/<NN>-<id>.png` for all 17 brand
+   packs (3 in feinschliff + 14 in feinschliff-extra).
 2. `uv run python scripts/build_brand_atlas_overview.py` — composes the
    per-brand `_atlas.png` grid overview.
 3. `uv run python scripts/upload_brand_previews_to_r2.py --workers 8` —
-   uploads to `r2://marsmike-assets/feinschliff/brand-previews/<brand>/`
-   via wrangler (reuses the operator's existing wrangler auth).
-4. Push to `main` OR run `gh workflow run pages` — Pages workflow rebuilds
-   the gallery HTML with a fresh `?v=<timestamp>` cache-bust on every run.
+   uploads via wrangler (reuses the operator's existing auth).
+4. Push to `main` OR `gh workflow run pages` — Pages workflow rebuilds
+   gallery HTML with a fresh `?v=<timestamp>` cache-bust.
 
-The PPTX/PDF showcases (`feinschliff-builder/scripts/render_brand_preview.py`)
-are an orthogonal artifact — multi-slide downloadable templates per brand, also
-gitignored.
+PPTX/PDF showcases (`render_brand_preview.py`) are orthogonal:
+downloadable multi-slide templates per brand, also gitignored.
 
 ## Autonomous improvement loop (`autoloop`)
 
 "Loops are the new prompts": Claude itself runs a `measure → mutate →
-keep/revert → consolidate` loop to drive a target toward a measurable goal. The
-only code is a deterministic grader; the loop is prose Claude follows.
+keep/revert → consolidate` loop to drive a target toward a measurable
+goal. Only code is a deterministic grader; the loop is prose Claude
+follows.
 
-- **Name:** the skill is `autoloop`, invoked as `/feinschliff-builder:autoloop`.
-  Do NOT name it `goal` — `/goal` is a **built-in** Claude Code command (generic
-  "loop until a condition"); `autoloop` rides that built-in for cross-turn
-  persistence instead of reinventing it.
-- **Skill + canonical spec:** `feinschliff-builder/skills/autoloop/` (`SKILL.md`
-  is the source of truth; `README.md` is the human intro; `references/` holds the
-  mutator/consolidator/redirection directives).
-- **Grader:** `feinschliff-builder eval <skill-dir> --results-dir <dir>` scores
-  **already-generated** `.excalidraw`/`.svg` artifacts against the skill's
-  `evals/evals.json` via the shared `feinschmiede` validator + brand palette
-  (`feinschliff_builder/eval/{checks,grader}.py`). No LLM. Run `… eval --help`.
-- **Always grade GENERATED results**, never static fixtures. Working state lives
+- **Skill:** `feinschliff-builder/skills/autoloop/`, invoked as
+  `/feinschliff-builder:autoloop`. **Do not** name it `goal` — `/goal` is
+  a built-in Claude Code command (generic "loop until a condition");
+  `autoloop` rides it for cross-turn persistence.
+- **Grader:** `feinschliff-builder eval <skill-dir> --results-dir <dir>`
+  scores **already-generated** `.excalidraw` / `.svg` artifacts against
+  the skill's `evals/evals.json` via the shared `feinschmiede` validator
+  + brand palette. No LLM.
+- Always grade **generated** results, never static fixtures. State lives
   in gitignored `.autoloop/<target>/`; kept mutations commit to an
   `autoloop/<target>/<ts>` branch — never `main`.
-- v1 targets the `excalidraw`/`svg` skills; deck / DSL-template / framework-code
+- v1 targets `excalidraw` / `svg` skills; deck / DSL-template / framework
   targets reuse the same loop and are follow-on work.
 
 ## Commit + push hygiene
 
 - All commits require DCO sign-off: `git commit -s -m "..."`. CI enforces.
-- Branch protection on `main`: status checks must pass; linear history; no
-  force-pushes / deletions. PR reviews are NOT required (solo dev). Admin
-  bypass is enabled so direct-to-main pushes work; CI runs post-hoc.
-- Don't add new file types to `feinschliff/examples/` (see discipline
-  above). Don't commit PNG/PPTX/PDF outside the allowed list.
-
-## Verify the rules with `git status`
-
-After any examples regeneration, `git status` should show:
-
-- modifications only to `*.pdf` / `*.pptx` / `*.png` / `README.md` under
-  `feinschliff/examples/`
-- untracked changes only under `feinschliff/.debug/` or `docs/brand-previews/`
-
-If `git status` shows a `.yaml`, `.json`, `.dsl`, `.svg`, or `.txt` file
-under `feinschliff/examples/`, you've broken the discipline — move it to
-`.debug/` and update the README to stop referencing it.
+- Branch protection on `main`: status checks must pass; linear history;
+  no force-pushes / deletions. PR reviews not required (solo dev);
+  admin bypass lets direct-to-main pushes through, CI runs post-hoc.
+- Never add new file types to `examples/` (see *Output discipline*).
