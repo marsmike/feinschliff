@@ -4,10 +4,16 @@ from __future__ import annotations
 import argparse
 import sys
 
-from feinschliff.cli import build as build_cmd
-from feinschliff.cli import deck as deck_cmd
-from feinschliff.cli import doctor as doctor_cmd
-from feinschliff.cli import ship as ship_cmd
+from feinschliff.env import load_home_env
+
+# Load ~/.env BEFORE any anthropic / openai SDK constructs itself — the SDKs
+# capture API keys at import time. Mirrors feinklang and feinschnitt.
+load_home_env()
+
+from feinschliff.cli import build as build_cmd  # noqa: E402
+from feinschliff.cli import deck as deck_cmd  # noqa: E402
+from feinschliff.cli import doctor as doctor_cmd  # noqa: E402
+from feinschliff.cli import ship as ship_cmd  # noqa: E402
 
 
 def build_parser() -> argparse.ArgumentParser:
