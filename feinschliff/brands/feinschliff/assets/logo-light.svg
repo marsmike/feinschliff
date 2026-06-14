@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 32" role="img" aria-label="Feinschliff logo (light)">
+  <!-- Gem mark: diamond silhouette centred at x=12, y=16 — light variant for dark canvas -->
+  <!-- Crown facets (lighter blues on dark ground) -->
+  <polygon fill="#8aa5cc" points="12,4 8,12 12,10 16,12"></polygon>
+  <polygon fill="#6e8bb6" points="8,12 12,10 12,16"></polygon>
+  <polygon fill="#506f9c" points="16,12 12,10 12,16"></polygon>
+  <!-- Pavilion facets -->
+  <polygon fill="#5d7ca8" points="4,16 8,16 12,28"></polygon>
+  <polygon fill="#466485" points="8,16 12,16 12,28"></polygon>
+  <polygon fill="#3e5a86" points="12,16 16,16 12,28"></polygon>
+  <polygon fill="#2f4870" points="16,16 20,16 12,28"></polygon>
+  <!-- Belt (girdle) line -->
+  <line x1="4" y1="16" x2="20" y2="16" stroke="#0b1a33" stroke-width="0.4" stroke-opacity="0.55"></line>
+  <!-- Crown ridge -->
+  <line x1="8" y1="12" x2="16" y2="12" stroke="#0b1a33" stroke-width="0.4" stroke-opacity="0.55"></line>
+  <line x1="12" y1="4" x2="12" y2="16" stroke="#0b1a33" stroke-width="0.4" stroke-opacity="0.55"></line>
+  <!-- Outer silhouette -->
+  <polygon fill="none" stroke="#0b1a33" stroke-width="0.8" stroke-linejoin="miter"
+           points="12,4 4,16 12,28 20,16"></polygon>
+  <!-- Wordmark: starts at x=28, vertically centred at y=16 — paper fill for dark canvas -->
+  <text x="28" y="16"
+        font-family='"Aktiv Grotesk", "Inter", system-ui, sans-serif'
+        font-size="18"
+        font-weight="500"
+        letter-spacing="3"
+        fill="#F2EEE3"
+        text-anchor="start"
+        dominant-baseline="middle">FEINSCHLIFF.</text>
+</svg>
