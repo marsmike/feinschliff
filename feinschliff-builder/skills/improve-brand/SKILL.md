@@ -1,21 +1,19 @@
 ---
 name: improve-brand
-description: Use when a brand pack scaffold exists and you need to close the structural fidelity gap against a source PPTX — runs the verify-loop, then fans out one sub-agent per layout above threshold so each slide is analysed and edited in parallel.
+description: Closing the structural fidelity gap between a brand pack scaffold and a source PPTX. Use when a scaffold exists — runs the verify-loop, then fans out one sub-agent per layout above threshold so each slide is analysed and edited in parallel.
 ---
 
 # improve-brand — fan-out DSL improvement loop
 
-Driven by a verify-map. For each layout whose `struct_diff_ratio` exceeds a
-threshold after a verify-loop run, dispatch **one sub-agent per layout** in
-parallel. Each sub-agent gets the per-slide diff overlay, the current DSL, and a
-tight instruction set; it edits the DSL only; the parent re-runs the loop and
-reports plateau-vs-progress.
+## Quick Start
 
-## When to use
+```
+/feinschliff-builder:improve-brand <brand-dir> <source.pptx>
+```
 
-- You have a brand pack (`brands/<brand>/` with `tokens.json`, `layouts/*.slide.dsl`, `verify-map.yaml`) and a source PPTX deck to match.
-- The pack is past the scaffold stage (every layout already builds and renders something recognisable). If it doesn't exist yet, start with `compile-html` — improve-brand is a polishing loop, not a scaffold tool.
-- You want to drive every layout's `struct_diff_ratio` to ≤5% (or `--threshold`).
+See [`references/workflow.md`](references/workflow.md) for examples.
+
+Driven by a verify-map: fans out one sub-agent per layout above `struct_diff_ratio` threshold. Requires a scaffold-stage pack (`brands/<brand>/` with `tokens.json`, `layouts/*.slide.dsl`, `verify-map.yaml`). Not a scaffold tool — use `compile-html` first if the pack doesn't exist yet. Full context: [`references/loop-detail.md`](references/loop-detail.md).
 
 ## Checklist
 
@@ -38,16 +36,8 @@ You MUST create a task for each step and complete them in order. Full detail
 
 - **One agent per layout, parallel, in a single message.** Never share an agent across layouts.
 - **Strict scope.** Each may edit only its `layouts/<layout>.slide.dsl` (and, with permission, that layout's `tokens.json`). No other layouts, source PPTX, pipeline scripts, or git.
-- **No cheating with pictures.** Every drawn element (text, shapes, lines, callouts, chart bars, icons) MUST be native DSL primitives. `picture` is reserved for genuine `<p:pic>` source elements (raster art, photos, logo). Substituting a bitmap invalidates the test.
+- **No cheating with pictures.** Every drawn element MUST be native DSL primitives; `picture` is for genuine raster art only. Full rationale: [`references/loop-detail.md`](references/loop-detail.md).
 
-Full rationale + the read-only-context rule: [`references/loop-detail.md`](references/loop-detail.md).
+## Plateau handling
 
-## Plateau handling (read before iteration 2)
-
-On plateau/regression, **switch the prompt** — don't re-dispatch the standard
-one. Log each iteration to `<output-dir>/attempts/<layout>.jsonl` for
-failure-context; deletion is a legitimate redirection move; stop a layout after
-2 plateau rounds. Rules: [`references/plateau-handling.md`](references/plateau-handling.md);
-redirection prompt: [`references/redirection-prompt.md`](references/redirection-prompt.md).
-
-Also see [`references/workflow.md`](references/workflow.md) (full loop with example invocations) and [`references/decompile-from-source.md`](references/decompile-from-source.md) (image carry-over background).
+Switch the prompt on plateau/regression; stop a layout after 2 plateau rounds. Full rules and the redirection prompt: [`references/plateau-handling.md`](references/plateau-handling.md) · [`references/redirection-prompt.md`](references/redirection-prompt.md) · [`references/workflow.md`](references/workflow.md) · [`references/decompile-from-source.md`](references/decompile-from-source.md).

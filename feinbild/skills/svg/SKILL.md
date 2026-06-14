@@ -5,6 +5,14 @@ description: Generate SVG diagrams from a compact DSL with brand-resolved colors
 
 # feinbild — SVG diagrams
 
+## Quick Start
+
+```
+/svg diagram.svg.dsl
+```
+
+See [`references/examples.md`](references/examples.md) for examples.
+
 `feinbild` is a command on your PATH. Two steps: expand a `.svg.dsl` to `.svg`
 (brand colors resolved), then render to PNG.
 

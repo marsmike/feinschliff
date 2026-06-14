@@ -5,6 +5,14 @@ description: Iteratively improve a feinschliff diagram skill: loop measure, muta
 
 # autoloop — deterministic improvement loop for skills
 
+## Quick Start
+
+```
+/feinschliff-builder:autoloop <skill-dir>
+```
+
+See [`references/loop.md`](references/loop.md) for examples.
+
 Drive a target to a measurable goal by running the Karpathy loop yourself: measure → mutate ONE thing → measure → keep or revert → repeat, consolidating what you learn. You are the loop runner; there is no external orchestrator.
 
 Invoke as **`/feinschliff-builder:autoloop <target>`** — NOT bare `/goal`, which is Claude Code's *built-in* loop command (a generic "keep going until a condition" primitive this skill rides, not replaces).
