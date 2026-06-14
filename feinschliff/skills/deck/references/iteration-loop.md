@@ -165,6 +165,8 @@ For each slide in the rendered PNG, inspect for all 29 classes. The deterministi
     Fix: (a) replace divergent images to match the deck's declared `image_style`; (b) if no style was declared, establish one now and swap non-conforming images; (c) for brand packs with a design-system illustration library, replace ad-hoc images with in-system illustrations to guarantee consistency.
 
 
+30. **craft-rule** *(per-slide / deck-level, NEW PR 4)*: a Knaflic deterministic rule fired when `--strict-craft` was passed at build time. Surfaces at Step 4 verify when the rule triggered but did not abort the build (e.g., a word-count budget exceeded on a single slide while the rest of the deck was clean). Fix: address the specific rule violation reported in `craft_report.md` — shorten title or body text, replace a pie chart with a bar chart, rewrite a compound title as two separate slides, or reduce the number of simultaneous colors.
+
 ## Verify-pass LLM prompt (outline)
 
 Build a side-by-side PNG montage for the LLM — or Read each PNG directly. **You must actually look at the images**; don't invent verdicts from deck_plan.json alone.
