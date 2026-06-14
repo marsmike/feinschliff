@@ -13,6 +13,7 @@ dependencies = [
     "pillow>=10",
     "cairosvg>=2.9.0",
     "rough>=1.6",
+    "anthropic>=0.40",
 ]
 
 [project.scripts]
@@ -45,6 +46,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+  "orchestration: end-to-end deck pipeline tests (slow; run with `pytest -m orchestration`)",
+]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["E402"]

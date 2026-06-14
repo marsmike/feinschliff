@@ -10,7 +10,7 @@ Three user-facing modes. All share the same pipeline described in `pipeline.md`;
 
 Runs the full pipeline (steps 0–5). New deck from scratch. **Verify (step 4) always runs at least once** — no matter how obviously-correct the first build looks. The universal completion gate is `out/verify_report.md` with `Verdict: clean`; see `pipeline.md` step 4. When the `feinschliff-builder` plugin is installed, office delegates advanced subcommands (storyline, wireframe, polish, autofix) to the `feinschliff-builder` CLI.
 
-**Outputs include** `deck_brief.yaml` (committed at Step 0a).
+**Outputs include:** `deck_brief.yaml` · `commitment.yaml` · `content_plan.json` · `ghost_deck_report.md` · `title_lint_report.md` · `picker_report.json` · `plan.yaml` · `craft_report.md` · `verify_report.md`.
 
 ## plan
 
@@ -24,7 +24,9 @@ Runs **steps 0 → 0a → 1 → 1b → 1c only** (intake, ingest, design-brief i
 **Outputs (only):**
 
 - `deck_brief.yaml` (committed at Step 0a)
+- `commitment.yaml`
 - `content_plan.json`
+- `ghost_deck_report.md` · `title_lint_report.md`
 - `design_brief.json`
 - `out/storyline_report.md`
 
@@ -96,8 +98,8 @@ This is the original polish behavior, now made explicit via `--mode redesign`. A
 
 | Step | Cosmetic | Redesign |
 |---|---|---|
-| 0. Perfection bar | Yes | Yes |
-| 0b. Intake — `deck_brief.yaml` | Skip by default (no goal/audience change) | Yes (full intake) |
+| 0. Pre-flight (image style if ambiguous) | Yes | Yes |
+| 0a. Intake — `deck_brief.yaml` | Skip by default (no goal/audience change) | Yes (full intake) |
 | 1. Content extraction | Yes — verbatim | Yes — verbatim |
 | 1b. Design-brief inference | Skip | Yes |
 | 1c. Storyline gate | Skip | Yes |
@@ -108,7 +110,7 @@ This is the original polish behavior, now made explicit via `--mode redesign`. A
 | 4. Static verify (slot overflow, autofix) | Yes — visual shrink only, no content edit | Yes |
 | 5. PPTX emit | Yes | Yes |
 | 6. Post-render rubric | Brand-fit subset only (chrome, typography, slot, color) | Full rubric |
-| Iteration budget | Default 2 | Default 3, perfectionist 6 |
+| Iteration budget | Up to 8 (scorer terminates) | Up to 8 (scorer terminates) |
 
 ### Edge cases
 
@@ -217,6 +219,8 @@ The grid PDF lets humans + LLMs see the whole deck on one page — the
 consulting "print and lay on the table" tactic. Structural problems
 (missing acts, late hook, body-heavy middle) are obvious at this zoom
 in a way they aren't in one-up scrolling.
+
+**Outputs include:** `deck_brief.yaml` · `design_brief.json` · `<name>-critique.md` · `out/title_flipthrough.md` · `out/thumbnails_grid.pdf`.
 
 ### No iteration loop
 

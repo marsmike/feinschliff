@@ -32,9 +32,11 @@ See [`references/modes.md`](references/modes.md) for mode semantics.
 `ask → intake → commit → ingest → approve → plan → ghost-deck → pick layouts → build → verify → revise`.
 Full step-by-step: [`references/pipeline.md`](references/pipeline.md).
 
+**Artifacts (all required):** `deck_brief.yaml` · `commitment.yaml` · `content_plan.json` · `ghost_deck_report.md` · `title_lint_report.md` · `picker_report.json` · `plan.yaml` · `craft_report.md` · `verify_report.md`.
+
 **Picker signals** — `diagram_kind` (`concept`/`chart`) steers diagram picks; `layout_history` applies recency penalties for variety (structural layouts exempt). Arc-aware deck-level picking via `feinschliff deck pick-deck` lifts first/last-slide roles into title-primary / closer and warns on missing required acts from the deck_type arc schema. **Build-time checks**: `diagram-overflow`, `diagram-color-mismatch`, `diagram-text-too-small`, `text-overlap`, `out-of-bounds`. Pass `--strict-craft` for Knaflic rules (no pies, claim chart titles, word-count budgets); `--strict-visual` for PIL post-render metrics (whitespace, balance, collision). Verify also catches filler words, vague-so-what, and bare claims.
 
-**Completion rule.** Never declare done without a passing visual verify (pipeline Step 4) that writes `out/verify_report.md`. When the `feinschliff-builder` plugin is installed, `feinschliff-builder verify` and `feinschliff-builder storyline` gates are also available — but the universal gate for all installs is `out/verify_report.md` with `Verdict: clean`. **Parallel mode** (≥10 slides) fans out authoring + verify after storyline; `deck log-event` + `deck timing` write/read `timing.jsonl`. See [`references/pipeline.md`](references/pipeline.md) → *Step 2a / Step 4a*.
+**Completion rule.** Before declaring done, confirm all nine artifacts exist and `out/verify_report.md` says `Verdict: clean`. Never declare done without a passing visual verify (pipeline Step 4). When the `feinschliff-builder` plugin is installed, `feinschliff-builder verify` and `feinschliff-builder storyline` gates are also available — but `Verdict: clean` in `verify_report.md` is the universal gate. **Fan-out is the default at ≥10 slides** (opt-out: `--no-fanout`) — authoring + verify run in parallel; `deck log-event` + `deck timing` write/read `timing.jsonl`. See [`references/pipeline.md`](references/pipeline.md) → *Step 2a / Step 4a*.
 
 ## References
 

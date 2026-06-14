@@ -14,8 +14,8 @@ from typing import Any, Literal
 from feinschliff.defects import Defect, DefectKind, Severity
 from feinschliff_builder.verify.cache import CachedVerdict, VerifyCache, slide_hash
 from feinschliff_builder.verify.deck.squint import make_squint_thumbnail
-from feinschliff_builder.verify.deck.title_body import extract_slide_title_and_body
-from feinschliff_builder.verify.llm import prompts
+from feinschliff.verify.deck.title_body import extract_slide_title_and_body
+from feinschliff.verify.llm import prompts
 
 
 Status = Literal["pass", "fail", "skipped"]

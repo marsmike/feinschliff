@@ -6,6 +6,7 @@ import sys
 
 from feinschliff.cli import build as build_cmd
 from feinschliff.cli import deck as deck_cmd
+from feinschliff.cli import doctor as doctor_cmd
 from feinschliff.cli import ship as ship_cmd
 
 
@@ -30,6 +31,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="One-command build + verify + verify-quality with a single verdict",
     )
     ship_cmd.register(ship_parser)
+
+    p_doctor = sub.add_parser(
+        "doctor",
+        help="Probe the install for missing deps + config; print plain-English fixes.",
+    )
+    p_doctor.add_argument(
+        "--json",
+        action="store_true",
+        help="Emit checks as JSON array instead of human-readable.",
+    )
+    p_doctor.set_defaults(func=doctor_cmd.cmd_doctor)
 
     return p
 

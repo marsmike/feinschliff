@@ -88,6 +88,14 @@ docs/index.html
 feinschliff/examples/**/*.pdf
 feinschliff/examples/**/*.pptx
 
+# feinschliff-builder regenerates a showcase deck under examples/ on every
+# brand-pack edit. The rendered binaries (pptx, pdf), asset_lock, and cache
+# images are never committed — they regenerate locally.
+feinschliff-builder/examples/**/*.pdf
+feinschliff-builder/examples/**/*.pptx
+feinschliff-builder/examples/**/asset_lock.json
+feinschliff-builder/examples/**/.cache/
+
 # Golden render references — manual fidelity baselines for
 # `scripts/dsl_golden_compare.py`. No pytest test gates against them,
 # so they're regenerated on demand via `scripts/render_v2_goldens.py`
@@ -117,6 +125,8 @@ feinschliff/docs/images/teaser-*
 
 # feinschmiede plugin family — regenerable artifacts (vendored wheels, venvs, debug)
 */wheels/
+# The manifest JSON is committed (it's a pointer to the release asset, not binary).
+!*/wheels-manifest.json
 */.debug/
 */dist/
 */build/

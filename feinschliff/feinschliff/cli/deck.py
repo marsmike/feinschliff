@@ -70,25 +70,13 @@ from feinschliff.defects import fatal_kinds, format_defect
 from feinschmiede.brand_discovery import find_brand
 from feinschliff.io.image_provider import discover_providers, get_provider
 
-# Builder-side imports (feinschliff-builder optional dependency).
-# Fall back to no-ops when builder is not installed.
-try:
-    from feinschliff_builder.verify.deck.notes_budget import validate_notes  # type: ignore[import]
-    from feinschliff_builder.verify.deck.titles import extract_titles_from_plan  # type: ignore[import]
-    from feinschliff_builder.verify.deck.storyline import render_contact_sheet, write_storyline_report  # type: ignore[import]
-    from feinschliff_builder.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report  # type: ignore[import]
-    from feinschliff_builder.verify.deck.ghost_deck import judge_ghost_deck, write_ghost_deck_report  # type: ignore[import]
-    from feinschliff_builder.verify.deck.title_lint import lint_titles  # type: ignore[import]
-except ImportError:
-    validate_notes = None  # type: ignore[assignment]
-    extract_titles_from_plan = None  # type: ignore[assignment]
-    render_contact_sheet = None  # type: ignore[assignment]
-    write_storyline_report = None  # type: ignore[assignment]
-    judge_plan = None  # type: ignore[assignment]
-    write_claim_evidence_report = None  # type: ignore[assignment]
-    judge_ghost_deck = None  # type: ignore[assignment]
-    write_ghost_deck_report = None  # type: ignore[assignment]
-    lint_titles = None  # type: ignore[assignment]
+# Core verify imports — available without feinschliff-builder.
+from feinschliff.verify.deck.notes_budget import validate_notes
+from feinschliff.verify.deck.titles import extract_titles_from_plan
+from feinschliff.verify.deck.storyline import render_contact_sheet, write_storyline_report
+from feinschliff.verify.deck.claim_evidence import judge_plan, write_report as write_claim_evidence_report
+from feinschliff.verify.deck.ghost_deck import judge_ghost_deck, write_ghost_deck_report
+from feinschliff.verify.deck.title_lint import lint_titles
 from feinschliff.pipeline_log import log_event
 
 
@@ -1779,7 +1767,6 @@ def cmd_book(args) -> int:
 
 
 def cmd_storyline(args) -> int:
-    _require_or_delegate_builder("deck storyline")
     plan_path = Path(args.plan).resolve()
     out_path = Path(args.output).resolve()
     try:
@@ -1807,7 +1794,6 @@ def cmd_claim_evidence(args) -> int:
     - 1: dirty (at least one slide has a claim-evidence defect)
     - 2: plumbing error (plan not found, parse failure, etc.)
     """
-    _require_or_delegate_builder("deck claim-evidence")
     plan_path = Path(args.plan).resolve()
     out_path = Path(args.output).resolve()
 
@@ -1861,7 +1847,7 @@ def cmd_claim_evidence(args) -> int:
     # Token-cost estimate (AC6)
     judged_count = len(results)
     if not args.offline and results:
-        from feinschliff_builder.verify.llm.prompts import claim_evidence_prompt
+        from feinschliff.verify.llm.prompts import claim_evidence_prompt
         # Rough estimate: average prompt length × slides judged / 4 chars/token
         sample_prompt = claim_evidence_prompt("Sample title", "Sample body text.")
         avg_tokens_per_slide = len(sample_prompt) // 4
@@ -1916,7 +1902,6 @@ def cmd_ghost_deck(args) -> int:
     - 1: fail (significant narrative gaps detected)
     - 2: plumbing error (file not found, parse failure, etc.)
     """
-    _require_or_delegate_builder("deck ghost-deck")
     plan_path = Path(args.plan).resolve()
     out_path = Path(args.output).resolve()
 
@@ -1954,7 +1939,6 @@ def cmd_title_lint(args) -> int:
     - 1: issues found (at least one warn or fail)
     - 2: plumbing error (file not found, parse failure, etc.)
     """
-    _require_or_delegate_builder("deck title-lint")
     import json as _json
 
     plan_path = Path(args.plan).resolve()
@@ -2178,8 +2162,7 @@ def cmd_verify_aspect(args) -> int:
         # Pair the deck's red_line against each slide's (claim, notes).
         # The orchestrator LLM judges whether the spoken delivery tracks
         # the arc: drift / contradiction / off-arc tangents → dirty.
-        _require_or_delegate_builder("deck verify-aspect notes-coherence")
-        from feinschliff_builder.verify.deck.notes_coherence import (
+        from feinschliff.verify.deck.notes_coherence import (
             SlideForCoherence,
             render_contact_sheet as _render_notes_sheet,
         )
