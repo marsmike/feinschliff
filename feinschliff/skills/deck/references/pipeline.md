@@ -18,9 +18,10 @@ feinschliff deck log-event step:1-ingest start --dir .debug/<deck>/
 feinschliff deck log-event step:1-ingest end --dir .debug/<deck>/ --elapsed-ms <ms>
 ```
 
-Use phase names that match the step name (`step:0-ask`, `step:1-ingest`,
-`step:1b-approve`, `step:1c-storyline`, `step:2-plan`, `step:2a-fanout`,
-`step:3-build`, `step:4-verify`, `step:4a-fanout`, `step:5-revise`).
+Use phase names that match the step name (`step:0-ask`, `step:0a-intake`,
+`step:1-ingest`, `step:1b-approve`, `step:1c-storyline`, `step:2-plan`,
+`step:2a-fanout`, `step:3-build`, `step:4-verify`, `step:4a-fanout`,
+`step:5-revise`).
 For sub-agent work, add `--agent <id>` so the parallel windows are
 distinguishable. Missing `end` events still show up as dangling `start`
 in the report — useful for catching aborted phases.
@@ -83,7 +84,104 @@ If image style is ambiguous from the brief, also ask here (bundle it into the sa
 
 > **Visual style for images?** Options: photorealistic photos · illustrations · minimal/no images · data-viz only. Skip this if the brief makes it obvious (e.g., a data-heavy technical deck → data-viz; a human-narrative deck → photorealistic).
 
+## Step 0a — Intake (NEW)
+
+Intake captures the user's target picture as a structured `deck_brief.yaml`
+before any content is analyzed or planned. Previously the pipeline inferred
+goal, audience, deck type, and visual style from free text; those inferences
+now have an explicit first-class artifact that every downstream step reads.
+
+### Path A — brief present (`/deck "..."`)
+
+1. Call `feinschliff.intake.infer_from_text(brief)` to seed a partial brief
+   from the supplied text. This returns proposed values for all schema fields
+   above.
+2. Surface the inferred values to the user via a single `AskUserQuestion`
+   round-trip. Show all fields as a compact table with the inferred values
+   pre-filled, and ask: *"These are my reads — want to change any?"*
+3. User accepts or edits individual fields. Commit `deck_brief.yaml` to the
+   deck directory.
+
+One `AskUserQuestion` round-trip total. High-confidence inferences (e.g.
+audience obviously `exec` from the brief) may be shown but need no edit
+prompt — the confirm step still catches the edge cases that kill decks.
+
+### Path B — no brief (`/deck`)
+
+Three `AskUserQuestion` rounds, in order:
+
+1. **Q1:** `goal` + `audience` + `audience_prior` (three chips, one turn).
+2. **Q2:** `deck_type` + `visual_style` + `length_hint`.
+3. **Q3** (only when `deck_type` is `pitch` or `proposal`): `call_to_action`
+   + `must_include` (free-text via "Other" option).
+
+After answers: generate a one-paragraph brief from the answers, show it back
+to the user, then commit `deck_brief.yaml`.
+
+Maximum 3 `AskUserQuestion` turns.
+
+### Schema
+
+```yaml
+# Written once at intake. Immutable inputs to planner, storyline gate, picker.
+goal:            decision | buy-in | awareness | training | status | inspire   # required
+audience:        exec | technical | mixed | external-customer | external-investor  # required
+audience_prior:  none | some | expert      # how much they already know  # required
+call_to_action:  "free text — what should they do next?"                  # optional
+deck_type:       pitch | data-story | status-update | training | company-intro |
+                 proposal | retrospective | all-hands | board-update       # required
+visual_style:    rich-imagery | process-flow | org-hierarchy | data-dense |
+                 concept-text | mixed                                      # required
+length_hint:     short (<=8) | standard (~12) | long (>=18)               # required
+must_include:    ["free text bullet", ...]   # optional anchors the picker treats as fixed
+tone:            formal | confident-direct | warm | playful   # default: brand default  # optional
+constraints:
+  time_to_present_min: 15        # optional; informs density
+  no_charts: false               # optional hard rules
+```
+
+Required fields: `goal`, `audience`, `audience_prior`, `deck_type`,
+`visual_style`, `length_hint`. All others are optional.
+
+### Validation
+
+After writing `deck_brief.yaml`, run:
+
+```bash
+feinschliff deck intake-validate <deck-dir>/deck_brief.yaml
+```
+
+Exit 0 = all required fields present and valid. Exit 1 = validation error
+with a descriptive message. Fail fast here — do not proceed to Step 1 with
+a malformed brief.
+
+### Skip path
+
+Pass `--skip-intake` (or say "skip intake" at Step 0) to write a brief
+populated solely from heuristic inference with no `AskUserQuestion` turns.
+Useful for rapid iteration when the brief is detailed and unambiguous.
+The `title-story-spine` and `vague-so-what` defect classes at Step 4 are
+the backstop for any inference errors this misses.
+
+### Wiring
+
+| Step | Reads | Behavior |
+|---|---|---|
+| Step 0 (perfection bar) | — | Unchanged; runs before intake |
+| Step 1 plan generation | `deck_brief.yaml` | Planner prompt takes deck_brief as primary input; brief.txt as secondary |
+| Step 1c storyline gate | `deck_brief.yaml` + plan | Gate uses deck_type-specific arc schema instead of generic SCR (e.g. pitch → Raskin arc) |
+| Step 2 layout picker | `deck_brief.yaml` + plan | New signals: `deck_type`, `visual_style`, `audience_prior` |
+| Step 6 verify rubric | `deck_brief.yaml` | Rubric prompt mentions goal + audience → catches off-tone slides |
+
 ## Step 1 — Ingest
+
+Read `deck_brief.yaml` (written at Step 0a) before inferring anything from
+the brief text. The deck-brief fields (`goal`, `audience`, `audience_prior`,
+`deck_type`, `visual_style`, `length_hint`, `tone`, `must_include`,
+`constraints`) take precedence over heuristic inference in this step. The
+`deck_type` field will drive type-specific arc validation in a later step
+(PR 3 will populate it; for now, log the value and otherwise proceed with
+the current generic SCR gate).
 
 **Load brand-pack brief defaults (optional).** Before inferring anything from the user's brief, check whether the active brand ships priors via `brief_defaults` in its `tokens.json`. Use `load_brief_defaults(brand_dir)` (from `feinschmiede.dsl.tokens`) to read these. They provide a baseline only — apply the following precedence chain when setting each brief field:
 

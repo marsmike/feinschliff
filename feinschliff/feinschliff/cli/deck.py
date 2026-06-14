@@ -242,6 +242,31 @@ def register(parser: argparse.ArgumentParser) -> None:
                         help="Print the top-K candidates with scores (default 3)")
     p_pick.set_defaults(func=cmd_pick)
 
+    p_intake_v = sub.add_parser(
+        "intake-validate",
+        help="Validate a deck_brief.yaml against the schema. "
+             "Exit 0 = valid, 1 = invalid (errors to stderr), 2 = plumbing.",
+    )
+    p_intake_v.add_argument("brief", help="Path to deck_brief.yaml")
+    p_intake_v.set_defaults(func=cmd_intake_validate)
+
+    p_intake_s = sub.add_parser(
+        "intake-skeleton",
+        help="Emit a deck_brief.yaml skeleton seeded by heuristic "
+             "inference. The orchestrating skill fills the remaining "
+             "fields via AskUserQuestion before writing the final brief.",
+    )
+    p_intake_s.add_argument(
+        "--brief", default=None,
+        help="Optional brief text, or a path to a brief file. "
+             "When supplied, infer_from_text seeds known fields.",
+    )
+    p_intake_s.add_argument(
+        "-o", "--output", default=None,
+        help="Output path. Default: stdout.",
+    )
+    p_intake_s.set_defaults(func=cmd_intake_skeleton)
+
     p_storyline = sub.add_parser(
         "storyline",
         help="Emit a title-only contact sheet from a deck_plan.json / "
@@ -514,6 +539,43 @@ def register(parser: argparse.ArgumentParser) -> None:
 def _patch_set_hash(patches: list) -> str:
     """Delegate to feinschliff.deck.orchestrate.patch_set_hash."""
     return _patch_set_hash_fn(patches)
+
+
+def cmd_intake_validate(args) -> int:
+    """Validate a deck_brief.yaml against the intake schema."""
+    from feinschliff.intake import load_brief
+
+    path = Path(args.brief).resolve()
+    if not path.is_file():
+        print(f"deck: deck_brief not found: {path}", file=sys.stderr)
+        return 2
+    try:
+        load_brief(path)
+    except ValueError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    print(f"deck: deck_brief OK ({path})")
+    return 0
+
+
+def cmd_intake_skeleton(args) -> int:
+    """Emit a deck_brief.yaml skeleton seeded by heuristic inference."""
+    from feinschliff.intake import empty_brief, infer_from_text
+
+    brief = empty_brief()
+    if args.brief:
+        brief_text = args.brief
+        candidate = Path(args.brief)
+        if candidate.is_file():
+            brief_text = candidate.read_text()
+        brief.update(infer_from_text(brief_text))
+    out_yaml = yaml.safe_dump(brief, allow_unicode=True, sort_keys=False)
+    if args.output:
+        Path(args.output).write_text(out_yaml)
+        print(f"deck: wrote skeleton to {args.output}", file=sys.stderr)
+    else:
+        sys.stdout.write(out_yaml)
+    return 0
 
 
 def cmd_build(args) -> int:
