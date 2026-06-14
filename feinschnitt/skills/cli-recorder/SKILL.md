@@ -7,11 +7,17 @@ description: Use when authoring a CLI session recording for the cli-recorder ski
 
 Help users turn an idea ("a video of installing kubectl on macOS", "a tour of git rebase -i") into a valid `recipe.toml` for the `feinschnitt record` command.
 
+## Quick Start
+
+```
+/record "a tour of git rebase -i"
+```
+
+See [`references/steps.md`](references/steps.md) for per-step detail and examples.
+
 ## When to use
 
-- User says "create a recording for X" / "record a demo of Y" / "let's make a video of Z"
-- User invokes `/record` or otherwise references this skill
-- User has a finished video idea but no recipe file yet
+User says "create a recording for X" / "record a demo of Y", invokes `/record`, or has a video idea but no recipe file yet.
 
 ## Hard gate
 
@@ -33,12 +39,7 @@ Apply **one question at a time** — prefer multiple choice over open-ended. The
 storyboard is the step labels; sketch those before the `text` content. Validate
 the written recipe against `schema/recipe.schema.json` before declaring done.
 
-See [`references/steps.md`](references/steps.md) for the full per-step
-procedure, anti-patterns, and examples of good step labels.
-
-## See also
+## References
 
 - [`references/steps.md`](references/steps.md) — per-step detail, anti-patterns, label examples
-- `schema/recipe.schema.json` — full validation surface
-- `profiles/*.toml` — what each profile presets
-- `README.md` — recorder overview
+- `schema/recipe.schema.json` — full validation surface; `profiles/*.toml` — profile presets

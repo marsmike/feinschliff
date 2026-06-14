@@ -5,6 +5,14 @@ description: Generate Excalidraw diagrams from a compact DSL with brand-resolved
 
 # feinbild — Excalidraw diagrams
 
+## Quick Start
+
+```
+/excalidraw flow.exc.dsl
+```
+
+See [`references/examples.md`](references/examples.md) for examples.
+
 `feinbild` is a command on your PATH. Expand a `.exc.dsl` to `.excalidraw`
 (brand colors resolved), then render to PNG.
 

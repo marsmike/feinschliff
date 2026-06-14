@@ -5,26 +5,31 @@ description: Generate AI images via Replicate or Gemini. Use to create illustrat
 
 # feinbild — AI image generation
 
+## Quick Start
+
+```
+/imagine retro synthwave city skyline
+```
+
+See [`references/providers.md`](references/providers.md) for examples.
+
 `feinbild` is a command on your PATH. Requires a provider key in `~/.env`
 (`REPLICATE_API_KEY` or `GEMINI_API_KEY`).
 
 ```bash
 feinbild imagine --prompt "a calm mountain lake at dawn" --out lake.webp
-feinbild imagine --prompt "logo, flat, blue" --provider gemini --aspect-ratio 16:9 --out logo.png
 ```
 
-Options: `--provider` (`replicate` default, or `gemini`), `--model`
-(default `black-forest-labs/flux-schnell` / `gemini-2.5-flash-image`),
-`--aspect-ratio` (`1:1` default, `16:9`, `9:16`, `4:3`, `3:4`, `3:2`, `2:3`),
-`--out`. Without a key the command prints a clean error and makes no paid call.
+Options: `--provider` (`replicate`/`gemini`), `--model`, `--aspect-ratio`
+(`1:1` default, `16:9`, `9:16`, `4:3`, `3:2`, …), `--out`.
+Without a key the command prints a clean error and makes no paid call.
 
 ## Providers
 
 - **Replicate** (default) — Flux models, fast, best text rendering for memes.
 - **Gemini** — free tier (500/day), great general quality.
 
-Full model list, selection guide, meme tips, and examples:
-[`references/providers.md`](references/providers.md).
+Full model list, selection guide, and examples: [`references/providers.md`](references/providers.md).
 
 ## Brand Design Systems
 
