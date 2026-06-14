@@ -35,7 +35,7 @@ rect 0,0 1920x1080 fill:chapter-slab
 # policy from failing the build when `image` is unset (the layout is
 # explicitly designed to look complete with or without the image).
 rect 960,0 960x1080 fill:navy-700
-picture 960,0 960x1080 path:{{ image }} cover:true optional:true
+picture 960,0 960x1080 path:{{ image }} query:{{ image_query }} cover:true optional:true
 
 header-dark pgmeta:"{{ pgmeta }}"
 
